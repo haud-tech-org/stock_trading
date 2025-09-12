@@ -36,14 +36,14 @@ class HARExtractor:
     - Handles data cleaning and validation
     """
     
-    def __init__(self, har_directory: str, output_directory: str = None, timezone: str = "Asia/Ho_Chi_Minh"):
+    def __init__(self, har_directory: str, output_directory: str = None, tz_name: str = "Asia/Ho_Chi_Minh"):
         """
         Initialize the HAR extractor.
         
         Args:
             har_directory: Path to directory containing HAR files
             output_directory: Path to output directory (optional)
-            timezone: Timezone for timestamp conversion (default: Asia/Ho_Chi_Minh)
+            tz_name: Timezone for timestamp conversion (default: Asia/Ho_Chi_Minh)
         """
         self.har_dir = Path(har_directory)
         
@@ -57,7 +57,7 @@ class HARExtractor:
         
         # Vietnam timezone (UTC+7)
         self.vietnam_tz = timezone(timedelta(hours=get_vietnam_timezone_offset()))
-        self.timezone_name = timezone
+        self.timezone_name = tz_name
         
         # Track processed data to prevent duplicates
         self.processed_response_hashes: Set[str] = set()

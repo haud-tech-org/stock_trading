@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from stockreports.extractors import HARExtractor
-from stockreports.aggregators import StockDataAggregator
+from .extractors import HARExtractor
+from .aggregators import StockDataAggregator
 
 
 def extract_har_data():
@@ -56,14 +56,15 @@ def extract_har_data():
     
     # Create extractor and process
     try:
-        extractor = HARExtractor(str(source_path), str(output_path), args.timezone)
-        results = extractor.extract_all_har_files()
+        extractor = HARExtractor(str(source_path), str(output_path), tz_name=args.timezone)
+        results = extractor.extract_all()
         
-        if results['total_extracted'] > 0:
+        if results['entries_extracted'] > 0:
             print(f"✅ Extraction completed successfully!")
-            print(f"   - HAR files processed: {results['total_files']}")
-            print(f"   - Responses extracted: {results['total_extracted']}")
+            print(f"   - HAR files processed: {results['files_processed']}")
+            print(f"   - Responses extracted: {results['entries_extracted']}")
             print(f"   - Output directory: {args.output_dir}")
+            sys.exit(0)
         else:
             print("⚠️  No data was extracted from the HAR files!")
             sys.exit(1)
@@ -136,6 +137,8 @@ def aggregate_stock_data():
             print("⚠️  No data was aggregated!")
             sys.exit(1)
             
+        sys.exit(0)
+            
     except Exception as e:
         print(f"❌ Error during aggregation: {e}")
         if args.verbose:
@@ -193,18 +196,19 @@ def full_pipeline():
     try:
         # Step 1: Extract HAR data
         print("🔄 Step 1: Extracting HAR data...")
-        extractor = HARExtractor(args.har_dir, str(responses_dir), args.timezone)
-        extraction_results = extractor.extract_all_har_files()
+        extractor = HARExtractor(args.har_dir, str(responses_dir), tz_name=args.timezone)
+        extraction_results = extractor.extract_all()
         
-        if extraction_results['total_extracted'] == 0:
+        if extraction_results['entries_extracted'] == 0:
             print("❌ No data extracted from HAR files!")
             sys.exit(1)
         
-        print(f"✅ Extraction completed: {extraction_results['total_extracted']} responses")
+        print(f"✅ Extraction completed: {extraction_results['entries_extracted']} responses")
         
         # Step 2: Aggregate data
         print("🔄 Step 2: Aggregating stock data...")
-        aggregator = StockDataAggregator(str(responses_dir), str(reports_dir))
+        har_responses_dir = responses_dir / 'har_responses'
+        aggregator = StockDataAggregator(str(har_responses_dir), str(reports_dir))
         aggregation_results = aggregator.process_all_symbols()
         
         if not aggregation_results or aggregation_results.get('total_symbols', 0) == 0:
@@ -220,11 +224,12 @@ def full_pipeline():
             print("🧹 Cleaned up intermediate response files")
         
         print(f"\n🎉 Pipeline completed successfully!")
-        print(f"   - HAR files processed: {extraction_results['total_files']}")
+        print(f"   - HAR files processed: {extraction_results['files_processed']}")
         print(f"   - Symbols analyzed: {aggregation_results['total_symbols']}")
         print(f"   - Total records: {aggregation_results['total_records']:,}")
         print(f"   - Reports directory: {reports_dir}")
         
+        sys.exit(0)
     except Exception as e:
         print(f"❌ Pipeline error: {e}")
         if args.verbose:

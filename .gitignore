@@ -230,14 +230,35 @@ project/data/har_responses/
 project/data/summary_reports/
 project/sources/har/*.har
 
-# Test outputs and reports
+# Test outputs and temporary files
 *test_reports*/
+*test_output*/
+*temp_output*/
+output*/
+validation_*/
+verification_*/
 *_test_reports/
 api_test_reports/
 enhanced_test_reports/
 improved_test_reports/
 enhanced_daily_reports/
 verification_test/
+
+# Coverage reports (regenerated)
+htmlcov/
+.coverage
+coverage.xml
+coverage.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Temporary files and logs
 *.log
@@ -265,8 +286,14 @@ docs/_build/
 *ANALYSIS.md
 *RESTRUCTURING*.md
 cleanup_legacy.*
+*CLEANUP*.md
+*REORGANIZATION*.md
 
 # Virtual environment directories
 .venv*/
 venv*/
 env*/
+
+# Keep docs and final examples
+!docs/
+!docs/examples/

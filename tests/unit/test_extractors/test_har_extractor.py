@@ -26,19 +26,19 @@ class TestHARExtractor:
         """Test HARExtractor initialization."""
         extractor = HARExtractor(str(self.source_dir), str(self.output_dir))
         
-        assert extractor.source_dir == self.source_dir
+        assert extractor.har_dir == self.source_dir
         assert extractor.output_dir == self.output_dir
-        assert extractor.timezone == "Asia/Ho_Chi_Minh"
+        assert extractor.timezone_name == "Asia/Ho_Chi_Minh"
         
     def test_init_with_custom_timezone(self):
         """Test HARExtractor initialization with custom timezone."""
         extractor = HARExtractor(
             str(self.source_dir), 
             str(self.output_dir), 
-            timezone="UTC"
+            tz_name="UTC"
         )
         
-        assert extractor.timezone == "UTC"
+        assert extractor.timezone_name == "UTC"
         
     def test_extract_symbol_from_url(self):
         """Test symbol extraction from URLs."""
@@ -56,39 +56,43 @@ class TestHARExtractor:
         no_match_url = "https://api.example.com/data?param=value"
         assert extractor.extract_symbol_from_url(no_match_url) is None
         
-    @patch('builtins.open', new_callable=mock_open)
-    @patch('json.load')
-    def test_process_har_entry_valid(self, mock_json_load, mock_file):
-        """Test processing a valid HAR entry."""
+    def test_calculate_response_hash(self):
+        """Test response hash calculation."""
         extractor = HARExtractor(str(self.source_dir), str(self.output_dir))
         
-        # Mock HAR entry
-        entry = {
-            'request': {'url': 'https://api.example.com/data?symbol=VN30'},
-            'response': {'content': {'text': '{"t":[1234567890],"o":[100.5]}'}}
-        }
+        # Test hash calculation with sample data
+        test_data = {"t": [1234567890], "o": [100.5], "c": [101.0]}
+        hash1 = extractor.calculate_response_hash(test_data)
+        hash2 = extractor.calculate_response_hash(test_data)
         
-        # Mock JSON response
-        mock_response = {"t": [1234567890], "o": [100.5]}
-        mock_json_load.return_value = mock_response
+        # Same data should produce same hash
+        assert hash1 == hash2
+        assert len(hash1) > 0
         
-        result = extractor.process_har_entry(entry, "test_source", 1)
+        # Different data should produce different hash
+        different_data = {"t": [1234567891], "o": [100.6], "c": [101.1]}
+        hash3 = extractor.calculate_response_hash(different_data)
+        assert hash1 != hash3
         
-        assert result is not None
-        assert result['symbol'] == 'VN30'
-        assert result['index'] == 1
-        
-    def test_process_har_entry_no_symbol(self):
-        """Test processing HAR entry with no symbol match."""
+    def test_is_duplicate_response(self):
+        """Test duplicate response detection."""
         extractor = HARExtractor(str(self.source_dir), str(self.output_dir))
         
-        entry = {
-            'request': {'url': 'https://api.example.com/data?param=value'},
-            'response': {'content': {'text': '{"data": "test"}'}}
-        }
+        test_data = {"t": [1234567890], "o": [100.5]}
         
-        result = extractor.process_har_entry(entry, "test_source", 1)
-        assert result is None
+        # First time should not be duplicate
+        assert not extractor.is_duplicate_response(test_data)
+        
+        # Second time should be duplicate
+        assert extractor.is_duplicate_response(test_data)
+        
+    def test_setup_directories(self):
+        """Test directory setup."""
+        extractor = HARExtractor(str(self.source_dir), str(self.output_dir))
+        extractor.setup_directories()
+        
+        assert extractor.requests_dir.exists()
+        assert extractor.responses_dir.exists()
         
     def test_find_har_files(self):
         """Test finding HAR files in source directory."""
