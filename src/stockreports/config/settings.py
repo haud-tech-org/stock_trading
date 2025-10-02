@@ -30,3 +30,13 @@ LATEST_REPORT_PATTERN = "combined_analysis_report_*.md"
 
 # Logging Configuration
 LOG_LEVEL = "INFO"
+
+# Email Configuration
+EMAIL_ENABLED = True  # Set to False to disable email notifications
+EMAIL_SMTP_SERVER = "smtp.gmail.com"  # e.g., "smtp.gmail.com" for Gmail
+EMAIL_SMTP_PORT = 587
+EMAIL_SENDER = "<sender_email>@gmail.com"
+EMAIL_RECEIVER = "<receiver_email>@gmail.com"
+# IMPORTANT: Use an "App Password" for your email account, not your regular password.
+# It's highly recommended to load this from an environment variable for security.
+EMAIL_APP_PASSWORD = "app password"

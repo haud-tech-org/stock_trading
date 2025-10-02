@@ -20,6 +20,7 @@ project_root = Path(__file__).resolve().parents[3]
 sys.path.append(str(project_root))
 
 from src.stockreports.config import settings
+from src.stockreports.utils.email_utils import send_email
 
 # --- Basic Setup ---
 logging.basicConfig(
@@ -155,7 +156,11 @@ def analyze_live_data(df: pd.DataFrame):
         return
 
     latest = df.iloc[-1]
-    logging.info(f"Analyzing latest data point: {latest['time']} - Price: {latest['close']:.2f}, Volume: {latest['volume']}")
+    logging.info(
+        f"Analyzing data point: {latest['time']} | "
+        f"Price: {latest['close']:.2f} (H: {latest['high']:.2f}, L: {latest['low']:.2f}) | "
+        f"Volume: {latest['volume']}"
+    )
 
     # --- Calculate Indicators for the latest point ---
     # This part needs to be efficient, only calculating for the new data.
@@ -182,7 +187,37 @@ def analyze_live_data(df: pd.DataFrame):
     ichimoku_bullish_cross = (tenkan_sen.iloc[-1] > kijun_sen.iloc[-1]) and \
                              (tenkan_sen.iloc[-2] < kijun_sen.iloc[-2])
 
-    # --- Check for High-Confidence Precursor Combinations ---
+    # --- New Indicator: Trend Strength ---
+    trend_strength_signal = False
+    if len(df) >= 2:
+        prev_candle = df.iloc[-2]
+        latest_candle = df.iloc[-1]
+
+        # Condition 1: Sequential Trend
+        latest_is_up = latest_candle['close'] > latest_candle['open']
+        prev_is_up = prev_candle['close'] > prev_candle['open']
+        latest_is_down = latest_candle['close'] < latest_candle['open']
+        prev_is_down = prev_candle['close'] < prev_candle['open']
+        
+        same_trend = (latest_is_up and prev_is_up) or (latest_is_down and prev_is_down)
+
+        if same_trend:
+            # Condition 2: Range Sum (A)
+            range_latest = abs(latest_candle['close'] - latest_candle['open'])
+            range_prev = abs(prev_candle['close'] - prev_candle['open'])
+            A = range_latest + range_prev
+            range_sum_ok = A >= 3
+
+            # Condition 3: Volatility Check (B)
+            highest_high = max(latest_candle['high'], prev_candle['high'])
+            lowest_low = min(latest_candle['low'], prev_candle['low'])
+            B = highest_high - lowest_low
+            volatility_ok = (B - A) < 1
+
+            if range_sum_ok and volatility_ok:
+                trend_strength_signal = True
+
+    # --- Check for Precursor Combinations and Send Alerts ---
     active_signals = []
     if ma_crossed:
         active_signals.append("MA Cross")
@@ -190,17 +225,36 @@ def analyze_live_data(df: pd.DataFrame):
         active_signals.append("Volume Spike")
     if ichimoku_bullish_cross:
         active_signals.append("Ichimoku")
+    if trend_strength_signal:
+        active_signals.append("Trend Strength")
 
     if not active_signals:
         return
 
-    # Check if the combination of active signals is in our high-confidence list
+    # Any detected combination (except "None") will now trigger an alert.
     combination_str = " + ".join(sorted(active_signals))
-    if combination_str in HIGH_CONFIDENCE_PRECURSORS:
-        logging.warning(
-            f"[POTENTIAL TREND] High-confidence precursor combination detected: {combination_str}. "
-            f"Price: {latest_calcs['close']:.2f} at {latest_calcs['time'].strftime('%H:%M:%S')}"
-        )
+    
+    # Determine if the signal is "High-Confidence" based on historical data for logging purposes
+    is_high_confidence = combination_str in HIGH_CONFIDENCE_PRECURSORS
+    confidence_level = "High-Confidence" if is_high_confidence else "Standard"
+
+    message = (
+        f"[{confidence_level.upper()} SIGNAL] Precursor combination detected: {combination_str}. "
+        f"Price: {latest_calcs['close']:.2f} at {latest_calcs['time'].strftime('%H:%M:%S')}"
+    )
+    logging.warning(message)
+
+    # Send an email notification for any detected signal
+    email_subject = f"Stock Alert ({confidence_level}): {combination_str} for {settings.API_PARAMS.get('symbol', 'VN30')}"
+    email_body = (
+        f"A {confidence_level.lower()} precursor pattern was detected for {settings.API_PARAMS.get('symbol', 'VN30')}.\n\n"
+        f"Pattern: {combination_str}\n"
+        f"Time: {latest_calcs['time'].strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Price: {latest_calcs['close']:.2f}\n"
+        f"Volume: {latest_calcs['volume']}\n\n"
+        "This is an automated alert."
+    )
+    send_email(email_subject, email_body)
 
 def main():
     """Main function to run the real-time monitor."""
