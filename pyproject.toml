@@ -29,6 +29,10 @@ classifiers = [
 
 dependencies = [
     "typing-extensions>=4.0.0",
+    "requests>=2.26.0",
+    "pandas>=1.3.0",
+    "numpy>=1.21.0",
+    "scipy>=1.7.0",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +55,7 @@ Issues = "https://github.com/your-org/stockreports/issues"
 stockreports-extract = "stockreports.cli:extract_command"
 stockreports-aggregate = "stockreports.cli:aggregate_command"
 stockreports-analyze = "stockreports.cli:analyze_command"
+stockreports-monitor = "stockreports.monitoring.realtime_monitor:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/stockreports"]
