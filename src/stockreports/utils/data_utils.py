@@ -5,7 +5,15 @@ This module contains column mappings, data structure definitions,
 and utility functions for processing financial data.
 """
 
-from typing import Dict, List, Tuple, Any
+import requests
+import time
+from datetime import datetime
+import pytz
+import pandas as pd
+from typing import Optional, Dict, Any, List, Tuple
+import logging
+
+from src.stockreports.config import settings
 
 # Standard column mapping for financial data
 STANDARD_COLUMN_MAP = {
@@ -194,3 +202,54 @@ def get_vietnam_timezone_offset() -> int:
         Timezone offset in hours (UTC+7)
     """
     return VIETNAM_TIMEZONE['offset_hours']
+
+
+def fetch_intraday_data(symbol: str, date_str: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetches intraday trading data for a specific symbol and date from the API.
+
+    Args:
+        symbol (str): The stock symbol to fetch (e.g., "VN30").
+        date_str (str): The date for which to fetch data, in "YYYY-MM-DD" format.
+
+    Returns:
+        A dictionary containing the API response data, or None if an error occurs.
+    """
+    try:
+        vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
+        
+        # Create 'from' and 'to' timestamps for the specified date
+        from_dt = vn_tz.localize(datetime.strptime(date_str, '%Y-%m-%d').replace(hour=0, minute=0, second=0))
+        to_dt = from_dt.replace(hour=23, minute=59, second=59)
+
+        params = settings.API_PARAMS.copy()
+        params.update({
+            "symbol": symbol,
+            "from": int(from_dt.timestamp()),
+            "to": int(to_dt.timestamp())
+        })
+
+        logging.info(f"Requesting data for {symbol} from {from_dt} to {to_dt}")
+        
+        response = requests.get(
+            settings.API_BASE_URL,
+            params=params,
+            headers=settings.API_HEADERS,
+            timeout=15 
+        )
+        response.raise_for_status()
+        
+        data = response.json()
+        if data.get("s") != "ok" or not data.get("t"):
+            logging.warning(f"API returned no data for {symbol} on {date_str}. Status: {data.get('s')}")
+            return None
+            
+        logging.info(f"Successfully fetched {len(data['t'])} data points from API.")
+        return data
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"API request for {symbol} on {date_str} failed: {e}")
+        return None
+    except (ValueError, KeyError) as e:
+        logging.error(f"Error processing data for {symbol} on {date_str}: {e}")
+        return None

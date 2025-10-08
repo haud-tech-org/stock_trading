@@ -1,0 +1,62 @@
+# src/stockreports/config/validation_settings.py
+"""
+Configuration settings for the alert validation script.
+This script is used in DEVELOPMENT mode to assess the performance of generated alerts against historical data.
+"""
+from . import signal_settings
+from . import settings
+
+# --- Validation Parameters ---
+
+# Validation Price Gain Threshold
+# Meaning: The minimum increase in price (in points) after a BUY alert for the alert to be considered a "Success".
+# Guidance: This defines your minimum profit target for a successful buy. A higher value demands a larger price move.
+# Range: Float > 0.
+# Example: `VALIDATION_PRICE_GAIN_THRESHOLD = 3.0` means the price must increase by at least 3.0 points.
+VALIDATION_PRICE_GAIN_THRESHOLD = 3.0
+
+# Validation Price Drop Threshold
+# Meaning: The minimum decrease in price (in points) after a SELL alert for the alert to be considered a "Success".
+# Guidance: This defines your minimum profit target for a successful sell. A higher value demands a larger price move.
+# Range: Float > 0.
+# Example: `VALIDATION_PRICE_DROP_THRESHOLD = 3.0` means the price must drop by at least 3.0 points.
+VALIDATION_PRICE_DROP_THRESHOLD = 3.0
+
+# Validation Time Window in Minutes
+# Meaning: The number of minutes after an alert is generated to check if the profit target (gain/drop threshold) was met.
+# Guidance: This sets the time horizon for your trade's success. A shorter window (e.g., 15) tests for immediate performance, while a longer window (e.g., 60) allows more time for the price to move.
+# Range: Integer > 0.
+# Example: `VALIDATION_TIME_WINDOW_MINUTES = 15`
+VALIDATION_TIME_WINDOW_MINUTES = 15
+
+
+# --- Data Source Configuration ---
+
+# Validation Data Source
+# Meaning: Determines where the validation script gets its data.
+# 0 = Use live data fetched from the API. This is not typical for validation.
+# 1 = Use historical data from local JSON files in the 'src/stockreports/data' directory. This is the standard for validation.
+# Guidance: Always use 1 for backtesting and validation to ensure consistent, repeatable results.
+# Range: 0 or 1.
+# Example: `VALIDATION_DATA_SOURCE = 1`
+VALIDATION_DATA_SOURCE = 1
+
+
+# --- Date Filter Configuration ---
+
+# Validation Date Filter
+# Meaning: Allows you to run the validation on a specific date from your local dataset.
+# Guidance: Set to a string in 'YYYY-MM-DD' format to test a single day. Set to `None` to run the validation across all dates found in the local data directory.
+# Range: A string 'YYYY-MM-DD' or None.
+# Example: `VALIDATION_DATE_FILTER = "2025-09-25"` will only validate alerts for September 25, 2025.
+VALIDATION_DATE_FILTER = None
+
+
+# --- Trend Identification Parameters ---
+
+# Minimum Peak Price Change
+# Meaning: The minimum percentage change required to identify a significant peak or trough in the historical data. This is used for high-level trend analysis during validation.
+# Guidance: A higher value will only identify major turning points, ignoring minor fluctuations. A lower value is more sensitive.
+# Range: Float > 0.
+# Example: `MIN_PEAK_PRICE_CHANGE = 1.0` means a price swing must be at least 1% to be considered a significant peak or trough.
+MIN_PEAK_PRICE_CHANGE = 1.0
