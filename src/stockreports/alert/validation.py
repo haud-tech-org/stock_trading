@@ -3,6 +3,12 @@ import logging
 from datetime import timedelta
 
 from src.stockreports.alert.models import AlertData
+from src.stockreports.config import validation_settings
+
+# Get the minimum expected profit from settings, with a default of 2.0 if not set or None.
+MIN_PROFIT_LOSS = getattr(validation_settings, 'MIN_EXPECTED_PROFIT_LOSS', 2.0)
+if MIN_PROFIT_LOSS is None:
+    MIN_PROFIT_LOSS = 2.0
 
 def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame, validation_period_minutes: int) -> AlertData:
     """
@@ -45,7 +51,10 @@ def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame,
         
         # Profit is the difference between the peak and the alert price
         profit_loss = validation_price - alert.alert_price
-        alert.status = 'Success' if profit_loss > 0 else 'Failed'
+        if profit_loss >= MIN_PROFIT_LOSS:
+            alert.status = 'Success'
+        else:
+            alert.status = 'Failed'
 
     elif alert.signal.upper() == 'SELL':
         # For a SELL signal, find the lowest low in the window
@@ -55,12 +64,16 @@ def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame,
         
         # Profit is the difference between the alert price and the bottom
         profit_loss = alert.alert_price - validation_price
-        alert.status = 'Success' if profit_loss > 0 else 'Failed'
+        if profit_loss >= MIN_PROFIT_LOSS:
+            alert.status = 'Success'
+        else:
+            alert.status = 'Failed'
 
     # Populate the alert object with validation results
     alert.profit_loss = round(profit_loss, 2)
     alert.period_time = validation_period_minutes
     alert.validation_price_time = validation_price_time
+    alert.min_expected_profit_loss = MIN_PROFIT_LOSS
     
     if validation_price_time:
         time_diff = validation_price_time - alert.alert_time

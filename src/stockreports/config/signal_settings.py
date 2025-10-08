@@ -190,7 +190,7 @@ APPROACH_CONFIG = {
     "RCM": {
         "USE_ADVANCED_CONFIRMATION": True,
         # How significant a peak/trough must be to be considered a reversal point. Higher values ignore minor fluctuations.
-        "PEAK_TROUGH_PROMINENCE": 5,
+        "PEAK_TROUGH_PROMINENCE": 4,
         # How many candles to wait for confirmation
         "CONFIRMATION_WINDOW": 4,
         # How many of those candles must agree with the trend (for simple confirmation)
