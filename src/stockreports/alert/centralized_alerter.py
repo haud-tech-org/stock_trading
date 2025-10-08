@@ -330,6 +330,7 @@ def _generate_summary_report(result: AlertResult, date_str: str):
 
     successful_df = result.alerts[result.alerts['status'] == 'Success'].copy()
     avg_profit_loss, min_time_to_best, avg_time_to_best, max_time_to_best = None, None, None, None
+    min_expected_profit_loss = None
 
     if not successful_df.empty:
         successful_df['profit_loss'] = pd.to_numeric(successful_df['profit_loss'], errors='coerce')
@@ -340,6 +341,8 @@ def _generate_summary_report(result: AlertResult, date_str: str):
             min_time_to_best = int(successful_df['time_to_best_price'].min())
             avg_time_to_best = int(successful_df['time_to_best_price'].mean())
             max_time_to_best = int(successful_df['time_to_best_price'].max())
+            # Since all alerts in a batch share the same validation setting, we can take it from the first one.
+            min_expected_profit_loss = successful_df['min_expected_profit_loss'].iloc[0] if 'min_expected_profit_loss' in successful_df.columns else None
 
     new_summary = AlertSummary(
         approach=result.approach_name,
@@ -351,7 +354,8 @@ def _generate_summary_report(result: AlertResult, date_str: str):
         average_profit_loss=round(avg_profit_loss, 4) if avg_profit_loss is not None else None,
         min_time_to_best_price=min_time_to_best,
         avg_time_to_best_price=avg_time_to_best,
-        max_time_to_best_price=max_time_to_best
+        max_time_to_best_price=max_time_to_best,
+        min_expected_profit_loss=min_expected_profit_loss
     )
 
     # --- Read-Modify-Write ---

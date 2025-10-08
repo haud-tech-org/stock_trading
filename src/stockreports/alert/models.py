@@ -23,6 +23,7 @@ class AlertData:
     status: Optional[str] = None
     validation_price_time: Optional[pd.Timestamp] = None
     time_to_best_price: Optional[int] = None  # Time in minutes to reach best price
+    min_expected_profit_loss: Optional[float] = None
 
     def to_dict(self):
         """Converts the dataclass to a dictionary for JSON serialization."""
@@ -68,6 +69,7 @@ class AlertSummary:
     avg_time_to_best_price: Optional[float] = None
     min_time_to_best_price: Optional[int] = None
     max_time_to_best_price: Optional[int] = None
+    min_expected_profit_loss: Optional[float] = None
 
     def to_dict(self):
         """Converts the dataclass to a dictionary, handling nested dataclasses."""

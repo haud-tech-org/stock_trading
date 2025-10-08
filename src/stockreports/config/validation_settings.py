@@ -27,7 +27,8 @@ VALIDATION_PRICE_DROP_THRESHOLD = 3.0
 # Guidance: This sets the time horizon for your trade's success. A shorter window (e.g., 15) tests for immediate performance, while a longer window (e.g., 60) allows more time for the price to move.
 # Range: Integer > 0.
 # Example: `VALIDATION_TIME_WINDOW_MINUTES = 15`
-VALIDATION_TIME_WINDOW_MINUTES = 15
+VALIDATION_TIME_WINDOW_MINUTES = 8
+VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity in validation scripts
 
 
 # --- Data Source Configuration ---
@@ -60,3 +61,7 @@ VALIDATION_DATE_FILTER = None
 # Range: Float > 0.
 # Example: `MIN_PEAK_PRICE_CHANGE = 1.0` means a price swing must be at least 1% to be considered a significant peak or trough.
 MIN_PEAK_PRICE_CHANGE = 1.0
+
+# The minimum profit/loss required for an alert to be considered successful during validation.
+# Alerts with a profit_loss below this value will be marked as 'Failed'.
+MIN_EXPECTED_PROFIT_LOSS = 2.0
