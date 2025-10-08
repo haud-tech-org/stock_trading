@@ -10,7 +10,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(script_dir, '..', '..', '..'))
 
 # --- Load and Merge All Data Files ---
-data_dir = os.path.join(project_root, "src", "stockreports", "data")
+data_dir = os.path.join(project_root, "src", "stockreports", "data", "VN30")
 file_paths = glob.glob(os.path.join(data_dir, "*.json"))
 
 if not file_paths:
@@ -76,10 +76,10 @@ top_indices, top_props = find_peaks(df['high'], prominence=prominence, distance=
 bottom_indices, bottom_props = find_peaks(-df['low'], prominence=prominence, distance=distance)
 
 for i, prom in zip(top_indices, top_props['prominences']):
-    pivots.append({"time": df.loc[i, "time"], "type": "top", "price": df.loc[i, "high"], "index": i, "prominence": prom})
+    pivots.append({"time": df.iloc[i]["time"], "type": "top", "price": df.iloc[i]["high"], "index": i, "prominence": prom})
 
 for i, prom in zip(bottom_indices, bottom_props['prominences']):
-    pivots.append({"time": df.loc[i, "time"], "type": "bottom", "price": df.loc[i, "low"], "index": i, "prominence": prom})
+    pivots.append({"time": df.iloc[i]["time"], "type": "bottom", "price": df.iloc[i]["low"], "index": i, "prominence": prom})
 
 df_pivots = pd.DataFrame(pivots).sort_values('time').reset_index(drop=True)
 
@@ -163,13 +163,47 @@ df['senkou_span_b'] = ((fifty_two_period_high + fifty_two_period_low) / 2).shift
 
 crosses = []
 for i in range(1,len(df)):
-    prev_diff = df.loc[i-1,"ma5"] - df.loc[i-1,"ma20"]
-    cur_diff  = df.loc[i,"ma5"] - df.loc[i,"ma20"]
+    prev_diff = df.iloc[i-1]["ma5"] - df.iloc[i-1]["ma20"]
+    cur_diff  = df.iloc[i]["ma5"] - df.iloc[i]["ma20"]
     if prev_diff <= 0 and cur_diff > 0:
-        crosses.append({"time": df.loc[i,"time"], "type":"golden_cross", "price": df.loc[i,"close"]})
+        crosses.append({"time": df.iloc[i]["time"], "type":"golden_cross", "price": df.iloc[i]["close"]})
     elif prev_diff >= 0 and cur_diff < 0:
-        crosses.append({"time": df.loc[i,"time"], "type":"death_cross", "price": df.loc[i,"close"]})
+        crosses.append({"time": df.iloc[i]["time"], "type":"death_cross", "price": df.iloc[i]["close"]})
 df_crosses = pd.DataFrame(crosses)
+
+# --- New: Trend Strength Signal ---
+df['trend_strength'] = False
+for i in range(1, len(df)):
+    prev_candle = df.iloc[i-1]
+    latest_candle = df.iloc[i]
+
+    latest_is_up = latest_candle['close'] > latest_candle['open']
+    prev_is_up = prev_candle['close'] > prev_candle['open']
+    latest_is_down = latest_candle['close'] < latest_candle['open']
+    prev_is_down = prev_candle['close'] < prev_candle['open']
+
+    sequential_trend = (latest_is_up and prev_is_up) or (latest_is_down and prev_is_down)
+
+    if sequential_trend:
+        latest_body = abs(latest_candle['close'] - latest_candle['open'])
+        prev_body = abs(prev_candle['close'] - prev_candle['open'])
+        increased_momentum = latest_body > prev_body
+
+        if increased_momentum:
+            candle_range = latest_candle['high'] - latest_candle['low']
+            if candle_range > 0:
+                if latest_is_up:
+                    # Closing price is in the top 25% of the candle's range
+                    confirmation = (latest_candle['close'] - latest_candle['low']) / candle_range > 0.75
+                else: # latest_is_down
+                    # Closing price is in the bottom 25% of the candle's range
+                    confirmation = (latest_candle['high'] - latest_candle['close']) / candle_range > 0.75
+                
+                if confirmation:
+                    # Use .loc with the DataFrame's index to ensure correct assignment
+                    df.loc[df.index[i], 'trend_strength'] = True
+
+df_trend_strength = df[df['trend_strength']][['time']].copy()
 
 # --- MA Crossover Time Zone Analysis ---
 if not df_crosses.empty:
@@ -340,6 +374,13 @@ for i in range(len(df) - 1):
             (df_volume_spikes['time'] <= lookback_end_time)
         ].empty:
             precursors_found.append("Volume Spike")
+
+        # Check for Trend Strength
+        if not df_trend_strength[
+            (df_trend_strength['time'] > lookback_start_time) &
+            (df_trend_strength['time'] <= lookback_end_time)
+        ].empty:
+            precursors_found.append("Trend Strength")
 
         # Check for Ichimoku Signal
         lookback_window_df = df[
