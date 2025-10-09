@@ -590,28 +590,35 @@ def run_alerter(date_to_load: str = None):
             continue
 
         # --- Filter by Vietnam Trading Hours (UTC+7) ---
-        # This filter is now dynamic based on the market configuration
         sessions = MARKET_CONFIG.get("sessions", {})
         if sessions:
-            session_filters = []
+            # Create a boolean mask that is False for all rows initially
+            combined_mask = pd.Series([False] * len(daily_df), index=daily_df.index)
+            
+            # Extract the time part of the 'time' column for comparison
             time_col = daily_df['time'].dt.time
+
             for session_name, hours in sessions.items():
                 try:
                     start_time = datetime.strptime(hours['start'], '%H:%M').time()
                     end_time = datetime.strptime(hours['end'], '%H:%M').time()
-                    session_filters.append(f"(@time_col >= @start_time and @time_col < @end_time)")
-                except (KeyError, ValueError):
-                    logging.error(f"Skipping misconfigured trading session '{session_name}'")
+                    
+                    # Create a boolean mask for the current session
+                    session_mask = (time_col >= start_time) & (time_col <= end_time)
+                    
+                    # Combine the session mask with the main mask using logical OR
+                    combined_mask = combined_mask | session_mask
+
+                except KeyError as e:
+                    logging.error(f"Missing '{e.args[0]}' in session '{session_name}' for market '{settings.MARKET}'. Skipping this session.")
                     continue
             
-            if session_filters:
-                original_rows = len(daily_df)
-                daily_df = daily_df.query(" or ".join(session_filters))
-                logging.info(
-                    f"Filtered by trading hours. "
-                    f"Reduced rows from {original_rows} to {len(daily_df)}."
-                )
-        
+            if combined_mask.any():
+                initial_rows = len(daily_df)
+                daily_df = daily_df[combined_mask]
+                logging.info(f"Filtered by trading hours. Reduced rows from {initial_rows} to {len(daily_df)}.")
+        # --- END Filter ---
+
         if daily_df.empty:
             logging.warning(f"No data available for {processing_date} after filtering by trading hours. Skipping.")
             continue
