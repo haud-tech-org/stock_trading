@@ -8,8 +8,8 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
-from src.stockreports.alert.models import AlertResult, AlertData
-from src.stockreports.alert.common.confirmation import prepare_indicators, check_advanced_confirmation
+from src.stockreports.alert.model.models import AlertResult, AlertData
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation
 
 def run_analysis(df: pd.DataFrame) -> AlertResult:
     """
@@ -57,7 +57,7 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict) -> list[Ale
         return alerts
 
     # Set a DatetimeIndex to allow for proper time-based lookups
-    df_indexed = df.set_index(pd.to_datetime(df['time'], unit='s'))
+    df_indexed = df.set_index('time')
 
     # Prepare indicators once if advanced confirmation is enabled
     df_with_indicators = None
@@ -170,24 +170,26 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict) -> list[Ale
         # --- If all checks pass, create an AlertData object ---
         start_candle = window.iloc[0]
         
-        # Convert timestamps from DatetimeIndex back to integer for AlertData
-        alert_time = int(current_candle.name.timestamp())
-        momentum_start_time_int = int(start_candle.name.timestamp())
+        alert_time = current_candle.name
+        momentum_start_time = start_candle.name
         current_price = current_candle['close']
         momentum_start_price = start_candle['open']
 
+        alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+        momentum_start_ts = int(momentum_start_time.tz_convert('UTC').timestamp())
+
         alert_data = AlertData(
             approach="CONSISTENT_MOMENTUM",
-            id=f"{momentum_start_time_int}_{alert_time}",
+            id=alert_id,
             signal=signal,
             alert_price=current_price,
-            alert_time=current_candle.name,
+            alert_time=alert_time,
             start_price=momentum_start_price,
-            start_time=start_candle.name,
+            start_time=momentum_start_time,
             magnitude=round(abs(current_price - momentum_start_price), 2),
             details=json.dumps({
                 "reason": "Consistent Momentum with Breakout",
-                "momentum_start_time": momentum_start_time_int,
+                "momentum_start_time": momentum_start_ts,
                 "momentum_window_size": window_size,
                 "breakout_lookback_minutes": lookback_minutes
             })

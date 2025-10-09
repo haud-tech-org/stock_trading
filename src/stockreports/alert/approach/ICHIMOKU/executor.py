@@ -9,8 +9,8 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
-from src.stockreports.alert.common.confirmation import prepare_indicators
-from src.stockreports.alert.models import AlertResult, AlertData
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
+from src.stockreports.alert.model.models import AlertResult, AlertData
 
 def run_analysis(df: pd.DataFrame) -> AlertResult:
     """
@@ -114,9 +114,7 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict) -> list[AlertData]:
             start_price = prev_candle['close']
             magnitude = abs(alert_price - start_price)
 
-            alert_ts = int(alert_time.tz_convert('UTC').timestamp())
-            start_ts = int(start_time.tz_convert('UTC').timestamp())
-            alert_id = f"{start_ts}_{alert_ts}"
+            alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
             details = {
                 "tenkan_sen": round(candle['tenkan_sen'], 2),

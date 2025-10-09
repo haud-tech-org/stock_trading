@@ -65,3 +65,12 @@ MIN_PEAK_PRICE_CHANGE = 1.0
 # The minimum profit/loss required for an alert to be considered successful during validation.
 # Alerts with a profit_loss below this value will be marked as 'Failed'.
 MIN_EXPECTED_PROFIT_LOSS = 2.0
+
+# --- Price Adjustment Configuration ---
+
+# Symbols to Exclude from Price Adjustment
+# Meaning: A list of symbols that should NOT have their price data divided by 1000.
+# This is typically used for indices or other symbols with a different price scale than individual stocks.
+# Guidance: Add any symbol (e.g., "VN30", "VNINDEX") that should be exempt from the standard price adjustment logic.
+# Example: `PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30"]`
+PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30"]

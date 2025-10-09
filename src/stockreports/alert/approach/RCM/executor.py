@@ -10,9 +10,9 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
-from src.stockreports.alert.common.confirmation import prepare_indicators, check_advanced_confirmation
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation
 from src.stockreports.alert.common.magnitude import check_magnitude
-from src.stockreports.alert.models import AlertResult, AlertData
+from src.stockreports.alert.model.models import AlertResult, AlertData
 
 # --- Constants ---
 # This constant is specific to the RCM approach.
@@ -143,10 +143,8 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict) -> list[AlertData]:
                     alert_time = current_candle['time']
                     reversal_time = df.iloc[last_reversal_idx]['time']
 
-                    # Generate a unique ID from UTC timestamps
-                    alert_ts = int(alert_time.tz_convert('UTC').timestamp())
-                    reversal_ts = int(reversal_time.tz_convert('UTC').timestamp())
-                    alert_id = f"{reversal_ts}_{alert_ts}"
+                    # Generate a unique ID from the alert time's UTC timestamp
+                    alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
                     # Create the standardized AlertData object
                     alert_data = AlertData(

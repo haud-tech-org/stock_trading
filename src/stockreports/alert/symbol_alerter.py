@@ -25,13 +25,15 @@ from src.stockreports.config import loader
 settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 notification_settings = loader.get_notification_settings()
+validation_settings = loader.get_validation_settings()
 
 # --- Project Imports ---
 from src.stockreports.utils.email_utils import send_email
 from src.stockreports.utils.sms_utils import send_sms
 from src.stockreports.utils.data_utils import fetch_intraday_data
-from src.stockreports.alert.models import AlertNotification, AlertResult, AlertData, AlertSummary
-from src.stockreports.alert.validation import calculate_alert_performance
+from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
+from src.stockreports.alert.common.validation.validation import calculate_alert_performance
+from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
 
 # --- Constants & Configuration ---
 # The primary timezone is now driven by the market setting
@@ -85,14 +87,15 @@ class SymbolAlerter:
         return f"{notification.symbol} Alert\nSignal: {notification.signal}\nPrice: {notification.alert_price:.2f}\nApproach: {notification.approach}"
 
     def _send_ntfy_notification(self, notification: AlertNotification):
-        if not notification_settings.NTFY_ENABLED or not notification_settings.NTFY_TOPIC:
+        if not notification_settings.NTFY_ENABLED or not notification_settings.NTFY_TOPICS:
             return
         try:
             import requests
             title = f"{notification.signal} for {notification.symbol} ({notification.approach})"
             message = f"Price: {notification.alert_price:.2f}\nTime: {notification.alert_time.strftime('%H:%M:%S')}"
-            requests.post(f"https://ntfy.sh/{notification_settings.NTFY_TOPIC}", data=message.encode('utf-8'), headers={"Title": title})
-            self.logger.info(f"Successfully sent ntfy push notification for {notification.approach} signal.")
+            for topic in notification_settings.NTFY_TOPICS:
+                requests.post(f"https://ntfy.sh/{topic}", data=message.encode('utf-8'), headers={"Title": title})
+                self.logger.info(f"Successfully sent ntfy push notification to topic '{topic}' for {notification.approach} signal.")
         except Exception as e:
             self.logger.error(f"Failed to send ntfy push notification: {e}")
 
@@ -131,7 +134,9 @@ class SymbolAlerter:
                     self.logger.error(f"Error processing {filename}: {e}")
         if not all_dfs: return pd.DataFrame()
         df = pd.concat(all_dfs, ignore_index=True).drop_duplicates(subset=['time'], keep='first').sort_values(by='time').reset_index(drop=True)
-        if not df.empty: df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
+        if not df.empty:
+            df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
+            df = adjust_prices_by_symbol(df, self.symbol)
         return df
 
     def _load_live_data(self, date_str):
@@ -151,7 +156,9 @@ class SymbolAlerter:
         })
         df.drop_duplicates(subset=['time'], keep='first', inplace=True)
         df = df.sort_values(by='time').reset_index(drop=True)
-        if not df.empty: df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
+        if not df.empty:
+            df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
+            df = adjust_prices_by_symbol(df, self.symbol)
         return df
 
     def _get_approach_executor(self, approach_name: str):
@@ -179,7 +186,7 @@ class SymbolAlerter:
         self._send_ntfy_notification(notification)
         subject = self._format_email_subject(notification)
         body = self._format_email_body(notification)
-        if notification_settings.EMAIL_ENABLED and all([notification_settings.EMAIL_SENDER, notification_settings.EMAIL_RECEIVER, notification_settings.EMAIL_APP_PASSWORD]):
+        if notification_settings.EMAIL_ENABLED and all([notification_settings.EMAIL_SENDER, (notification_settings.EMAIL_RECEIVERS or notification_settings.EMAIL_BCC_RECEIVERS), notification_settings.EMAIL_APP_PASSWORD]):
             try:
                 send_email(subject, body)
                 self.logger.info(f"Successfully sent email for latest {notification.approach} signal.")
@@ -195,7 +202,20 @@ class SymbolAlerter:
         os.makedirs(reports_dir, exist_ok=True)
         filepath = os.path.join(reports_dir, f"alert_notification_{date_str.replace('-', '')}.json")
         try:
-            result.alerts.to_json(filepath, orient='records', indent=4, date_format='iso')
+            alerts_to_save = result.alerts.copy()
+            
+            # Identify all datetime-like columns
+            datetime_cols = alerts_to_save.select_dtypes(include=['datetime64[ns]', 'datetimetz']).columns
+
+            # Convert to the configured timezone and then format to string
+            for col in datetime_cols:
+                # Ensure column is timezone-aware before converting
+                if alerts_to_save[col].dt.tz is None:
+                    alerts_to_save[col] = alerts_to_save[col].dt.tz_localize('UTC')
+                
+                alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+            alerts_to_save.to_json(filepath, orient='records', indent=4)
             self.logger.info(f"Successfully saved report for {result.approach_name} to {filepath}")
         except Exception as e:
             self.logger.error(f"Failed to save report for {result.approach_name}: {e}")
@@ -381,6 +401,7 @@ class SymbolAlerter:
                     validated_alerts = []
                     for _, alert_row in result.alerts.iterrows():
                         alert_data = AlertData(**alert_row.to_dict())
+                        alert_data.symbol = self.symbol
                         validated_alert = calculate_alert_performance(alert_data, daily_df, signal_settings.VALIDATION_PERIOD_MINUTES)
                         validated_alerts.append(validated_alert.to_dict())
                     result.alerts = pd.DataFrame(validated_alerts)
