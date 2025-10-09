@@ -6,7 +6,8 @@ import json
 # --- Settings Loader ---
 # Executors still need access to settings for their parameters.
 from src.stockreports.config import loader
-settings, signal_settings = loader.load_config()
+settings = loader.get_settings()
+signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
 from src.stockreports.alert.common.confirmation import prepare_indicators, check_advanced_confirmation

@@ -4,7 +4,8 @@ import json
 
 # --- Settings Loader ---
 from src.stockreports.config import loader
-settings, signal_settings = loader.load_config()
+settings = loader.get_settings()
+signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
 from src.stockreports.alert.models import AlertResult, AlertData
