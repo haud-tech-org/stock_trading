@@ -16,7 +16,7 @@ notifications, and market-specific details.
 # Meaning: The main stock symbol or index to monitor and analyze. This value is used throughout the application, including for API requests and report naming.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
-SYMBOL = "VN30"
+SYMBOLS = ["VN30","VCB","VIC"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -29,7 +29,6 @@ API_BASE_URL = "https://api.vietstock.vn/tvnew/history"
 # Guidance: The 'resolution' determines the time interval of the data candles. "1" typically means 1-minute candles. Refer to the API documentation for other possible values (e.g., "5", "60", "D").
 # Example: `API_PARAMS = {"symbol": SYMBOL, "resolution": "1"}`
 API_PARAMS = {
-    "symbol": SYMBOL,
     "resolution": "1", # 1-minute resolution
 }
 

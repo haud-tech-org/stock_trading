@@ -19,10 +19,11 @@ EMAIL_SMTP_SERVER = "smtp.gmail.com"
 EMAIL_SMTP_PORT = 587
 
 # Email Sender / Receiver
-# Meaning: The email address that sends the alerts and the address that receives them. They can be the same.
-# Guidance: Ensure the sender email is the one associated with the `EMAIL_APP_PASSWORD`.
+# Meaning: The email address that sends the alerts and the list of addresses that receive them.
+# Guidance: Ensure the sender email is the one associated with the `EMAIL_APP_PASSWORD`. `EMAIL_RECEIVERS` is for the public 'To' field, and `EMAIL_BCC_RECEIVERS` is for private recipients.
 EMAIL_SENDER = "haud.tech@gmail.com"
-EMAIL_RECEIVER = "haud.tech@gmail.com"
+EMAIL_RECEIVERS = ["haud.tech@gmail.com"]
+EMAIL_BCC_RECEIVERS = ["haudo1905@gmail.com", "haud.fin@gmail.com"]
 
 # Email Sender Display Name
 # Meaning: A friendly name for the sender that appears in the email client (e.g., "VN30 Alerter").
@@ -46,8 +47,8 @@ NTFY_ENABLED = False
 # ntfy Topic
 # Meaning: The name of the ntfy.sh topic to publish alerts to. You will subscribe to this same topic in the ntfy app on your phone.
 # Guidance: Use a random, hard-to-guess string for privacy. Anyone who knows the topic name can see your alerts.
-# Example: `NTFY_TOPIC = "stock_alerts_a1b2c3d4"`
-NTFY_TOPIC = "vn30_alerts_f8a9b2c1"
+# Example: `NTFY_TOPICS = ["stock_alerts_a1b2c3d4", "another_topic"]`
+NTFY_TOPICS = ["vn30_alerts_f8a9b2c1"]
 
 # --- Twilio SMS Notifications ---
 # You will need a Twilio account for this to work.

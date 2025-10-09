@@ -2,7 +2,7 @@ import pandas as pd
 import logging
 from datetime import timedelta
 
-from src.stockreports.alert.models import AlertData
+from src.stockreports.alert.model.models import AlertData
 from src.stockreports.config import validation_settings
 
 # Get the minimum expected profit from settings, with a default of 2.0 if not set or None.

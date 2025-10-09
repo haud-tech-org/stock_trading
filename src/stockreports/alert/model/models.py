@@ -24,6 +24,7 @@ class AlertData:
     validation_price_time: Optional[pd.Timestamp] = None
     time_to_best_price: Optional[int] = None  # Time in minutes to reach best price
     min_expected_profit_loss: Optional[float] = None
+    symbol: Optional[str] = None
 
     def to_dict(self):
         """Converts the dataclass to a dictionary for JSON serialization."""

@@ -9,8 +9,8 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
-from src.stockreports.alert.common.confirmation import prepare_indicators
-from src.stockreports.alert.models import AlertResult, AlertData
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
+from src.stockreports.alert.model.models import AlertResult, AlertData
 
 def run_analysis(df: pd.DataFrame) -> AlertResult:
     """
