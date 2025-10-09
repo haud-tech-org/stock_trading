@@ -219,8 +219,8 @@ def fetch_intraday_data(symbol: str, date_str: str) -> Optional[Dict[str, Any]]:
         vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
         
         # Create 'from' and 'to' timestamps for the specified date
-        from_dt = vn_tz.localize(datetime.strptime(date_str, '%Y-%m-%d').replace(hour=0, minute=0, second=0))
-        to_dt = from_dt.replace(hour=23, minute=59, second=59)
+        from_dt = vn_tz.localize(datetime.strptime(date_str, '%Y-%m-%d').replace(hour=8, minute=45, second=0))
+        to_dt = from_dt.replace(hour=14, minute=46, second=1)
 
         params = settings.API_PARAMS.copy()
         params.update({

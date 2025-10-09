@@ -2,15 +2,28 @@
 import importlib
 from . import settings as settings_module
 from . import signal_settings as signal_settings_module
+from . import notification_settings as notification_settings_module
 
 def load_config():
     """
-    Dynamically reloads the settings modules to ensure the latest
-    configuration is always used, bypassing Python's module cache.
-
-    Returns:
-        A tuple containing the reloaded (settings, signal_settings) modules.
+    Dynamically reloads all settings modules. This should be called once
+    at the start of the application or process.
     """
     importlib.reload(settings_module)
     importlib.reload(signal_settings_module)
-    return settings_module, signal_settings_module
+    importlib.reload(notification_settings_module)
+    
+    # The return is kept for the main script's initial load, but getters are preferred elsewhere.
+    return settings_module, signal_settings_module, notification_settings_module
+
+def get_settings():
+    """Returns the currently loaded main settings module."""
+    return settings_module
+
+def get_signal_settings():
+    """Returns the currently loaded signal settings module."""
+    return signal_settings_module
+
+def get_notification_settings():
+    """Returns the currently loaded notification settings module."""
+    return notification_settings_module

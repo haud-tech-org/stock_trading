@@ -83,47 +83,6 @@ LATEST_REPORT_PATTERN = "combined_analysis_report_*.md"
 LOG_LEVEL = "INFO"
 
 
-# --- Notification Configuration ---
-
-# Email Enabled
-# Meaning: A master switch to enable or disable all email notifications.
-# Guidance: Set to `False` to quickly turn off all emails without removing your credentials.
-# Range: `True` or `False`.
-# Example: `EMAIL_ENABLED = True`
-EMAIL_ENABLED = True
-
-# Email SMTP Server / Port
-# Meaning: The server and port for your email provider's SMTP service.
-# Guidance: These values are standard for major providers. For Gmail, it's "smtp.gmail.com" and 587. Check your email provider's documentation for others.
-EMAIL_SMTP_SERVER = "smtp.gmail.com"
-EMAIL_SMTP_PORT = 587
-
-# Email Sender / Receiver
-# Meaning: The email address that sends the alerts and the address that receives them. They can be the same.
-# Guidance: Ensure the sender email is the one associated with the `EMAIL_APP_PASSWORD`.
-EMAIL_SENDER = "haud.tech@gmail.com"
-EMAIL_RECEIVER = "haud.tech@gmail.com"
-
-# Email App Password
-# Meaning: An "App Password" generated from your email account (e.g., Google Account settings). This is NOT your regular login password.
-# Guidance: Using an App Password is more secure. It's highly recommended to load this from an environment variable instead of hardcoding it.
-# Example: `EMAIL_APP_PASSWORD = "your_generated_app_password"`
-EMAIL_APP_PASSWORD = "hqtlxfixexiudmcu"
-
-# ntfy Push Notification Enabled
-# Meaning: A master switch to enable or disable push notifications via the ntfy.sh service.
-# Guidance: Set to `False` to turn off push notifications.
-# Range: `True` or `False`.
-# Example: `NTFY_ENABLED = True`
-NTFY_ENABLED = True
-
-# ntfy Topic
-# Meaning: The name of the ntfy.sh topic to publish alerts to. You will subscribe to this same topic in the ntfy app on your phone.
-# Guidance: Use a random, hard-to-guess string for privacy. Anyone who knows the topic name can see your alerts.
-# Example: `NTFY_TOPIC = "stock_alerts_a1b2c3d4"`
-NTFY_TOPIC = "vn30_alerts_f8a9b2c1"
-
-
 # --- Data Source & Operational Mode ---
 
 # Mode
@@ -148,7 +107,7 @@ DATA_DIR = "src/stockreports/data"
 # Guidance: Use this in `DEVELOPMENT` to debug a specific day's signals. Set to `None` in `DEPLOYMENT` for normal operation.
 # Range: A string in 'YYYY-MM-DD' format or `None`.
 # Example: `DATA_DATE = "2025-10-08"`
-DATA_DATE = "2025-10-08"
+DATA_DATE = "2025-10-09"
 
 
 # --- Alerting Strategy Configuration ---
@@ -161,11 +120,10 @@ DATA_DATE = "2025-10-08"
 ALERT_APPROACHES = [
     "RCM",
     "CONSISTENT_MOMENTUM",
-    # "ICHIMOKU",
+    "ICHIMOKU",
     # "STRONG_CANDLE", # NEED IMPROVEMENT - UNSTABLE TO SUPPORT NOW (2025/10/08)
     # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
-
 
 
 # --- Market Hours Configuration ---
