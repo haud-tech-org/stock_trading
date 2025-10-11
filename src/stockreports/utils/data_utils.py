@@ -236,41 +236,69 @@ def calculate_max_lookback_period() -> int:
     return max_lookback
 
 
-def load_all_data_from_files(symbol: str) -> pd.DataFrame:
+def load_data_for_development(symbol: str) -> pd.DataFrame:
     """
-    Loads and consolidates all historical JSON data for a symbol from the local data directory.
+    Loads and consolidates data for a symbol in development mode by fetching it from the API
+    for a specified date range.
     """
     logger = logging.getLogger(__name__)
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    data_path = os.path.join(project_root, settings.DATA_DIR, symbol)
-    all_files = glob.glob(f"{data_path}/*.json")
+    
+    date_range = settings.DEV_DATA_DATE_RANGE
+    start_date_str = date_range.get("start_date")
+    end_date_str = date_range.get("end_date")
 
-    if not all_files:
-        logger.warning(f"No JSON data files found in {data_path}")
+    if not start_date_str or not end_date_str:
+        logger.error("DEV_DATA_DATE_RANGE is not configured correctly in settings.")
+        return pd.DataFrame()
+
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        logger.error("Invalid date format in DEV_DATA_DATE_RANGE. Use YYYY-MM-DD.")
         return pd.DataFrame()
 
     all_dfs = []
-    for filename in sorted(all_files):
-        with open(filename, 'r') as f:
+    for date_to_fetch in pd.date_range(start_date, end_date):
+        date_str = date_to_fetch.strftime('%Y-%m-%d')
+        logger.info(f"Fetching development data for {symbol} on {date_str}...")
+        raw_data = fetch_intraday_data(symbol, date_str)
+        
+        if not raw_data or raw_data.get('s') != 'ok':
+            logger.warning(f"No data fetched for {date_str}.")
+            continue
+
+        # Save the raw response if enabled
+        if settings.SAVE_DEV_API_RESPONSE_TO_FILE:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+            data_path = os.path.join(project_root, settings.DATA_DIR, symbol)
+            os.makedirs(data_path, exist_ok=True)
+            
+            file_date_str = date_to_fetch.strftime('%y%m%d')
+            file_path = os.path.join(data_path, f"{symbol.lower()}_response_{file_date_str}.json")
+            
             try:
-                data = json.load(f)
-                keys = ["t", "o", "h", "l", "c", "v"]
-                if not all(k in data for k in keys):
-                    continue
-                min_len = min(len(data[k]) for k in keys)
-                if min_len == 0:
-                    continue
-                df_single = pd.DataFrame({
-                    "time": pd.to_datetime(data["t"][:min_len], unit="s"),
-                    "open": data["o"][:min_len], "high": data["h"][:min_len],
-                    "low": data["l"][:min_len], "close": data["c"][:min_len],
-                    "volume": data["v"][:min_len],
-                })
-                all_dfs.append(df_single)
-            except Exception as e:
-                logger.error(f"Error processing {filename}: {e}")
+                with open(file_path, 'w') as f:
+                    json.dump(raw_data, f, indent=4)
+                logger.info(f"Successfully saved API response to {file_path}")
+            except IOError as e:
+                logger.error(f"Failed to save API response to {file_path}: {e}")
+
+        keys = ["t", "o", "h", "l", "c", "v"]
+        min_len = min(len(raw_data.get(k, [])) for k in keys)
+        if min_len == 0:
+            continue
+            
+        df_single = pd.DataFrame({
+            "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
+            "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
+            "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
+            "volume": raw_data["v"][:min_len],
+        })
+        all_dfs.append(df_single)
 
     if not all_dfs:
+        logger.warning(f"No data loaded for {symbol} in the specified date range.")
         return pd.DataFrame()
 
     df = pd.concat(all_dfs, ignore_index=True).drop_duplicates(subset=['time'], keep='first').sort_values(by='time').reset_index(drop=True)

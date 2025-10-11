@@ -11,7 +11,7 @@ from .data_utils import (
     get_column_statistics_map,
     fetch_intraday_data,
     calculate_max_lookback_period,
-    load_all_data_from_files,
+    load_data_for_development,
     load_live_data,
 )
 
@@ -40,7 +40,7 @@ __all__ = [
     'get_column_statistics_map',
     'fetch_intraday_data',
     'calculate_max_lookback_period',
-    'load_all_data_from_files',
+    'load_data_for_development',
     'load_live_data',
     # from time_utils
     'TIME_FORMATS',

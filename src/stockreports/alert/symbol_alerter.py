@@ -31,7 +31,7 @@ validation_settings = loader.get_validation_settings()
 from src.stockreports.notification.notification_manager import NotificationManager
 from src.stockreports.utils.data_utils import (
     fetch_intraday_data, calculate_max_lookback_period, 
-    load_all_data_from_files, load_live_data
+    load_data_for_development, load_live_data
 )
 from src.stockreports.utils.time_utils import is_trading_hours, TIMEZONE_STR, SESSIONS
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
@@ -167,17 +167,12 @@ class SymbolAlerter:
 
     def _run_development_mode(self):
         self.logger.info(f"Running in DEVELOPMENT mode for {self.symbol}.")
-        master_df = load_all_data_from_files(self.symbol)
+        master_df = load_data_for_development(self.symbol)
         if master_df.empty:
-            self.logger.error(f"No data loaded from files for {self.symbol}, cannot proceed.")
+            self.logger.error(f"No data loaded for {self.symbol} in development mode, cannot proceed.")
             return
         
-        dates_to_process = []
-        effective_date = self.date_to_load or settings.DATA_DATE
-        if effective_date:
-            dates_to_process = [effective_date]
-        else:
-            dates_to_process = sorted(master_df['time'].dt.strftime('%Y-%m-%d').unique())
+        dates_to_process = sorted(master_df['time'].dt.strftime('%Y-%m-%d').unique())
         
         for processing_date in dates_to_process:
             self._process_date(master_df, processing_date)

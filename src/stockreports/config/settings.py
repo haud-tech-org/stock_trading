@@ -108,6 +108,17 @@ DATA_DIR = "src/stockreports/data"
 # Example: `DATA_DATE = "2025-10-08"`
 DATA_DATE = "2025-10-09"
 
+# == Development Mode Settings ==
+# Defines the date range for fetching data when running in DEVELOPMENT mode.
+# Format: YYYY-MM-DD
+DEV_DATA_DATE_RANGE = {
+    "start_date": "2025-10-07",
+    "end_date": "2025-10-09"
+}
+
+# If True, saves the raw JSON response to a file when running in DEVELOPMENT mode.
+SAVE_DEV_API_RESPONSE_TO_FILE = True
+
 
 # --- Alerting Strategy Configuration ---
 
