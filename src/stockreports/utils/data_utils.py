@@ -5,15 +5,20 @@ This module contains column mappings, data structure definitions,
 and utility functions for processing financial data.
 """
 
-import requests
 import time
 from datetime import datetime
 import pytz
 import pandas as pd
 from typing import Optional, Dict, Any, List, Tuple
 import logging
+import os
+import glob
+import json
 
-from src.stockreports.config import settings
+from src.stockreports.config import loader
+from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
+from src.stockreports.utils.time_utils import TIMEZONE_STR, SESSIONS
+from src.stockreports.utils.api_request_utils import execute_api_request
 
 # Standard column mapping for financial data
 STANDARD_COLUMN_MAP = {
@@ -43,30 +48,26 @@ ALL_COLUMN_MAP = {**STANDARD_COLUMN_MAP, **EXTENDED_COLUMN_MAP}
 # Column display order preference (for consistent table headers)
 COLUMN_DISPLAY_ORDER = ['t', 'o', 'h', 'l', 'c', 'v', 'vw', 'n', 'bid', 'ask', 'spread']
 
-# Trading hours configuration for Vietnamese stock market
-TRADING_HOURS = {
-    'start_hour': 9,      # 09:00
-    'start_minute': 0,
-    'end_hour': 14,       # 14:45
-    'end_minute': 45,
-    'start_minutes': 540,  # 09:00 in minutes from midnight
-    'end_minutes': 885     # 14:45 in minutes from midnight
-}
+# --- Market and Timezone Configuration from Settings ---
+settings = loader.get_settings()
 
-# Timezone configuration
-VIETNAM_TIMEZONE = {
-    'name': 'Asia/Ho_Chi_Minh',
-    'offset_hours': 7,     # UTC+7
-    'display_name': 'Vietnam Time'
-}
 
-# Time format strings
-TIME_FORMATS = {
-    'datetime_display': '%Y-%m-%d %H:%M:%S',
-    'date_only': '%Y-%m-%d',
-    'time_only': '%H:%M:%S',
-    'filename_timestamp': '%Y-%m-%d-%H-%M-%S'
-}
+def _get_session_minutes() -> List[Tuple[int, int]]:
+    """
+    Parses session start/end times from settings and converts them to minutes from midnight.
+    Returns a list of tuples, where each tuple is a (start_minute, end_minute) pair.
+    """
+    session_minutes = []
+    for session_name, times in SESSIONS.items():
+        try:
+            start_h, start_m = map(int, times['start'].split(':'))
+            end_h, end_m = map(int, times['end'].split(':'))
+            session_minutes.append((start_h * 60 + start_m, end_h * 60 + end_m))
+        except (KeyError, ValueError) as e:
+            logging.error(f"Could not parse session '{session_name}': {e}. Check settings.py format.")
+    return session_minutes
+
+SESSION_MINUTES = _get_session_minutes()
 
 
 def get_available_columns(data_sample: Dict[str, Any]) -> Dict[str, str]:
@@ -161,95 +162,183 @@ def get_column_statistics_map() -> Dict[str, List[str]]:
     }
 
 
-def is_trading_hours(hour: int, minute: int) -> bool:
+def fetch_intraday_data(symbol: str, from_timestamp: int, to_timestamp: int) -> Optional[Dict[str, Any]]:
     """
-    Check if given time is within trading hours.
-    
-    Args:
-        hour: Hour (0-23)
-        minute: Minute (0-59)
-        
-    Returns:
-        True if within trading hours, False otherwise
-    """
-    hour_min = hour * 60 + minute
-    return TRADING_HOURS['start_minutes'] <= hour_min <= TRADING_HOURS['end_minutes']
-
-
-def get_trading_hours_info() -> Dict[str, str]:
-    """
-    Get formatted trading hours information.
-    
-    Returns:
-        Dictionary with formatted trading hours strings
-    """
-    start_time = f"{TRADING_HOURS['start_hour']:02d}:{TRADING_HOURS['start_minute']:02d}"
-    end_time = f"{TRADING_HOURS['end_hour']:02d}:{TRADING_HOURS['end_minute']:02d}"
-    
-    return {
-        'start_time': start_time,
-        'end_time': end_time,
-        'display_range': f"{start_time} - {end_time}",
-        'description': f"Trading hours ({start_time} - {end_time} {VIETNAM_TIMEZONE['display_name']})"
-    }
-
-
-def get_vietnam_timezone_offset() -> int:
-    """
-    Get Vietnam timezone offset in hours.
-    
-    Returns:
-        Timezone offset in hours (UTC+7)
-    """
-    return VIETNAM_TIMEZONE['offset_hours']
-
-
-def fetch_intraday_data(symbol: str, date_str: str) -> Optional[Dict[str, Any]]:
-    """
-    Fetches intraday trading data for a specific symbol and date from the API.
+    Fetches intraday trading data for a specific symbol and time window.
 
     Args:
         symbol (str): The stock symbol to fetch (e.g., "VN30").
-        date_str (str): The date for which to fetch data, in "YYYY-MM-DD" format.
+        from_timestamp (int): The start of the time window as a Unix timestamp.
+        to_timestamp (int): The end of the time window as a Unix timestamp.
 
     Returns:
         A dictionary containing the API response data, or None if an error occurs.
     """
     try:
-        vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
-        
-        # Create 'from' and 'to' timestamps for the specified date
-        from_dt = vn_tz.localize(datetime.strptime(date_str, '%Y-%m-%d').replace(hour=8, minute=45, second=0))
-        to_dt = from_dt.replace(hour=14, minute=46, second=1)
-
-        params = settings.API_PARAMS.copy()
-        params.update({
-            "symbol": symbol,
-            "from": int(from_dt.timestamp()),
-            "to": int(to_dt.timestamp())
-        })
+        market_tz = pytz.timezone(TIMEZONE_STR)
+        from_dt = datetime.fromtimestamp(from_timestamp, tz=market_tz)
+        to_dt = datetime.fromtimestamp(to_timestamp, tz=market_tz)
 
         logging.info(f"Requesting data for {symbol} from {from_dt} to {to_dt}")
-        
-        response = requests.get(
-            settings.API_BASE_URL,
-            params=params,
-            headers=settings.API_HEADERS,
-            timeout=15 
-        )
-        response.raise_for_status()
-        
-        data = response.json()
-        if data.get("s") != "ok" or not data.get("t"):
-            logging.warning(f"API returned no data for {symbol} on {date_str}. Status: {data.get('s')}")
-            return None
-            
-        logging.info(f"Successfully fetched {len(data['t'])} data points from API.")
-        return data
+        return execute_api_request(symbol, from_timestamp, to_timestamp)
 
-    except requests.exceptions.RequestException as e:
-        logging.error(f"API request for {symbol} on {date_str} failed: {e}")
+    except ValueError as e:
+        logging.error(f"Error preparing request for {symbol}: {e}")
         return None
-    except (ValueError, KeyError) as e:
-        logging.error(f"Error processing data for {symbol} on {date_str}: {e}")
-        return None
+
+
+def calculate_max_lookback_period() -> int:
+    """
+    Calculates the maximum data lookback period needed based on all active alert approaches.
+    This ensures that enough historical data is available for all technical indicators.
+    """
+    signal_settings = loader.get_signal_settings()
+    settings = loader.get_settings()
+    logger = logging.getLogger(__name__)
+
+    max_lookback = getattr(signal_settings, 'DEFAULT_LOOKBACK_PERIOD', 60)
+    active_approaches = getattr(settings, 'ALERT_APPROACHES', [])
+    lookbacks = [max_lookback]
+
+    for approach in active_approaches:
+        if approach.upper() == 'RCM':
+            rcm_lookback = max(
+                getattr(signal_settings, 'MA_LONG_PERIOD', 0),
+                getattr(signal_settings, 'AVG_VOLUME_PERIOD', 0)
+            )
+            lookbacks.append(rcm_lookback)
+        elif approach.upper() == 'CONSISTENT_MOMENTUM':
+            try:
+                cm_lookback = signal_settings.APPROACH_CONFIG['CONSISTENT_MOMENTUM']['MOMENTUM_PERIOD_MINUTES']
+                lookbacks.append(cm_lookback)
+            except (AttributeError, KeyError):
+                logger.warning("Could not find settings for CONSISTENT_MOMENTUM lookback.")
+
+    max_lookback = max(lookbacks) if lookbacks else 0
+    logger.info(f"Calculated maximum required lookback period: {max_lookback} minutes.")
+    return max_lookback
+
+
+def load_data_for_development(symbol: str) -> pd.DataFrame:
+    """
+    Loads and consolidates data for a symbol in development mode by fetching it from the API
+    for a specified date range.
+    """
+    logger = logging.getLogger(__name__)
+    
+    date_range = settings.DEV_DATA_DATE_RANGE
+    start_date_str = date_range.get("start_date")
+    end_date_str = date_range.get("end_date")
+
+    if not start_date_str or not end_date_str:
+        logger.error("DEV_DATA_DATE_RANGE is not configured correctly in settings.")
+        return pd.DataFrame()
+
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        logger.error("Invalid date format in DEV_DATA_DATE_RANGE. Use YYYY-MM-DD.")
+        return pd.DataFrame()
+
+    all_dfs = []
+    for date_to_fetch in pd.date_range(start_date, end_date):
+        date_str = date_to_fetch.strftime('%Y-%m-%d')
+        logger.info(f"Fetching development data for {symbol} on {date_str}...")
+        
+        # Calculate timestamps for the entire trading day
+        market_tz = pytz.timezone(TIMEZONE_STR)
+        all_starts = [times['start'] for times in SESSIONS.values()]
+        all_ends = [times['end'] for times in SESSIONS.values()]
+        start_time_str = min(all_starts)
+        end_time_str = max(all_ends)
+        start_h, start_m = map(int, start_time_str.split(':'))
+        end_h, end_m = map(int, end_time_str.split(':'))
+        from_dt = market_tz.localize(date_to_fetch.replace(hour=start_h, minute=start_m, second=0))
+        to_dt = from_dt.replace(hour=end_h, minute=end_m, second=1)
+        from_timestamp = int(from_dt.timestamp())
+        to_timestamp = int(to_dt.timestamp())
+
+        raw_data = fetch_intraday_data(symbol, from_timestamp, to_timestamp)
+        
+        if not raw_data or raw_data.get('s') != 'ok':
+            logger.warning(f"No data fetched for {date_str}.")
+            continue
+
+        # Save the raw response if enabled
+        if settings.SAVE_DEV_API_RESPONSE_TO_FILE:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+            data_path = os.path.join(project_root, settings.DATA_DIR, symbol)
+            os.makedirs(data_path, exist_ok=True)
+            
+            file_date_str = date_to_fetch.strftime('%y%m%d')
+            file_path = os.path.join(data_path, f"{symbol.lower()}_response_{file_date_str}.json")
+            
+            try:
+                with open(file_path, 'w') as f:
+                    json.dump(raw_data, f, indent=4)
+                logger.info(f"Successfully saved API response to {file_path}")
+            except IOError as e:
+                logger.error(f"Failed to save API response to {file_path}: {e}")
+
+        keys = ["t", "o", "h", "l", "c", "v"]
+        min_len = min(len(raw_data.get(k, [])) for k in keys)
+        if min_len == 0:
+            continue
+            
+        df_single = pd.DataFrame({
+            "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
+            "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
+            "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
+            "volume": raw_data["v"][:min_len],
+        })
+        all_dfs.append(df_single)
+
+    if not all_dfs:
+        logger.warning(f"No data loaded for {symbol} in the specified date range.")
+        return pd.DataFrame()
+
+    df = pd.concat(all_dfs, ignore_index=True).drop_duplicates(subset=['time'], keep='first').sort_values(by='time').reset_index(drop=True)
+    
+    if not df.empty:
+        market_tz = pytz.timezone(TIMEZONE_STR)
+        df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(market_tz)
+        df = adjust_prices_by_symbol(df, symbol)
+        
+    return df
+
+
+def load_live_data(symbol: str, from_timestamp: int, to_timestamp: int) -> pd.DataFrame:
+    """
+    Fetches live data for a symbol in a specific time window and processes it.
+    """
+    logger = logging.getLogger(__name__)
+    raw_data = fetch_intraday_data(symbol, from_timestamp, to_timestamp)
+
+    if not raw_data or raw_data.get('s') != 'ok':
+        logger.error("Failed to fetch or process live data.")
+        return pd.DataFrame()
+
+    keys = ["t", "o", "h", "l", "c", "v"]
+    try:
+        min_len = min(len(raw_data.get(k, [])) for k in keys)
+    except TypeError:
+        logger.warning("Response format is not as expected (e.g., not a list).")
+        return pd.DataFrame()
+        
+    if min_len == 0:
+        logger.warning("No data points in the live response.")
+        return pd.DataFrame()
+
+    df = pd.DataFrame({
+        "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
+        "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
+        "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
+        "volume": raw_data["v"][:min_len],
+    })
+
+    # Adjust timezone and prices
+    df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(pytz.timezone(TIMEZONE_STR))
+    df = adjust_prices_by_symbol(df, symbol)
+
+    return df

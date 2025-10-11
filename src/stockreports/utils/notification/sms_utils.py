@@ -1,6 +1,7 @@
 # src/stockreports/utils/sms_utils.py
 import logging
 from src.stockreports.config import loader
+from src.stockreports.alert.model.models import AlertNotification
 
 # It's good practice to handle the case where the library might not be installed.
 try:
@@ -9,6 +10,12 @@ try:
     IS_TWILIO_AVAILABLE = True
 except ImportError:
     IS_TWILIO_AVAILABLE = False
+
+
+def format_sms_body(notification: AlertNotification) -> str:
+    """Formats the body for an SMS alert."""
+    return f"{notification.symbol} Alert\nSignal: {notification.signal}\nPrice: {notification.alert_price:.2f}\nApproach: {notification.approach}"
+
 
 def send_sms(message_body: str):
     """

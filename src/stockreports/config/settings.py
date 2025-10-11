@@ -16,7 +16,7 @@ notifications, and market-specific details.
 # Meaning: The main stock symbol or index to monitor and analyze. This value is used throughout the application, including for API requests and report naming.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
-SYMBOLS = ["VN30","VCB","VIC"]
+SYMBOLS = ["VN30"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -91,7 +91,7 @@ LOG_LEVEL = "INFO"
 # Guidance: Always use "DEVELOPMENT" for testing changes. Switch to "DEPLOYMENT" for actual use.
 # Range: "DEVELOPMENT" or "DEPLOYMENT".
 # Example: `MODE = "DEVELOPMENT"`
-MODE = "DEVELOPMENT"
+MODE = "DEPLOYMENT"
 
 # Data Directory
 # Meaning: The relative path from the project root to the folder containing historical data JSON files.
@@ -99,14 +99,16 @@ MODE = "DEVELOPMENT"
 # Example: `DATA_DIR = "src/stockreports/data"`
 DATA_DIR = "src/stockreports/data"
 
-# Data Date
-# Meaning: Specifies a single date to process. Its behavior depends on the `MODE`.
-# - In `DEVELOPMENT` mode: The script will only process data for this specific date from the local files. If `None`, it processes all dates found.
-# - In `DEPLOYMENT` mode: The script will fetch live data for this date. If `None`, it defaults to the current date.
-# Guidance: Use this in `DEVELOPMENT` to debug a specific day's signals. Set to `None` in `DEPLOYMENT` for normal operation.
-# Range: A string in 'YYYY-MM-DD' format or `None`.
-# Example: `DATA_DATE = "2025-10-08"`
-DATA_DATE = "2025-10-09"
+# == Development Mode Settings ==
+# Defines the date range for fetching data when running in DEVELOPMENT mode.
+# Format: YYYY-MM-DD
+DEV_DATA_DATE_RANGE = {
+    "start_date": "2025-10-09",
+    "end_date": "2025-10-09"
+}
+
+# If True, saves the raw JSON response to a file when running in DEVELOPMENT mode.
+SAVE_DEV_API_RESPONSE_TO_FILE = True
 
 
 # --- Alerting Strategy Configuration ---
