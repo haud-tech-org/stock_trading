@@ -162,45 +162,28 @@ def get_column_statistics_map() -> Dict[str, List[str]]:
     }
 
 
-def fetch_intraday_data(symbol: str, date_str: str) -> Optional[Dict[str, Any]]:
+def fetch_intraday_data(symbol: str, from_timestamp: int, to_timestamp: int) -> Optional[Dict[str, Any]]:
     """
-    Fetches intraday trading data for a specific symbol and date from the API.
-    This function calculates the appropriate time window and uses a helper
-    to execute the actual API request.
+    Fetches intraday trading data for a specific symbol and time window.
 
     Args:
         symbol (str): The stock symbol to fetch (e.g., "VN30").
-        date_str (str): The date for which to fetch data, in "YYYY-MM-DD" format.
+        from_timestamp (int): The start of the time window as a Unix timestamp.
+        to_timestamp (int): The end of the time window as a Unix timestamp.
 
     Returns:
         A dictionary containing the API response data, or None if an error occurs.
     """
     try:
         market_tz = pytz.timezone(TIMEZONE_STR)
-
-        if not SESSIONS:
-            raise ValueError("No trading sessions defined in settings.py")
-
-        all_starts = [times['start'] for times in SESSIONS.values()]
-        all_ends = [times['end'] for times in SESSIONS.values()]
-
-        start_time_str = min(all_starts)
-        end_time_str = max(all_ends)
-
-        start_h, start_m = map(int, start_time_str.split(':'))
-        end_h, end_m = map(int, end_time_str.split(':'))
-
-        from_dt = market_tz.localize(datetime.strptime(date_str, '%Y-%m-%d').replace(hour=start_h, minute=start_m, second=0))
-        to_dt = from_dt.replace(hour=end_h, minute=end_m, second=1)
-        
-        from_timestamp = int(from_dt.timestamp())
-        to_timestamp = int(to_dt.timestamp())
+        from_dt = datetime.fromtimestamp(from_timestamp, tz=market_tz)
+        to_dt = datetime.fromtimestamp(to_timestamp, tz=market_tz)
 
         logging.info(f"Requesting data for {symbol} from {from_dt} to {to_dt}")
         return execute_api_request(symbol, from_timestamp, to_timestamp)
 
     except ValueError as e:
-        logging.error(f"Error preparing request for {symbol} on {date_str}: {e}")
+        logging.error(f"Error preparing request for {symbol}: {e}")
         return None
 
 
@@ -262,7 +245,21 @@ def load_data_for_development(symbol: str) -> pd.DataFrame:
     for date_to_fetch in pd.date_range(start_date, end_date):
         date_str = date_to_fetch.strftime('%Y-%m-%d')
         logger.info(f"Fetching development data for {symbol} on {date_str}...")
-        raw_data = fetch_intraday_data(symbol, date_str)
+        
+        # Calculate timestamps for the entire trading day
+        market_tz = pytz.timezone(TIMEZONE_STR)
+        all_starts = [times['start'] for times in SESSIONS.values()]
+        all_ends = [times['end'] for times in SESSIONS.values()]
+        start_time_str = min(all_starts)
+        end_time_str = max(all_ends)
+        start_h, start_m = map(int, start_time_str.split(':'))
+        end_h, end_m = map(int, end_time_str.split(':'))
+        from_dt = market_tz.localize(date_to_fetch.replace(hour=start_h, minute=start_m, second=0))
+        to_dt = from_dt.replace(hour=end_h, minute=end_m, second=1)
+        from_timestamp = int(from_dt.timestamp())
+        to_timestamp = int(to_dt.timestamp())
+
+        raw_data = fetch_intraday_data(symbol, from_timestamp, to_timestamp)
         
         if not raw_data or raw_data.get('s') != 'ok':
             logger.warning(f"No data fetched for {date_str}.")
@@ -311,20 +308,24 @@ def load_data_for_development(symbol: str) -> pd.DataFrame:
     return df
 
 
-def load_live_data(symbol: str, date_str: str) -> pd.DataFrame:
+def load_live_data(symbol: str, from_timestamp: int, to_timestamp: int) -> pd.DataFrame:
     """
-    Fetches live data for a symbol and processes it into a clean DataFrame.
+    Fetches live data for a symbol in a specific time window and processes it.
     """
     logger = logging.getLogger(__name__)
-    logger.info(f"Fetching live data for {symbol} on {date_str}...")
-    raw_data = fetch_intraday_data(symbol, date_str)
+    raw_data = fetch_intraday_data(symbol, from_timestamp, to_timestamp)
 
     if not raw_data or raw_data.get('s') != 'ok':
         logger.error("Failed to fetch or process live data.")
         return pd.DataFrame()
 
     keys = ["t", "o", "h", "l", "c", "v"]
-    min_len = min(len(raw_data.get(k, [])) for k in keys)
+    try:
+        min_len = min(len(raw_data.get(k, [])) for k in keys)
+    except TypeError:
+        logger.warning("Response format is not as expected (e.g., not a list).")
+        return pd.DataFrame()
+        
     if min_len == 0:
         logger.warning("No data points in the live response.")
         return pd.DataFrame()
@@ -335,7 +336,6 @@ def load_live_data(symbol: str, date_str: str) -> pd.DataFrame:
         "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
         "volume": raw_data["v"][:min_len],
     })
-    df.drop_duplicates(subset=['time'], keep='last', inplace=True)
 
     # Adjust timezone and prices
     df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(pytz.timezone(TIMEZONE_STR))

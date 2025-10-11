@@ -91,7 +91,7 @@ LOG_LEVEL = "INFO"
 # Guidance: Always use "DEVELOPMENT" for testing changes. Switch to "DEPLOYMENT" for actual use.
 # Range: "DEVELOPMENT" or "DEPLOYMENT".
 # Example: `MODE = "DEVELOPMENT"`
-MODE = "DEVELOPMENT"
+MODE = "DEPLOYMENT"
 
 # Data Directory
 # Meaning: The relative path from the project root to the folder containing historical data JSON files.
@@ -103,7 +103,7 @@ DATA_DIR = "src/stockreports/data"
 # Defines the date range for fetching data when running in DEVELOPMENT mode.
 # Format: YYYY-MM-DD
 DEV_DATA_DATE_RANGE = {
-    "start_date": "2025-10-07",
+    "start_date": "2025-10-09",
     "end_date": "2025-10-09"
 }
 

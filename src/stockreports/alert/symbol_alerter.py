@@ -180,6 +180,9 @@ class SymbolAlerter:
         # In DEPLOYMENT mode, always use the current date for live monitoring.
         processing_date = datetime.now(TIMEZONE).strftime('%Y-%m-%d')
         self.logger.info(f"Running in DEPLOYMENT mode. Starting real-time monitoring for {self.symbol} on {processing_date}")
+        
+        master_df = pd.DataFrame()
+
         try:
             while True:
                 if not is_trading_hours():
@@ -188,8 +191,31 @@ class SymbolAlerter:
                     continue
                 
                 self.logger.info(f"\n--- New Interval for {self.symbol}: Fetching and Analyzing Data ---")
-                master_df = load_live_data(self.symbol, processing_date)
+
+                # Define the time window for the data fetch
+                to_dt = datetime.now(TIMEZONE)
                 if master_df.empty:
+                    # First run: fetch all data from the start of the day
+                    all_starts = [times['start'] for times in SESSIONS.values()]
+                    start_time_str = min(all_starts)
+                    start_h, start_m = map(int, start_time_str.split(':'))
+                    from_dt = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+                else:
+                    # Subsequent runs: fetch the last minute of data
+                    from_dt = to_dt - timedelta(minutes=1)
+
+                from_timestamp = int(from_dt.timestamp())
+                to_timestamp = int(to_dt.timestamp())
+
+                # Fetch the latest data slice
+                latest_df = load_live_data(self.symbol, from_timestamp, to_timestamp)
+
+                if not latest_df.empty:
+                    # Append new data and remove duplicates, keeping the last entry
+                    master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
+                
+                if master_df.empty:
+                    self.logger.warning("Master DataFrame is still empty. Waiting for data.")
                     time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                     continue
 
