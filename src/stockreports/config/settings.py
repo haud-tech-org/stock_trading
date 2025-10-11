@@ -99,15 +99,6 @@ MODE = "DEVELOPMENT"
 # Example: `DATA_DIR = "src/stockreports/data"`
 DATA_DIR = "src/stockreports/data"
 
-# Data Date
-# Meaning: Specifies a single date to process. Its behavior depends on the `MODE`.
-# - In `DEVELOPMENT` mode: The script will only process data for this specific date from the local files. If `None`, it processes all dates found.
-# - In `DEPLOYMENT` mode: The script will fetch live data for this date. If `None`, it defaults to the current date.
-# Guidance: Use this in `DEVELOPMENT` to debug a specific day's signals. Set to `None` in `DEPLOYMENT` for normal operation.
-# Range: A string in 'YYYY-MM-DD' format or `None`.
-# Example: `DATA_DATE = "2025-10-08"`
-DATA_DATE = "2025-10-09"
-
 # == Development Mode Settings ==
 # Defines the date range for fetching data when running in DEVELOPMENT mode.
 # Format: YYYY-MM-DD

@@ -15,12 +15,11 @@ class SymbolAlertManager:
     Orchestrates the execution of SymbolAlerter instances for multiple symbols,
     handling concurrent execution in deployment mode and sequential in development.
     """
-    def __init__(self, date_to_load: str = None):
+    def __init__(self):
         """
         Initializes the manager.
         """
         self.settings = loader.get_settings()
-        self.date_to_load = date_to_load
         self.symbols = self.settings.SYMBOLS
         
         logging.basicConfig(level="INFO", format="%(asctime)s - %(levelname)s - %(message)s", stream=sys.stdout)
@@ -30,7 +29,7 @@ class SymbolAlertManager:
         Wrapper function to instantiate and execute the alerter for a single symbol.
         """
         try:
-            alerter = SymbolAlerter(symbol=symbol, date_to_load=self.date_to_load)
+            alerter = SymbolAlerter(symbol=symbol)
             alerter.execute()
         except Exception as e:
             logging.critical(f"A critical error occurred in the process for symbol {symbol}: {e}", exc_info=True)
@@ -86,13 +85,6 @@ class SymbolAlertManager:
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the stock trading alerter for one or more symbols.")
-    parser.add_argument(
-        '--date', type=str, default=None,
-        help="The date to process data for, in YYYY-MM-DD format."
-    )
-    args = parser.parse_args()
-
     # Instantiate and run the manager
-    manager = SymbolAlertManager(date_to_load=args.date)
+    manager = SymbolAlertManager()
     manager.run()

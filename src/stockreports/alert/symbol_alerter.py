@@ -48,12 +48,11 @@ class SymbolAlerter:
     """
     Manages the entire alerting lifecycle for a single stock symbol.
     """
-    def __init__(self, symbol: str, date_to_load: str = None):
+    def __init__(self, symbol: str):
         """
         Initializes the alerter for a specific symbol.
         """
         self.symbol = symbol
-        self.date_to_load = date_to_load
         self.notification_manager = NotificationManager()
         self._setup_logging()
 
@@ -178,7 +177,8 @@ class SymbolAlerter:
             self._process_date(master_df, processing_date)
 
     def _run_deployment_mode(self):
-        processing_date = self.date_to_load or settings.DATA_DATE or datetime.now(TIMEZONE).strftime('%Y-%m-%d')
+        # In DEPLOYMENT mode, always use the current date for live monitoring.
+        processing_date = datetime.now(TIMEZONE).strftime('%Y-%m-%d')
         self.logger.info(f"Running in DEPLOYMENT mode. Starting real-time monitoring for {self.symbol} on {processing_date}")
         try:
             while True:
