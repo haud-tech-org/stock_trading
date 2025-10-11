@@ -5,9 +5,9 @@ import pandas as pd
 
 from src.stockreports.config import loader
 from src.stockreports.alert.model.models import AlertNotification, AlertResult
-from src.stockreports.utils.email_utils import send_email, format_email_subject, format_email_body
-from src.stockreports.utils.sms_utils import send_sms, format_sms_body
-from src.stockreports.utils.ntfy_utils import send_ntfy_notification
+from src.stockreports.utils.notification.email_utils import send_email, format_email_subject, format_email_body
+from src.stockreports.utils.notification.sms_utils import send_sms, format_sms_body
+from src.stockreports.utils.notification.ntfy_utils import send_ntfy_notification
 
 class NotificationManager:
     """

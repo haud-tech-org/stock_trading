@@ -29,15 +29,17 @@ validation_settings = loader.get_validation_settings()
 
 # --- Project Imports ---
 from src.stockreports.notification.notification_manager import NotificationManager
-from src.stockreports.utils.data_utils import fetch_intraday_data, is_trading_hours
+from src.stockreports.utils.data_utils import (
+    fetch_intraday_data, calculate_max_lookback_period, 
+    load_all_data_from_files, load_live_data
+)
+from src.stockreports.utils.time_utils import is_trading_hours, TIMEZONE_STR, SESSIONS
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
 
 # --- Constants & Configuration ---
 # The primary timezone is now driven by the market setting
-MARKET_CONFIG = settings.TRADING_HOURS.get(settings.MARKET_COUNTRY_CODE, {})
-TIMEZONE_STR = MARKET_CONFIG.get("timezone", "UTC")
 TIMEZONE = pytz.timezone(TIMEZONE_STR)
 DEFAULT_APPROACH = "RCM"
 
@@ -79,57 +81,6 @@ class SymbolAlerter:
         
         self.logger.info(f"Logging configured for {self.symbol}. Log file: {log_file_path}")
 
-    def _load_all_data_from_files(self):
-        data_path = os.path.join(project_root, settings.DATA_DIR, self.symbol)
-        all_files = glob.glob(f"{data_path}/*.json")
-        if not all_files:
-            self.logger.warning(f"No JSON data files found in {data_path}")
-            return pd.DataFrame()
-        all_dfs = []
-        for filename in sorted(all_files):
-            with open(filename, 'r') as f:
-                try:
-                    data = json.load(f)
-                    keys = ["t", "o", "h", "l", "c", "v"]
-                    if not all(k in data for k in keys): continue
-                    min_len = min(len(data[k]) for k in keys)
-                    if min_len == 0: continue
-                    df_single = pd.DataFrame({
-                        "time": pd.to_datetime(data["t"][:min_len], unit="s"), "open": data["o"][:min_len], "high": data["h"][:min_len],
-                        "low": data["l"][:min_len], "close": data["c"][:min_len], "volume": data["v"][:min_len],
-                    })
-                    all_dfs.append(df_single)
-                except Exception as e:
-                    self.logger.error(f"Error processing {filename}: {e}")
-        if not all_dfs: return pd.DataFrame()
-        df = pd.concat(all_dfs, ignore_index=True).drop_duplicates(subset=['time'], keep='first').sort_values(by='time').reset_index(drop=True)
-        if not df.empty:
-            df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
-            df = adjust_prices_by_symbol(df, self.symbol)
-        return df
-
-    def _load_live_data(self, date_str):
-        self.logger.info(f"Fetching live data for {self.symbol} on {date_str}...")
-        raw_data = fetch_intraday_data(self.symbol, date_str)
-        if not raw_data or raw_data.get('s') != 'ok':
-            self.logger.error("Failed to fetch or process live data.")
-            return pd.DataFrame()
-        keys = ["t", "o", "h", "l", "c", "v"]
-        min_len = min(len(raw_data.get(k, [])) for k in keys)
-        if min_len == 0:
-            self.logger.warning("No data points in the live response.")
-            return pd.DataFrame()
-        df = pd.DataFrame({
-            "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"), "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
-            "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len], "volume": raw_data["v"][:min_len],
-        })
-        df.drop_duplicates(subset=['time'], keep='first', inplace=True)
-        df = df.sort_values(by='time').reset_index(drop=True)
-        if not df.empty:
-            df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
-            df = adjust_prices_by_symbol(df, self.symbol)
-        return df
-
     def _get_approach_executor(self, approach_name: str):
         try:
             module_path = f"src.stockreports.alert.approach.{approach_name.upper()}.executor"
@@ -162,24 +113,6 @@ class SymbolAlerter:
             self.logger.info(f"Successfully saved report for {result.approach_name} to {filepath}")
         except Exception as e:
             self.logger.error(f"Failed to save report for {result.approach_name}: {e}")
-
-    def _calculate_max_lookback_period(self) -> int:
-        max_lookback = getattr(signal_settings, 'DEFAULT_LOOKBACK_PERIOD', 60)
-        active_approaches = getattr(settings, 'ALERT_APPROACHES', [])
-        lookbacks = [max_lookback]
-        for approach in active_approaches:
-            if approach.upper() == 'RCM':
-                rcm_lookback = max(getattr(signal_settings, 'MA_LONG_PERIOD', 0), getattr(signal_settings, 'AVG_VOLUME_PERIOD', 0))
-                lookbacks.append(rcm_lookback)
-            elif approach.upper() == 'CONSISTENT_MOMENTUM':
-                try:
-                    cm_lookback = signal_settings.APPROACH_CONFIG['CONSISTENT_MOMENTUM']['MOMENTUM_PERIOD_MINUTES']
-                    lookbacks.append(cm_lookback)
-                except (AttributeError, KeyError):
-                    self.logger.warning("Could not find settings for CONSISTENT_MOMENTUM lookback.")
-        max_lookback = max(lookbacks)
-        self.logger.info(f"Calculated maximum required lookback period: {max_lookback} minutes.")
-        return max_lookback
 
     def _generate_summary_report(self, result: AlertResult, date_str: str):
         if not result.has_alerts: return
@@ -234,7 +167,7 @@ class SymbolAlerter:
 
     def _run_development_mode(self):
         self.logger.info(f"Running in DEVELOPMENT mode for {self.symbol}.")
-        master_df = self._load_all_data_from_files()
+        master_df = load_all_data_from_files(self.symbol)
         if master_df.empty:
             self.logger.error(f"No data loaded from files for {self.symbol}, cannot proceed.")
             return
@@ -260,12 +193,12 @@ class SymbolAlerter:
                     continue
                 
                 self.logger.info(f"\n--- New Interval for {self.symbol}: Fetching and Analyzing Data ---")
-                master_df = self._load_live_data(processing_date)
+                master_df = load_live_data(self.symbol, processing_date)
                 if master_df.empty:
                     time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                     continue
 
-                max_lookback = self._calculate_max_lookback_period()
+                max_lookback = calculate_max_lookback_period()
                 cutoff_time = master_df['time'].max() - timedelta(minutes=max_lookback)
                 processing_df = master_df[master_df['time'] >= cutoff_time].copy()
                 
@@ -300,12 +233,11 @@ class SymbolAlerter:
             self.logger.warning(f"No data found for {self.symbol} on {processing_date}.")
             return
 
-        # Filter by trading hours
-        sessions = MARKET_CONFIG.get("sessions", {})
-        if sessions:
+                        # Filter by trading hours
+        if SESSIONS:
             combined_mask = pd.Series([False] * len(daily_df), index=daily_df.index)
             time_col = daily_df['time'].dt.time
-            for session_name, hours in sessions.items():
+            for session_name, hours in SESSIONS.items():
                 start_time = datetime.strptime(hours['start'], '%H:%M').time()
                 end_time = datetime.strptime(hours['end'], '%H:%M').time()
                 session_mask = (time_col >= start_time) & (time_col <= end_time)
