@@ -52,7 +52,6 @@ class SymbolAlerter:
         """
         self.symbol = symbol
         self.date_to_load = date_to_load
-        self.alerts_sent_in_session = set()
         self.notification_manager = NotificationManager()
         self._setup_logging()
 
@@ -141,24 +140,7 @@ class SymbolAlerter:
             return None
 
     def _process_and_notify_for_approach(self, result: AlertResult):
-        if not result.has_alerts: return
-        latest_alert_row = result.alerts.sort_values(by='alert_time', ascending=False).iloc[0]
-        alert_key = (result.approach_name, latest_alert_row['alert_time'])
-        if alert_key in self.alerts_sent_in_session:
-            self.logger.info(f"Alert for {result.approach_name} at {latest_alert_row['alert_time']} already sent. Skipping.")
-            return
-        self.logger.info(f"Latest alert from {result.approach_name}: {latest_alert_row['signal']} at {latest_alert_row['alert_price']:.2f}")
-        details_dict = json.loads(latest_alert_row['details']) if pd.notna(latest_alert_row.get('details')) and isinstance(latest_alert_row.get('details'), str) else {}
-        notification = AlertNotification(
-            symbol=self.symbol, signal=latest_alert_row['signal'], alert_price=latest_alert_row['alert_price'],
-            alert_time=latest_alert_row['alert_time'], approach=latest_alert_row['approach'], details=details_dict
-        )
-        
-        # Delegate sending to the NotificationManager
-        self.notification_manager.send_alert(notification)
-        
-        # Add to session after successful dispatch to avoid re-sending
-        self.alerts_sent_in_session.add(alert_key)
+        self.notification_manager.process_and_notify(result, self.symbol)
 
     def _save_report_for_approach(self, result: AlertResult, date_str: str):
         if not result.has_alerts: return
