@@ -16,7 +16,7 @@ notifications, and market-specific details.
 # Meaning: The main stock symbol or index to monitor and analyze. This value is used throughout the application, including for API requests and report naming.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
-SYMBOLS = ["VN30","VCB","VIC"]
+SYMBOLS = ["VN30"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.

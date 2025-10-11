@@ -4,10 +4,32 @@ import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
+import pandas as pd
 
 # --- Settings Loader ---
 from src.stockreports.config import loader
+from src.stockreports.alert.model.models import AlertNotification
 notification_settings = loader.get_notification_settings()
+
+
+def format_email_subject(notification: AlertNotification) -> str:
+    """Formats the subject line for an alert email."""
+    return f"{notification.signal} Signal for {notification.symbol} at {notification.alert_price:.2f} ({notification.approach})"
+
+
+def format_email_body(notification: AlertNotification) -> str:
+    """Formats the body content for an alert email."""
+    body = f"A new trading signal has been generated for {notification.symbol}.\n\n"
+    body += f"Signal:     {notification.signal}\nPrice:      {notification.alert_price:.2f}\n"
+    body += f"Time:       {notification.alert_time.strftime('%Y-%m-%d %H:%M:%S')}\nApproach:   {notification.approach}\n"
+    if notification.details:
+        body += "\n--- Details ---\n"
+        for key, value in notification.details.items():
+            if isinstance(value, pd.Timestamp):
+                value = value.strftime('%Y-%m-%d %H:%M:%S')
+            body += f"{key.replace('_', ' ').title()}: {value}\n"
+    return body
+
 
 def send_email(subject: str, body: str):
     """

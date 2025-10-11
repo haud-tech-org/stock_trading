@@ -28,8 +28,9 @@ notification_settings = loader.get_notification_settings()
 validation_settings = loader.get_validation_settings()
 
 # --- Project Imports ---
-from src.stockreports.utils.email_utils import send_email
-from src.stockreports.utils.sms_utils import send_sms
+from src.stockreports.utils.email_utils import send_email, format_email_subject, format_email_body
+from src.stockreports.utils.sms_utils import send_sms, format_sms_body
+from src.stockreports.utils.ntfy_utils import send_ntfy_notification
 from src.stockreports.utils.data_utils import fetch_intraday_data
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
@@ -79,36 +80,6 @@ class SymbolAlerter:
             self.logger.addHandler(stream_handler)
         
         self.logger.info(f"Logging configured for {self.symbol}. Log file: {log_file_path}")
-
-    def _format_email_subject(self, notification: AlertNotification) -> str:
-        return f"{notification.signal} Signal for {notification.symbol} at {notification.alert_price:.2f} ({notification.approach})"
-
-    def _format_sms_body(self, notification: AlertNotification) -> str:
-        return f"{notification.symbol} Alert\nSignal: {notification.signal}\nPrice: {notification.alert_price:.2f}\nApproach: {notification.approach}"
-
-    def _send_ntfy_notification(self, notification: AlertNotification):
-        if not notification_settings.NTFY_ENABLED or not notification_settings.NTFY_TOPICS:
-            return
-        try:
-            import requests
-            title = f"{notification.signal} for {notification.symbol} ({notification.approach})"
-            message = f"Price: {notification.alert_price:.2f}\nTime: {notification.alert_time.strftime('%H:%M:%S')}"
-            for topic in notification_settings.NTFY_TOPICS:
-                requests.post(f"https://ntfy.sh/{topic}", data=message.encode('utf-8'), headers={"Title": title})
-                self.logger.info(f"Successfully sent ntfy push notification to topic '{topic}' for {notification.approach} signal.")
-        except Exception as e:
-            self.logger.error(f"Failed to send ntfy push notification: {e}")
-
-    def _format_email_body(self, notification: AlertNotification) -> str:
-        body = f"A new trading signal has been generated for {notification.symbol}.\n\n"
-        body += f"Signal:     {notification.signal}\nPrice:      {notification.alert_price:.2f}\n"
-        body += f"Time:       {notification.alert_time.strftime('%Y-%m-%d %H:%M:%S')}\nApproach:   {notification.approach}\n"
-        if notification.details:
-            body += "\n--- Details ---\n"
-            for key, value in notification.details.items():
-                if isinstance(value, pd.Timestamp): value = value.strftime('%Y-%m-%d %H:%M:%S')
-                body += f"{key.replace('_', ' ').title()}: {value}\n"
-        return body
 
     def _load_all_data_from_files(self):
         data_path = os.path.join(project_root, settings.DATA_DIR, self.symbol)
@@ -183,17 +154,25 @@ class SymbolAlerter:
             symbol=self.symbol, signal=latest_alert_row['signal'], alert_price=latest_alert_row['alert_price'],
             alert_time=latest_alert_row['alert_time'], approach=latest_alert_row['approach'], details=details_dict
         )
-        self._send_ntfy_notification(notification)
-        subject = self._format_email_subject(notification)
-        body = self._format_email_body(notification)
-        if notification_settings.EMAIL_ENABLED and all([notification_settings.EMAIL_SENDER, (notification_settings.EMAIL_RECEIVERS or notification_settings.EMAIL_BCC_RECEIVERS), notification_settings.EMAIL_APP_PASSWORD]):
-            try:
-                send_email(subject, body)
-                self.logger.info(f"Successfully sent email for latest {notification.approach} signal.")
-                self.alerts_sent_in_session.add(alert_key)
-            except Exception as e:
-                self.logger.error(f"Failed to send email for {notification.approach} signal: {e}")
-        send_sms(self._format_sms_body(notification))
+        
+        # Send all notifications
+        if notification_settings.NTFY_ENABLED:
+            send_ntfy_notification(notification)
+        
+        if notification_settings.EMAIL_ENABLED:
+            subject = format_email_subject(notification)
+            body = format_email_body(notification)
+            if all([notification_settings.EMAIL_SENDER, (notification_settings.EMAIL_RECEIVERS or notification_settings.EMAIL_BCC_RECEIVERS), notification_settings.EMAIL_APP_PASSWORD]):
+                try:
+                    send_email(subject, body)
+                    self.logger.info(f"Successfully sent email for latest {notification.approach} signal.")
+                except Exception as e:
+                    self.logger.error(f"Failed to send email for {notification.approach} signal: {e}")
+        
+        if notification_settings.TWILIO_ENABLED:
+            sms_body = format_sms_body(notification)
+            send_sms(sms_body)
+
         self.alerts_sent_in_session.add(alert_key)
 
     def _save_report_for_approach(self, result: AlertResult, date_str: str):
