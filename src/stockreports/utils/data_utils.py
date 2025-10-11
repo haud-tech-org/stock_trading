@@ -43,23 +43,6 @@ ALL_COLUMN_MAP = {**STANDARD_COLUMN_MAP, **EXTENDED_COLUMN_MAP}
 # Column display order preference (for consistent table headers)
 COLUMN_DISPLAY_ORDER = ['t', 'o', 'h', 'l', 'c', 'v', 'vw', 'n', 'bid', 'ask', 'spread']
 
-# Trading hours configuration for Vietnamese stock market
-TRADING_HOURS = {
-    'start_hour': 9,      # 09:00
-    'start_minute': 0,
-    'end_hour': 14,       # 14:45
-    'end_minute': 45,
-    'start_minutes': 540,  # 09:00 in minutes from midnight
-    'end_minutes': 885     # 14:45 in minutes from midnight
-}
-
-# Timezone configuration
-VIETNAM_TIMEZONE = {
-    'name': 'Asia/Ho_Chi_Minh',
-    'offset_hours': 7,     # UTC+7
-    'display_name': 'Vietnam Time'
-}
-
 # Time format strings
 TIME_FORMATS = {
     'datetime_display': '%Y-%m-%d %H:%M:%S',
@@ -67,6 +50,32 @@ TIME_FORMATS = {
     'time_only': '%H:%M:%S',
     'filename_timestamp': '%Y-%m-%d-%H-%M-%S'
 }
+
+
+# --- Market and Timezone Configuration from Settings ---
+
+# Get the market-specific configuration from the central settings file.
+MARKET_CONFIG = settings.TRADING_HOURS.get(settings.MARKET_COUNTRY_CODE, {})
+TIMEZONE_STR = MARKET_CONFIG.get("timezone", "UTC")
+SESSIONS = MARKET_CONFIG.get("sessions", {})
+
+
+def _get_session_minutes() -> List[Tuple[int, int]]:
+    """
+    Parses session start/end times from settings and converts them to minutes from midnight.
+    Returns a list of tuples, where each tuple is a (start_minute, end_minute) pair.
+    """
+    session_minutes = []
+    for session_name, times in SESSIONS.items():
+        try:
+            start_h, start_m = map(int, times['start'].split(':'))
+            end_h, end_m = map(int, times['end'].split(':'))
+            session_minutes.append((start_h * 60 + start_m, end_h * 60 + end_m))
+        except (KeyError, ValueError) as e:
+            logging.error(f"Could not parse session '{session_name}': {e}. Check settings.py format.")
+    return session_minutes
+
+SESSION_MINUTES = _get_session_minutes()
 
 
 def get_available_columns(data_sample: Dict[str, Any]) -> Dict[str, str]:
@@ -161,47 +170,84 @@ def get_column_statistics_map() -> Dict[str, List[str]]:
     }
 
 
-def is_trading_hours(hour: int, minute: int) -> bool:
+def is_trading_hours(dt_object: Optional[datetime] = None) -> bool:
     """
-    Check if given time is within trading hours.
-    
+    Checks if the given datetime is within any of the market's trading sessions.
+    If no datetime is provided, it checks the current time in the market's timezone.
+
     Args:
-        hour: Hour (0-23)
-        minute: Minute (0-59)
-        
+        dt_object (Optional[datetime]): The datetime to check. If timezone-aware, it's used directly.
+                                         If naive, it's assumed to be in the market's timezone.
+
     Returns:
-        True if within trading hours, False otherwise
+        True if within trading hours, False otherwise.
     """
-    hour_min = hour * 60 + minute
-    return TRADING_HOURS['start_minutes'] <= hour_min <= TRADING_HOURS['end_minutes']
+    if not SESSION_MINUTES:
+        logging.warning("No trading sessions defined in settings. Cannot check trading hours.")
+        return False
+
+    market_tz = pytz.timezone(TIMEZONE_STR)
+
+    if dt_object is None:
+        check_time = datetime.now(market_tz)
+    elif dt_object.tzinfo is None:
+        check_time = market_tz.localize(dt_object)
+    else:
+        check_time = dt_object.astimezone(market_tz)
+
+    # Check if the day is a weekday (Monday=0, Sunday=6)
+    if check_time.weekday() >= 5:
+        return False
+
+    current_minute = check_time.hour * 60 + check_time.minute
+
+    # Check if the current time falls within any session
+    for start_minute, end_minute in SESSION_MINUTES:
+        if start_minute <= current_minute <= end_minute:
+            return True
+
+    return False
 
 
 def get_trading_hours_info() -> Dict[str, str]:
     """
-    Get formatted trading hours information.
-    
+    Get formatted trading hours information from the central settings.
+
     Returns:
-        Dictionary with formatted trading hours strings
+        A dictionary with formatted trading hours strings.
     """
-    start_time = f"{TRADING_HOURS['start_hour']:02d}:{TRADING_HOURS['start_minute']:02d}"
-    end_time = f"{TRADING_HOURS['end_hour']:02d}:{TRADING_HOURS['end_minute']:02d}"
+    if not SESSIONS:
+        return {
+            'start_time': 'N/A',
+            'end_time': 'N/A',
+            'display_range': 'Not Configured',
+            'description': 'Trading hours not configured in settings.py'
+        }
+
+    # Find the earliest start and latest end time across all sessions
+    all_starts = [times['start'] for times in SESSIONS.values()]
+    all_ends = [times['end'] for times in SESSIONS.values()]
     
+    start_time = min(all_starts)
+    end_time = max(all_ends)
+    market_name = MARKET_CONFIG.get('name', 'Market')
+
     return {
         'start_time': start_time,
         'end_time': end_time,
         'display_range': f"{start_time} - {end_time}",
-        'description': f"Trading hours ({start_time} - {end_time} {VIETNAM_TIMEZONE['display_name']})"
+        'description': f"Trading hours for {market_name} ({start_time} - {end_time})"
     }
 
 
-def get_vietnam_timezone_offset() -> int:
+def get_market_timezone_str() -> str:
     """
-    Get Vietnam timezone offset in hours.
+    Get the market's timezone string from settings.
     
     Returns:
-        Timezone offset in hours (UTC+7)
+        The IANA timezone string (e.g., 'Asia/Ho_Chi_Minh').
     """
-    return VIETNAM_TIMEZONE['offset_hours']
+    return TIMEZONE_STR
 
 
 def fetch_intraday_data(symbol: str, date_str: str) -> Optional[Dict[str, Any]]:
@@ -216,11 +262,25 @@ def fetch_intraday_data(symbol: str, date_str: str) -> Optional[Dict[str, Any]]:
         A dictionary containing the API response data, or None if an error occurs.
     """
     try:
-        vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
+        market_tz = pytz.timezone(TIMEZONE_STR)
+        
+        # Get the earliest start time and latest end time from all sessions
+        if not SESSIONS:
+            raise ValueError("No trading sessions defined in settings.py")
+
+        all_starts = [times['start'] for times in SESSIONS.values()]
+        all_ends = [times['end'] for times in SESSIONS.values()]
+        
+        start_time_str = min(all_starts)
+        end_time_str = max(all_ends)
+
+        start_h, start_m = map(int, start_time_str.split(':'))
+        # Add a small buffer to the end time to ensure all data is included
+        end_h, end_m = map(int, end_time_str.split(':'))
         
         # Create 'from' and 'to' timestamps for the specified date
-        from_dt = vn_tz.localize(datetime.strptime(date_str, '%Y-%m-%d').replace(hour=8, minute=45, second=0))
-        to_dt = from_dt.replace(hour=14, minute=46, second=1)
+        from_dt = market_tz.localize(datetime.strptime(date_str, '%Y-%m-%d').replace(hour=start_h, minute=start_m, second=0))
+        to_dt = from_dt.replace(hour=end_h, minute=end_m, second=1)
 
         params = settings.API_PARAMS.copy()
         params.update({
