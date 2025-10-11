@@ -98,6 +98,9 @@ dmypy.json
 /.emacs.desktop.lock
 *.elc
 auto-save-list
+
+# Data files
+src/stockreports/data/
 tramp
 .\#*
 
