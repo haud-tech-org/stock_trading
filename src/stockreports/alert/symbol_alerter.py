@@ -29,7 +29,7 @@ validation_settings = loader.get_validation_settings()
 
 # --- Project Imports ---
 from src.stockreports.notification.notification_manager import NotificationManager
-from src.stockreports.utils.data_utils import fetch_intraday_data
+from src.stockreports.utils.data_utils import fetch_intraday_data, is_trading_hours
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
@@ -245,22 +245,6 @@ class SymbolAlerter:
         with open(filepath, 'w') as f: json.dump(all_summaries, f, indent=4)
         self.logger.info(f"Successfully updated alert summary for {result.approach_name} at {filepath}")
 
-    def _is_within_trading_hours(self) -> bool:
-        try:
-            sessions = MARKET_CONFIG.get("sessions")
-            if not sessions: return True
-            now = datetime.now(TIMEZONE)
-            if now.weekday() >= 5: return False
-            current_time = now.time()
-            for session_name, hours in sessions.items():
-                start_time = datetime.strptime(hours['start'], '%H:%M').time()
-                end_time = datetime.strptime(hours['end'], '%H:%M').time()
-                if start_time <= current_time <= end_time: return True
-            return False
-        except Exception as e:
-            self.logger.error(f"Error checking trading hours: {e}")
-            return True
-
     def execute(self):
         self.logger.info(f"Executing alerter for symbol: {self.symbol}...")
         if settings.MODE == "DEVELOPMENT":
@@ -291,7 +275,7 @@ class SymbolAlerter:
         self.logger.info(f"Running in DEPLOYMENT mode. Starting real-time monitoring for {self.symbol} on {processing_date}")
         try:
             while True:
-                if not self._is_within_trading_hours():
+                if not is_trading_hours():
                     self.logger.info(f"Market is currently closed for {self.symbol}. Waiting 15 minutes...")
                     time.sleep(900)
                     continue
