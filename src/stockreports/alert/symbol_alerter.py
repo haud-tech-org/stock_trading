@@ -28,9 +28,7 @@ notification_settings = loader.get_notification_settings()
 validation_settings = loader.get_validation_settings()
 
 # --- Project Imports ---
-from src.stockreports.utils.email_utils import send_email, format_email_subject, format_email_body
-from src.stockreports.utils.sms_utils import send_sms, format_sms_body
-from src.stockreports.utils.ntfy_utils import send_ntfy_notification
+from src.stockreports.notification.notification_manager import NotificationManager
 from src.stockreports.utils.data_utils import fetch_intraday_data
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
@@ -55,6 +53,7 @@ class SymbolAlerter:
         self.symbol = symbol
         self.date_to_load = date_to_load
         self.alerts_sent_in_session = set()
+        self.notification_manager = NotificationManager()
         self._setup_logging()
 
     def _setup_logging(self):
@@ -155,24 +154,10 @@ class SymbolAlerter:
             alert_time=latest_alert_row['alert_time'], approach=latest_alert_row['approach'], details=details_dict
         )
         
-        # Send all notifications
-        if notification_settings.NTFY_ENABLED:
-            send_ntfy_notification(notification)
+        # Delegate sending to the NotificationManager
+        self.notification_manager.send_alert(notification)
         
-        if notification_settings.EMAIL_ENABLED:
-            subject = format_email_subject(notification)
-            body = format_email_body(notification)
-            if all([notification_settings.EMAIL_SENDER, (notification_settings.EMAIL_RECEIVERS or notification_settings.EMAIL_BCC_RECEIVERS), notification_settings.EMAIL_APP_PASSWORD]):
-                try:
-                    send_email(subject, body)
-                    self.logger.info(f"Successfully sent email for latest {notification.approach} signal.")
-                except Exception as e:
-                    self.logger.error(f"Failed to send email for {notification.approach} signal: {e}")
-        
-        if notification_settings.TWILIO_ENABLED:
-            sms_body = format_sms_body(notification)
-            send_sms(sms_body)
-
+        # Add to session after successful dispatch to avoid re-sending
         self.alerts_sent_in_session.add(alert_key)
 
     def _save_report_for_approach(self, result: AlertResult, date_str: str):
