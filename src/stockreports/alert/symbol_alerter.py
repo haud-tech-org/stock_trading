@@ -139,9 +139,6 @@ class SymbolAlerter:
             self.logger.error(f"Could not load approach '{approach_name}'. Error: {e}")
             return None
 
-    def _process_and_notify_for_approach(self, result: AlertResult):
-        self.notification_manager.process_and_notify(result, self.symbol)
-
     def _save_report_for_approach(self, result: AlertResult, date_str: str):
         if not result.has_alerts: return
         reports_dir = os.path.join(project_root, "reports", self.symbol, settings.MODE.lower(), result.approach_name.lower())
@@ -284,7 +281,7 @@ class SymbolAlerter:
                     if not executor: continue
                     result = executor(processing_df.copy())
                     if result.has_alerts:
-                        self._process_and_notify_for_approach(result)
+                        self.notification_manager.process_and_notify(result, self.symbol)
                 
                 self.logger.info(f"Interval finished. Waiting {settings.MONITORING_INTERVAL_SECONDS}s...")
                 time.sleep(settings.MONITORING_INTERVAL_SECONDS)
@@ -335,7 +332,7 @@ class SymbolAlerter:
                         validated_alert = calculate_alert_performance(alert_data, daily_df, signal_settings.VALIDATION_PERIOD_MINUTES)
                         validated_alerts.append(validated_alert.to_dict())
                     result.alerts = pd.DataFrame(validated_alerts)
-                    self._process_and_notify_for_approach(result)
+                    self.notification_manager.process_and_notify(result, self.symbol)
                 self._save_report_for_approach(result, processing_date)
                 if settings.MODE == "DEVELOPMENT":
                     self._generate_summary_report(result, processing_date)
