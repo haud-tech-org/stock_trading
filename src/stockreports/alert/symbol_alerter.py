@@ -34,6 +34,7 @@ from src.stockreports.utils.data_utils import (
     load_data_for_development, load_live_data
 )
 from src.stockreports.utils.time_utils import is_trading_hours, TIMEZONE_STR, SESSIONS
+from src.stockreports.utils.report_utils import save_alert_report, update_alert_summary
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
@@ -88,73 +89,6 @@ class SymbolAlerter:
         except (ImportError, AttributeError) as e:
             self.logger.error(f"Could not load approach '{approach_name}'. Error: {e}")
             return None
-
-    def _save_report_for_approach(self, result: AlertResult, date_str: str):
-        if not result.has_alerts: return
-        reports_dir = os.path.join(project_root, "reports", self.symbol, settings.MODE.lower(), result.approach_name.lower())
-        os.makedirs(reports_dir, exist_ok=True)
-        filepath = os.path.join(reports_dir, f"alert_notification_{date_str.replace('-', '')}.json")
-        try:
-            alerts_to_save = result.alerts.copy()
-            
-            # Identify all datetime-like columns
-            datetime_cols = alerts_to_save.select_dtypes(include=['datetime64[ns]', 'datetimetz']).columns
-
-            # Convert to the configured timezone and then format to string
-            for col in datetime_cols:
-                # Ensure column is timezone-aware before converting
-                if alerts_to_save[col].dt.tz is None:
-                    alerts_to_save[col] = alerts_to_save[col].dt.tz_localize('UTC')
-                
-                alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
-
-            alerts_to_save.to_json(filepath, orient='records', indent=4)
-            self.logger.info(f"Successfully saved report for {result.approach_name} to {filepath}")
-        except Exception as e:
-            self.logger.error(f"Failed to save report for {result.approach_name}: {e}")
-
-    def _generate_summary_report(self, result: AlertResult, date_str: str):
-        if not result.has_alerts: return
-        reports_dir = os.path.join(project_root, "reports", self.symbol, settings.MODE.lower(), result.approach_name.lower())
-        os.makedirs(reports_dir, exist_ok=True)
-        filepath = os.path.join(reports_dir, f"alert_summary.json")
-        total_alerts = len(result.alerts)
-        successful_alerts = len(result.alerts[result.alerts['status'] == 'Success'])
-        success_rate = (successful_alerts / total_alerts) * 100 if total_alerts > 0 else 0
-        successful_df = result.alerts[result.alerts['status'] == 'Success'].copy()
-        avg_profit_loss, min_time_to_best, avg_time_to_best, max_time_to_best = None, None, None, None
-        min_expected_profit_loss = None
-        if not successful_df.empty:
-            successful_df['profit_loss'] = pd.to_numeric(successful_df['profit_loss'], errors='coerce')
-            successful_df['time_to_best_price'] = pd.to_numeric(successful_df['time_to_best_price'], errors='coerce')
-            successful_df.dropna(subset=['profit_loss', 'time_to_best_price'], inplace=True)
-            if not successful_df.empty:
-                avg_profit_loss = successful_df['profit_loss'].mean()
-                min_time_to_best = int(successful_df['time_to_best_price'].min())
-                avg_time_to_best = int(successful_df['time_to_best_price'].mean())
-                max_time_to_best = int(successful_df['time_to_best_price'].max())
-                min_expected_profit_loss = successful_df['min_expected_profit_loss'].iloc[0] if 'min_expected_profit_loss' in successful_df.columns else None
-        new_summary = AlertSummary(
-            approach=result.approach_name, date=date_str, total_alerts=total_alerts,
-            successful_alerts=successful_alerts, failed_alerts=total_alerts - successful_alerts,
-            success_rate_pct=round(success_rate, 2),
-            average_profit_loss=round(avg_profit_loss, 4) if avg_profit_loss is not None else None,
-            min_time_to_best_price=min_time_to_best,
-            avg_time_to_best_price=avg_time_to_best,
-            max_time_to_best_price=max_time_to_best,
-            min_expected_profit_loss=min_expected_profit_loss
-        )
-        all_summaries = []
-        if os.path.exists(filepath):
-            try:
-                with open(filepath, 'r') as f: all_summaries = json.load(f)
-                if not isinstance(all_summaries, list): all_summaries = []
-                all_summaries = [s for s in all_summaries if s.get('date') != date_str]
-            except (json.JSONDecodeError, IOError): all_summaries = []
-        all_summaries.append(new_summary.to_dict())
-        all_summaries.sort(key=lambda x: x.get('date', ''))
-        with open(filepath, 'w') as f: json.dump(all_summaries, f, indent=4)
-        self.logger.info(f"Successfully updated alert summary for {result.approach_name} at {filepath}")
 
     def execute(self):
         self.logger.info(f"Executing alerter for symbol: {self.symbol}...")
@@ -286,6 +220,8 @@ class SymbolAlerter:
                         validated_alerts.append(validated_alert.to_dict())
                     result.alerts = pd.DataFrame(validated_alerts)
                     self.notification_manager.process_and_notify(result, self.symbol)
-                self._save_report_for_approach(result, processing_date)
+                
+                # Use the new utility functions for reporting
+                save_alert_report(result, self.symbol, processing_date)
                 if settings.MODE == "DEVELOPMENT":
-                    self._generate_summary_report(result, processing_date)
+                    update_alert_summary(result, self.symbol, processing_date)
