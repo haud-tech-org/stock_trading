@@ -38,6 +38,7 @@ from src.stockreports.utils.report_utils import save_alert_report, update_alert_
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
+from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
 
 # --- Constants & Configuration ---
 # The primary timezone is now driven by the market setting
@@ -116,6 +117,7 @@ class SymbolAlerter:
         self.logger.info(f"Running in DEPLOYMENT mode. Starting real-time monitoring for {self.symbol} on {processing_date}")
         
         master_df = pd.DataFrame()
+        triggered_levels_today = set()
 
         try:
             while True:
@@ -153,6 +155,21 @@ class SymbolAlerter:
                     time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                     continue
 
+                # --- Price Movement Alerter ---
+                price_alerter = PriceMovementAlerter(self.symbol, triggered_levels_today)
+                price_alerts = price_alerter.execute(master_df)
+                if price_alerts:
+                    self.logger.info(f"Found {len(price_alerts)} price movement alerts.")
+                    # Create a simple AlertResult for notification
+                    price_alert_result = AlertResult(
+                        alerts=pd.DataFrame([{'message': msg} for msg in price_alerts]),
+                        has_alerts=True,
+                        approach_name="PriceMovement"
+                    )
+                    self.notification_manager.process_and_notify(price_alert_result, self.symbol)
+
+
+                # --- Standard Approach Alerter ---
                 max_lookback = calculate_max_lookback_period()
                 cutoff_time = master_df['time'].max() - timedelta(minutes=max_lookback)
                 processing_df = master_df[master_df['time'] >= cutoff_time].copy()
