@@ -4,6 +4,7 @@ from . import settings as settings_module
 from . import signal_settings as signal_settings_module
 from . import notification_settings as notification_settings_module
 from . import validation_settings as validation_settings_module
+from . import price_alert_settings as price_alert_settings_module
 
 def load_config():
     """
@@ -14,9 +15,10 @@ def load_config():
     importlib.reload(signal_settings_module)
     importlib.reload(notification_settings_module)
     importlib.reload(validation_settings_module)
+    importlib.reload(price_alert_settings_module)
     
     # The return is kept for the main script's initial load, but getters are preferred elsewhere.
-    return settings_module, signal_settings_module, notification_settings_module, validation_settings_module
+    return settings_module, signal_settings_module, notification_settings_module, validation_settings_module, price_alert_settings_module
 
 def get_settings():
     """Returns the currently loaded main settings module."""
@@ -33,3 +35,7 @@ def get_notification_settings():
 def get_validation_settings():
     """Returns the currently loaded validation settings module."""
     return validation_settings_module
+
+def get_price_alert_settings():
+    """Returns the currently loaded price alert settings module."""
+    return price_alert_settings_module
