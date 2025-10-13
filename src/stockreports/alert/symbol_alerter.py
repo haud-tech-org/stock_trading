@@ -113,7 +113,7 @@ class SymbolAlerter:
 
     def _run_deployment_mode(self):
         # In DEPLOYMENT mode, always use the current date for live monitoring.
-        processing_date = datetime.now(TIMEZONE).strftime('%Y-%m-%d')
+        processing_date = datetime.now(pytz.utc).astimezone(TIMEZONE).strftime('%Y-%m-%d')
         self.logger.info(f"Running in DEPLOYMENT mode. Starting real-time monitoring for {self.symbol} on {processing_date}")
         
         master_df = pd.DataFrame()
@@ -129,7 +129,7 @@ class SymbolAlerter:
                 self.logger.info(f"\n--- New Interval for {self.symbol}: Fetching and Analyzing Data ---")
 
                 # Define the time window for the data fetch
-                to_dt = datetime.now(TIMEZONE)
+                to_dt = datetime.now(pytz.utc).astimezone(TIMEZONE)
                 if master_df.empty:
                     # First run: fetch all data from the start of the day
                     all_starts = [times['start'] for times in SESSIONS.values()]
@@ -160,10 +160,18 @@ class SymbolAlerter:
                 price_alerts = price_alerter.execute(master_df)
                 if price_alerts:
                     self.logger.info(f"Found {len(price_alerts)} price movement alerts.")
-                    # Create a simple AlertResult for notification
+                    price_alerts_data = []
+                    for msg in price_alerts:
+                        price_alerts_data.append({
+                            'alert_time': master_df['time'].iloc[-1],
+                            'signal': 'Price Level Cross',
+                            'alert_price': master_df['close'].iloc[-1],
+                            'approach': 'PriceMovement',
+                            'details': json.dumps({'message': msg})
+                        })
+                    
                     price_alert_result = AlertResult(
-                        alerts=pd.DataFrame([{'message': msg} for msg in price_alerts]),
-                        has_alerts=True,
+                        alerts=pd.DataFrame(price_alerts_data),
                         approach_name="PriceMovement"
                     )
                     self.notification_manager.process_and_notify(price_alert_result, self.symbol)
