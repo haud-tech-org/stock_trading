@@ -67,7 +67,8 @@ def is_trading_hours(dt_object: Optional[datetime] = None) -> bool:
     market_tz = pytz.timezone(TIMEZONE_STR)
 
     if dt_object is None:
-        check_time = datetime.now(market_tz)
+        # More robust way to get current time in the target timezone
+        check_time = datetime.now(pytz.utc).astimezone(market_tz)
     elif dt_object.tzinfo is None:
         check_time = market_tz.localize(dt_object)
     else:
