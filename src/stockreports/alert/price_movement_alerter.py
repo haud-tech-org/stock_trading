@@ -2,6 +2,10 @@
 
 import pandas as pd
 from ..config.loader import get_price_alert_settings
+import logging
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
 
 class PriceMovementAlerter:
     """
@@ -22,6 +26,7 @@ class PriceMovementAlerter:
         self.settings = get_price_alert_settings()
         self.config = self.settings.PRICE_ALERTS.get(self.symbol, {})
         self.allow_repeated_alerts = self.settings.ALLOW_REPEATED_LEVEL_ALERTS
+        logger.info(f"PriceMovementAlerter initialized for {self.symbol}. Config found: {bool(self.config)}")
 
     def execute(self, master_df: pd.DataFrame) -> list:
         """
@@ -34,10 +39,15 @@ class PriceMovementAlerter:
             list: A list of strings, where each string is a notification message
                   for a triggered alert.
         """
-        if not self.config or master_df.empty:
+        if not self.config:
+            logger.warning(f"No price alert configuration found for symbol '{self.symbol}'. Skipping.")
+            return []
+        if master_df.empty:
+            logger.warning("master_df is empty. Skipping price movement check.")
             return []
 
         if len(master_df) < 2:
+            logger.warning("Not enough data points (< 2) to check for price movement. Skipping.")
             return []
 
         # Use the last two entries of the master_df to represent the most recent price movement
