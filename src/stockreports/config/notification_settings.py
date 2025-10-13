@@ -23,7 +23,7 @@ EMAIL_SMTP_PORT = 587
 # Guidance: Ensure the sender email is the one associated with the `EMAIL_APP_PASSWORD`. `EMAIL_RECEIVERS` is for the public 'To' field, and `EMAIL_BCC_RECEIVERS` is for private recipients.
 EMAIL_SENDER = "haud.tech@gmail.com"
 EMAIL_RECEIVERS = ["haud.tech@gmail.com"]
-EMAIL_BCC_RECEIVERS = ["haudo1905@gmail.com", "haud.fin@gmail.com"]
+EMAIL_BCC_RECEIVERS = ["haud.tech@gmail.com"]
 
 # Email Sender Display Name
 # Meaning: A friendly name for the sender that appears in the email client (e.g., "VN30 Alerter").

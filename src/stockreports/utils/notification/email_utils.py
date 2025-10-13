@@ -54,7 +54,7 @@ def send_email(subject: str, body: str):
     message = MIMEMultipart()
     # Format the "From" header to show a display name instead of just the email
     message['From'] = formataddr((sender_display_name, sender_email))
-    message['To'] = ", ".join(receiver_emails)
+    # message['To'] = ", ".join(receiver_emails)
     # The 'Bcc' header is not actually added to the message to ensure privacy
     message['Subject'] = subject
     # Add a "Reply-To" header to guide replies to the correct address
