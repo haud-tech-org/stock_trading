@@ -92,7 +92,7 @@ LOG_LEVEL = "INFO"
 # Guidance: Always use "DEVELOPMENT" for testing changes. Switch to "DEPLOYMENT" for actual use.
 # Range: "DEVELOPMENT" or "DEPLOYMENT".
 # Example: `MODE = "DEVELOPMENT"`
-MODE = "DEPLOYMENT"
+MODE = "DEVELOPMENT"
 
 # Data Directory
 # Meaning: The relative path from the project root to the folder containing historical data JSON files.
