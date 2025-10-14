@@ -75,3 +75,30 @@ class AlertSummary:
     def to_dict(self):
         """Converts the dataclass to a dictionary, handling nested dataclasses."""
         return asdict(self)
+
+@dataclass
+class Trade:
+    """Represents a single simulated trade from entry to exit."""
+    entry_signal: str
+    entry_price: float
+    entry_timestamp: str
+    exit_signal: str
+    exit_price: float
+    exit_timestamp: str
+    profit_loss: float
+    status: str
+
+@dataclass
+class ProfitabilityReport:
+    """Encapsulates the full summary of a trading simulation for a day."""
+    total_trades: int
+    successful_trades: int
+    failed_trades: int
+    success_rate: str
+    failure_rate: str
+    total_profit_loss: float
+    trades: List[Trade]
+
+    def to_dict(self):
+        """Converts the report to a dictionary for JSON serialization."""
+        return asdict(self)
