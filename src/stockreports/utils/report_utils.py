@@ -9,7 +9,7 @@ from typing import Dict, Any
 import pytz
 
 from src.stockreports.config import loader
-from src.stockreports.alert.model.models import AlertResult, AlertSummary
+from src.stockreports.alert.model.models import AlertResult, AlertSummary, ProfitabilityReport
 from src.stockreports.utils.time_utils import get_market_timezone_str
 
 # --- Settings & Logger ---
@@ -18,57 +18,57 @@ TIMEZONE = pytz.timezone(get_market_timezone_str())
 logger = logging.getLogger(__name__)
 
 
+def _save_json_report(data: Any, filepath: str, logger_instance: logging.Logger):
+    """
+    A generic utility to save data to a JSON file. It creates the directory if it doesn't exist.
+
+    Args:
+        data (Any): The data to save (can be a list, dict, or pandas DataFrame).
+        filepath (str): The full path to the file.
+        logger_instance (logging.Logger): The logger to use for output.
+    """
+    try:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w') as f:
+            if isinstance(data, pd.DataFrame):
+                data.to_json(f, orient='records', indent=4)
+            else:
+                json.dump(data, f, indent=4)
+        logger_instance.info(f"Successfully saved report to {filepath}")
+    except Exception as e:
+        logger_instance.error(f"Failed to save report to {filepath}: {e}")
+
+
 def save_alert_report(result: AlertResult, symbol: str, date_str: str):
     """
     Saves the detailed alerts from an analysis result to a JSON file.
-
-    Args:
-        result (AlertResult): The result object from an alert approach.
-        symbol (str): The stock symbol being processed.
-        date_str (str): The date of the analysis in 'YYYY-MM-DD' format.
     """
     if not result.has_alerts:
         return
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     reports_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), result.approach_name.lower())
-    os.makedirs(reports_dir, exist_ok=True)
     filepath = os.path.join(reports_dir, f"alert_notification_{date_str.replace('-', '')}.json")
 
-    try:
-        alerts_to_save = result.alerts.copy()
-        
-        # Identify all datetime-like columns
-        datetime_cols = alerts_to_save.select_dtypes(include=['datetime64[ns]', 'datetimetz']).columns
+    alerts_to_save = result.alerts.copy()
+    datetime_cols = alerts_to_save.select_dtypes(include=['datetime64[ns]', 'datetimetz']).columns
+    for col in datetime_cols:
+        if alerts_to_save[col].dt.tz is None:
+            alerts_to_save[col] = alerts_to_save[col].dt.tz_localize('UTC')
+        alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
 
-        # Convert to the configured timezone and then format to string
-        for col in datetime_cols:
-            if alerts_to_save[col].dt.tz is None:
-                alerts_to_save[col] = alerts_to_save[col].dt.tz_localize('UTC')
-            
-            alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
-
-        alerts_to_save.to_json(filepath, orient='records', indent=4)
-        logger.info(f"Successfully saved report for {result.approach_name} to {filepath}")
-    except Exception as e:
-        logger.error(f"Failed to save report for {result.approach_name}: {e}")
+    _save_json_report(alerts_to_save, filepath, logger)
 
 
 def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
     """
     Updates a running summary JSON file with the latest alert statistics.
-
-    Args:
-        result (AlertResult): The result object from an alert approach.
-        symbol (str): The stock symbol being processed.
-        date_str (str): The date of the analysis in 'YYYY-MM-DD' format.
     """
     if not result.has_alerts:
         return
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     reports_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), result.approach_name.lower())
-    os.makedirs(reports_dir, exist_ok=True)
     filepath = os.path.join(reports_dir, "alert_summary.json")
 
     total_alerts = len(result.alerts)
@@ -109,7 +109,6 @@ def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
                 all_summaries = json.load(f)
             if not isinstance(all_summaries, list):
                 all_summaries = []
-            # Remove any existing summary for the same date before adding the new one
             all_summaries = [s for s in all_summaries if s.get('date') != date_str]
         except (json.JSONDecodeError, IOError):
             all_summaries = []
@@ -117,7 +116,17 @@ def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
     all_summaries.append(new_summary.to_dict())
     all_summaries.sort(key=lambda x: x.get('date', ''))
     
-    with open(filepath, 'w') as f:
-        json.dump(all_summaries, f, indent=4)
+    _save_json_report(all_summaries, filepath, logger)
+
+
+def save_profitability_report(summary_data: ProfitabilityReport, symbol: str, date_str: str, logger_instance: logging.Logger):
+    """
+    Saves the profitability simulation summary to a JSON file.
+    """
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    report_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), "profitability")
     
-    logger.info(f"Successfully updated alert summary for {result.approach_name} at {filepath}")
+    filename = f"profitability_summary_{date_str.replace('-', '')}.json"
+    filepath = os.path.join(report_dir, filename)
+    
+    _save_json_report(summary_data.to_dict(), filepath, logger_instance)

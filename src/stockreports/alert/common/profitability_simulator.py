@@ -1,0 +1,92 @@
+import pandas as pd
+from typing import List, Dict, Any
+import pytz
+from src.stockreports.utils.time_utils import get_market_timezone_str
+from src.stockreports.alert.model.models import Trade, ProfitabilityReport
+
+TIMEZONE = pytz.timezone(get_market_timezone_str())
+
+def simulate_profitability(alerts: List[Dict[str, Any]]) -> ProfitabilityReport:
+    """
+    Simulates trading based on a list of alerts to calculate overall profitability.
+
+    Args:
+        alerts: A list of alert dictionaries, each containing at least
+                'alert_time', 'signal', and 'alert_price'.
+
+    Returns:
+        A ProfitabilityReport object summarizing the simulation results.
+    """
+    if not alerts:
+        return ProfitabilityReport(
+            total_trades=0,
+            successful_trades=0,
+            failed_trades=0,
+            success_rate="0.00%",
+            failure_rate="0.00%",
+            total_profit_loss=0.0,
+            trades=[]
+        )
+
+    # Sort alerts by alert_time to process them in chronological order
+    # The alert_time is expected to be a datetime object
+    sorted_alerts = sorted(alerts, key=lambda x: x['alert_time'])
+
+    trades = []
+    current_position = None
+    entry_price = 0
+    entry_time = None
+
+    for alert in sorted_alerts:
+        signal = alert.get('signal')
+        alert_price = alert.get('alert_price')
+        alert_time = alert.get('alert_time')
+
+        if not signal or alert_price is None or alert_time is None:
+            continue
+
+        if current_position is None:
+            # Open a new position
+            current_position = signal
+            entry_price = alert_price
+            entry_time = alert_time
+        elif signal != current_position:
+            # Close the current position (reversal signal)
+            if current_position == 'BUY':
+                profit_loss = alert_price - entry_price
+            else:  # SELL
+                profit_loss = entry_price - alert_price
+
+            trades.append(Trade(
+                entry_signal=current_position,
+                entry_price=entry_price,
+                entry_timestamp=entry_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+                exit_signal=signal,
+                exit_price=alert_price,
+                exit_timestamp=alert_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+                profit_loss=profit_loss,
+                status="Success" if profit_loss > 0 else "Failed"
+            ))
+
+            # Start a new position with the current alert
+            current_position = signal
+            entry_price = alert_price
+            entry_time = alert_time
+
+    # Calculate summary statistics
+    total_trades = len(trades)
+    successful_trades = sum(1 for trade in trades if trade.status == 'Success')
+    failed_trades = total_trades - successful_trades
+    success_rate = (successful_trades / total_trades) * 100 if total_trades > 0 else 0
+    failure_rate = (failed_trades / total_trades) * 100 if total_trades > 0 else 0
+    total_profit_loss = sum(trade.profit_loss for trade in trades)
+
+    return ProfitabilityReport(
+        total_trades=total_trades,
+        successful_trades=successful_trades,
+        failed_trades=failed_trades,
+        success_rate=f"{success_rate:.2f}%",
+        failure_rate=f"{failure_rate:.2f}%",
+        total_profit_loss=total_profit_loss,
+        trades=trades
+    )

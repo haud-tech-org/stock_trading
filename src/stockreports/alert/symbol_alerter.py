@@ -34,10 +34,11 @@ from src.stockreports.utils.data_utils import (
     load_data_for_development, load_live_data
 )
 from src.stockreports.utils.time_utils import is_trading_hours, TIMEZONE_STR, SESSIONS
-from src.stockreports.utils.report_utils import save_alert_report, update_alert_summary
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
+from src.stockreports.alert.common.profitability_simulator import simulate_profitability
+from src.stockreports.utils.report_utils import save_profitability_report, save_alert_report, update_alert_summary
 from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
 
 # --- Constants & Configuration ---
@@ -229,12 +230,17 @@ class SymbolAlerter:
             return
         
         self.logger.info(f"Loaded {len(daily_df)} data points for {self.symbol} on {processing_date}.")
+        
+        all_alerts_for_day = []
         approaches_to_run = getattr(settings, 'ALERT_APPROACHES', [DEFAULT_APPROACH])
+        
         for approach_name in approaches_to_run:
             self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} on {processing_date} ---")
             executor = self._get_approach_executor(approach_name)
             if not executor: continue
+            
             result = executor(daily_df.copy())
+            
             if result.has_alerts:
                 if settings.MODE == "DEVELOPMENT":
                     validated_alerts = []
@@ -244,9 +250,28 @@ class SymbolAlerter:
                         validated_alert = calculate_alert_performance(alert_data, daily_df, signal_settings.VALIDATION_PERIOD_MINUTES)
                         validated_alerts.append(validated_alert.to_dict())
                     result.alerts = pd.DataFrame(validated_alerts)
+                    all_alerts_for_day.extend(result.alerts.to_dict('records'))
                     self.notification_manager.process_and_notify(result, self.symbol)
                 
-                # Use the new utility functions for reporting
                 save_alert_report(result, self.symbol, processing_date)
                 if settings.MODE == "DEVELOPMENT":
                     update_alert_summary(result, self.symbol, processing_date)
+
+        if settings.MODE == "DEVELOPMENT" and all_alerts_for_day:
+            self.logger.info(f"\n--- Running Profitability Simulation for {self.symbol} on {processing_date} ---")
+            simulation_summary = simulate_profitability(all_alerts_for_day)
+            
+            # Log the summary in a readable format
+            self.logger.info("Profitability Simulation Summary:")
+            self.logger.info(f"  Total Trades: {simulation_summary.total_trades}")
+            self.logger.info(f"  Successful Trades: {simulation_summary.successful_trades} ({simulation_summary.success_rate})")
+            self.logger.info(f"  Failed Trades: {simulation_summary.failed_trades} ({simulation_summary.failure_rate})")
+            self.logger.info(f"  Total Profit/Loss: {simulation_summary.total_profit_loss:.2f}")
+
+            # Save the detailed report using the new utility function
+            save_profitability_report(
+                summary_data=simulation_summary,
+                symbol=self.symbol,
+                date_str=processing_date,
+                logger_instance=self.logger
+            )
