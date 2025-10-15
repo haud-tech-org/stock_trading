@@ -6,13 +6,17 @@ from src.stockreports.alert.model.models import Trade, ProfitabilityReport
 
 TIMEZONE = pytz.timezone(get_market_timezone_str())
 
-def simulate_profitability(alerts: List[Dict[str, Any]]) -> ProfitabilityReport:
+def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFrame = None) -> ProfitabilityReport:
     """
     Simulates trading based on a list of alerts to calculate overall profitability.
 
     Args:
         alerts: A list of alert dictionaries, each containing at least
-                'alert_time', 'signal', and 'alert_price'.
+                'alert_time' and 'signal'. If trade_data is not provided,
+                it must also contain 'alert_price'.
+        trade_data: An optional pandas DataFrame with 'time' and 'close' columns.
+                    If provided, prices will be looked up from this dataframe
+                    based on the alert's timestamp.
 
     Returns:
         A ProfitabilityReport object summarizing the simulation results.
@@ -37,10 +41,28 @@ def simulate_profitability(alerts: List[Dict[str, Any]]) -> ProfitabilityReport:
     entry_price = 0
     entry_time = None
 
+    # Prepare trade_data for efficient lookup if provided
+    if trade_data is not None:
+        if not isinstance(trade_data.index, pd.DatetimeIndex):
+            trade_data = trade_data.set_index('time')
+        if not trade_data.index.is_monotonic_increasing:
+            trade_data = trade_data.sort_index()
+
     for alert in sorted_alerts:
         signal = alert.get('signal')
-        alert_price = alert.get('alert_price')
         alert_time = alert.get('alert_time')
+        
+        if trade_data is not None:
+            # Find the closest price in time from the trade_data
+            # Use asof to find the last known price at or before the alert time
+            price_match = trade_data.asof(alert_time)
+            if pd.notna(price_match['close']):
+                alert_price = price_match['close']
+            else:
+                # If no price is found (e.g., alert is before first data point), skip it
+                continue
+        else:
+            alert_price = alert.get('alert_price')
 
         if not signal or alert_price is None or alert_time is None:
             continue
