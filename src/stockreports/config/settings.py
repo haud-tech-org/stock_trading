@@ -104,8 +104,8 @@ DATA_DIR = "src/stockreports/data"
 # Defines the date range for fetching data when running in DEVELOPMENT mode.
 # Format: YYYY-MM-DD
 DEV_DATA_DATE_RANGE = {
-    "start_date": "2025-10-13",
-    "end_date": "2025-10-13"
+    "start_date": "2025-10-15",
+    "end_date": "2025-10-15"
 }
 
 # If True, saves the raw JSON response to a file when running in DEVELOPMENT mode.
@@ -156,4 +156,19 @@ TRADING_HOURS = {
     #         "main": {"start": "09:30", "end": "16:00"}
     #     }
     # }
+}
+
+
+# --- Consolidated Profitability Simulation ---
+
+# Consolidated Profitability
+# Meaning: Configuration for running a special profitability simulation where alerts from multiple symbols are used to simulate trades on a single, different symbol.
+# Guidance:
+#   - ENABLED: Set to True to activate this feature. When False, this entire section is ignored.
+#   - ALERT_SOURCE_SYMBOLS: A list of symbols whose alerts will be used as trade triggers.
+#   - TRADE_EXECUTION_SYMBOL: The one symbol on which all trades will be simulated. This symbol's price data will be used to calculate profit/loss.
+CONSOLIDATED_PROFITABILITY = {
+    "ENABLED": True,
+    "ALERT_SOURCE_SYMBOLS": ["VN30", "41I1FA000"],
+    "TRADE_EXECUTION_SYMBOL": "41I1FA000"
 }
