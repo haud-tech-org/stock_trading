@@ -183,6 +183,23 @@ ADX_PERIOD = 14
 # Example: `ADX_THRESHOLD_RANGE = (25, 75)`
 ADX_THRESHOLD_RANGE = (16, 60)  # A value between 16 and 60 is considered a trending market.
 
+# --- SUPPORT_BREAKDOWN Specific Settings ---
+
+# Volume Confirmation Period for Support Breakdown
+# Meaning: The lookback period for calculating the average volume used to confirm a breakdown.
+# Guidance: A shorter period (e.g., 10) focuses on recent volume trends leading up to the breakdown.
+# Range: Integer > 0.
+# Example: `SUPPORT_BREAKDOWN_VOLUME_AVG_PERIOD = 10`
+SUPPORT_BREAKDOWN_VOLUME_AVG_PERIOD = 10
+
+# Volume Confirmation Multiplier for Support Breakdown
+# Meaning: The volume of the breakdown candle must be at least this multiple of the average volume.
+# Guidance: A value of 1.5 means the breakdown volume must be 50% higher than the recent average. This filters out low-conviction breakdowns.
+# Range: Float > 1.0.
+# Example: `SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.5`
+SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.5
+
+
 # --- Approach-Specific Configurations ---
 # Meaning: This dictionary allows for fine-tuning parameters for each specific alerting strategy (approach).
 # Guidance: You can enable/disable advanced confirmation or tweak parameters like prominence and window sizes for each approach independently. The "default" block applies to any approach not explicitly defined.
@@ -206,6 +223,14 @@ APPROACH_CONFIG = {
     },
     "STRONG_CANDLE": {
         "USE_ADVANCED_CONFIRMATION": False,
+    },
+    "SUPPORT_BREAKDOWN": {
+        "PRICE_TOLERANCE": 0.0025, # Max % difference between lows in a support shelf
+        "MIN_TOUCHES": 3,          # Min number of candles touching the support level
+        "LOOKBACK_PERIOD": 60,     # How many candles back to look for a support shelf
+        "COOLDOWN_PERIOD": 30,     # How many minutes to wait before generating a new alert
+        "CONFIRMATION_CANDLE_BODY": 0.5, # The confirmation candle must close in the bottom 50% of its range
+        "USE_VOLUME_CONFIRMATION": True, # Master switch to enable/disable the volume check
     },
     # A default block for any approach not explicitly listed
     "default": {
