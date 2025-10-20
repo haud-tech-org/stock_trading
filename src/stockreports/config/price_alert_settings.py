@@ -6,13 +6,13 @@ ALLOW_REPEATED_LEVEL_ALERTS = False
 
 PRICE_ALERTS = {
     "VN30": {
-        "reference_price": 1980.0,
-        "fixed_levels": [1984.0,1990.0, 1970.0, 1950.0, 1940.0, 1930.0],
+        "reference_price": 1977.1,
+        "fixed_levels": [1999.0, 2009.2, 2019.1, 1950.3, 1935.8],
         "absolute_interval": 9.0,
     },
-    "41I1FA000": {
-        "reference_price": 1975.0,
-        "fixed_levels": [1973.7,1980.0, 1985.0, 1990.0, 1970.0, 1965.0, 1960.0, 1955.0, 1950.0, 1940.0],
+    "41I1FB000": {
+        "reference_price": 1968.0,
+        "fixed_levels": [1978.1, 1998.3, 2009.0, 2031.8, 2041.8, 2051.8],
         "absolute_interval": 9.0,
     },
     # Example for another symbol

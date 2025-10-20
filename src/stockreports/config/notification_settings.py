@@ -10,7 +10,7 @@ Configuration settings for all alert notification channels (Email, ntfy, etc.).
 # Guidance: Set to `False` to quickly turn off all emails without removing your credentials.
 # Range: `True` or `False`.
 # Example: `EMAIL_ENABLED = True`
-EMAIL_ENABLED = True
+EMAIL_ENABLED = False
 
 # Email SMTP Server / Port
 # Meaning: The server and port for your email provider's SMTP service.
@@ -22,7 +22,7 @@ EMAIL_SMTP_PORT = 587
 # Meaning: The email address that sends the alerts and the list of addresses that receive them.
 # Guidance: Ensure the sender email is the one associated with the `EMAIL_APP_PASSWORD`. `EMAIL_RECEIVERS` is for the public 'To' field, and `EMAIL_BCC_RECEIVERS` is for private recipients.
 EMAIL_SENDER = "haud.tech@gmail.com"
-EMAIL_RECEIVERS = ["haud.tech@gmail.com"]
+EMAIL_RECEIVERS = []
 EMAIL_BCC_RECEIVERS = ["haud.tech@gmail.com"]
 
 # Email Sender Display Name
