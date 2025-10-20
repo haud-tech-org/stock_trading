@@ -131,13 +131,26 @@ class SymbolAlertManager:
                         report_data = json.load(f)
                     
                     trades = report_data.get("trades", [])
-                    for trade in trades:
-                        signal = {
+                    # Enumerate through trades to identify the last one
+                    for i, trade in enumerate(trades):
+                        # Always add the entry signal for every trade
+                        all_signals_for_day.append({
                             "alert_time": pd.to_datetime(trade["entry_timestamp"]),
-                            "signal": trade["entry_signal"]
-                        }
-                        all_signals_for_day.append(signal)
-                    logging.info(f"Loaded {len(trades)} signals from {symbol} for {date_str}.")
+                            "signal": trade["entry_signal"],
+                            "approach": trade.get("entry_approach"),
+                            "source_symbol": symbol  # Tag with the source symbol
+                        })
+
+                        # For the last trade only, add the exit signal to ensure it's included
+                        if i == len(trades) - 1 and "exit_timestamp" in trade and "exit_timestamp" in trade and trade["exit_timestamp"]:
+                            all_signals_for_day.append({
+                                "alert_time": pd.to_datetime(trade["exit_timestamp"]),
+                                "signal": trade["exit_signal"],
+                                "approach": trade.get("exit_approach"),
+                                "source_symbol": symbol  # Tag with the source symbol
+                            })
+                    
+                    logging.info(f"Loaded signals from {symbol} for {date_str}, including last exit.")
 
                 except (json.JSONDecodeError, KeyError) as e:
                     logging.error(f"Error reading or parsing report {report_path}: {e}")
@@ -157,6 +170,20 @@ class SymbolAlertManager:
             if daily_trade_df.empty:
                 logging.warning(f"No trading data for {trade_symbol} on {date_str}. Skipping simulation.")
                 continue
+
+            # --- Add END_OF_DAY signal if a position is left open ---
+            if all_signals_for_day:
+                last_signal_direction = all_signals_for_day[-1]['signal']
+                last_data_point = daily_trade_df.iloc[-1]
+                
+                end_of_day_signal = {
+                    "alert_time": pd.to_datetime(last_data_point['time']),
+                    "signal": "SELL" if last_signal_direction == "BUY" else "BUY",
+                    "approach": "END_OF_DAY",
+                    "source_symbol": "SYNTHETIC"  # Identify synthetic signals
+                }
+                all_signals_for_day.append(end_of_day_signal)
+                logging.info("Appended END_OF_DAY signal to close the final trade.")
 
             logging.info(f"Simulating {len(all_signals_for_day)} combined signals on {trade_symbol} for {date_str}.")
             simulation_summary = simulate_profitability(all_signals_for_day, daily_trade_df)

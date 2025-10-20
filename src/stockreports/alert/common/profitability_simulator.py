@@ -40,6 +40,8 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
     current_position = None
     entry_price = 0
     entry_time = None
+    entry_approach = None
+    entry_source_symbol = None  # To store the source of the entry signal
 
     # Prepare trade_data for efficient lookup if provided
     if trade_data is not None:
@@ -51,6 +53,8 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
     for alert in sorted_alerts:
         signal = alert.get('signal')
         alert_time = alert.get('alert_time')
+        approach = alert.get('approach')
+        source_symbol = alert.get('source_symbol')  # Get the source symbol
         
         if trade_data is not None:
             # Find the closest price in time from the trade_data
@@ -72,6 +76,8 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
             current_position = signal
             entry_price = alert_price
             entry_time = alert_time
+            entry_approach = approach
+            entry_source_symbol = source_symbol  # Store the entry source
         elif signal != current_position:
             # Close the current position (reversal signal)
             if current_position == 'BUY':
@@ -83,9 +89,13 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
                 entry_signal=current_position,
                 entry_price=entry_price,
                 entry_timestamp=entry_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+                entry_approach=entry_approach,
+                entry_source_symbol=entry_source_symbol,  # Add entry source to trade
                 exit_signal=signal,
                 exit_price=alert_price,
                 exit_timestamp=alert_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+                exit_approach=approach,
+                exit_source_symbol=source_symbol,  # Add exit source to trade
                 profit_loss=profit_loss,
                 status="Success" if profit_loss > 0 else "Failed"
             ))
@@ -94,6 +104,8 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
             current_position = signal
             entry_price = alert_price
             entry_time = alert_time
+            entry_approach = approach
+            entry_source_symbol = source_symbol  # Start new position with new source
 
     # Calculate summary statistics
     total_trades = len(trades)
