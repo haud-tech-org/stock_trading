@@ -78,15 +78,21 @@ class AlertSummary:
 
 @dataclass
 class Trade:
-    """Represents a single simulated trade from entry to exit."""
+    """
+    Represents a single simulated trade with an entry and an exit.
+    """
     entry_signal: str
     entry_price: float
     entry_timestamp: str
+    entry_approach: str
     exit_signal: str
     exit_price: float
     exit_timestamp: str
+    exit_approach: str
     profit_loss: float
     status: str
+    entry_source_symbol: Optional[str] = None  # New field for entry source
+    exit_source_symbol: Optional[str] = None   # New field for exit source
 
 @dataclass
 class ProfitabilityReport:
