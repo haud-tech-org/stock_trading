@@ -1,0 +1,22 @@
+name: Stop Web App (trading hours)
+
+on:
+  schedule:
+    # Morning stop: 04:45 UTC (11:45 VN) Mon-Fri
+    - cron: '45 4 * * MON-FRI'
+    # Afternoon stop: 08:00 UTC (15:00 VN) Mon-Fri
+    - cron: '0 8 * * MON-FRI'
+  workflow_dispatch: {}
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Stop Web App
+        run: |
+          az webapp stop --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" --name "${{ secrets.AZURE_WEBAPP_NAME }}"
