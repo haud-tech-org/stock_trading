@@ -219,7 +219,7 @@ APPROACH_CONFIG = {
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 30, # Lookback period (in minutes) for finding peaks/bottoms
     },
     "ICHIMOKU": {
-        "USE_ADVANCED_CONFIRMATION": False,
+        "USE_ADVANCED_CONFIRMATION": True,
     },
     "STRONG_CANDLE": {
         "USE_ADVANCED_CONFIRMATION": False,
