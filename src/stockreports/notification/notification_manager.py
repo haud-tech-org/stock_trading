@@ -8,6 +8,7 @@ from src.stockreports.alert.model.models import AlertNotification, AlertResult
 from src.stockreports.utils.notification.email_utils import send_email, format_email_subject, format_email_body
 from src.stockreports.utils.notification.sms_utils import send_sms, format_sms_body
 from src.stockreports.utils.notification.ntfy_utils import send_ntfy_notification
+from src.stockreports.utils.alert_utils import calculate_suggested_price
 
 class NotificationManager:
     """
@@ -21,10 +22,10 @@ class NotificationManager:
         self.logger = logging.getLogger(__name__)
         self.alerts_sent_in_session = set()
 
-    def process_and_notify(self, result: AlertResult, symbol: str):
+    def process_and_notify(self, result: AlertResult, symbol: str, market_data: pd.DataFrame):
         """
-        Processes an alert result and sends notifications if applicable.
-        This method checks for duplicates before sending.
+        Processes the latest alert from a result and sends notifications if applicable.
+        This method checks for duplicates before sending and does not modify the input result.
         """
         if not result.has_alerts:
             return
@@ -45,13 +46,21 @@ class NotificationManager:
             except json.JSONDecodeError:
                 self.logger.warning(f"Could not decode details JSON: {latest_alert_row['details']}")
 
+        # Calculate suggested price for the latest alert only
+        suggested_price = calculate_suggested_price(
+            signal=latest_alert_row['signal'],
+            alert_time=latest_alert_row['alert_time'],
+            market_data=market_data
+        )
+
         notification = AlertNotification(
             symbol=symbol,
             signal=latest_alert_row['signal'],
             alert_price=latest_alert_row['alert_price'],
             alert_time=latest_alert_row['alert_time'],
             approach=latest_alert_row['approach'],
-            details=details_dict
+            details=details_dict,
+            suggested_price=suggested_price
         )
         
         self._send_alert(notification)

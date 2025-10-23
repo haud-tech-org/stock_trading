@@ -56,6 +56,7 @@ class AlertNotification:
     alert_price: float
     alert_time: pd.Timestamp
     details: dict = field(default_factory=dict)
+    suggested_price: Optional[float] = None
 
 @dataclass
 class AlertSummary:
@@ -93,6 +94,8 @@ class Trade:
     status: str
     entry_source_symbol: Optional[str] = None  # New field for entry source
     exit_source_symbol: Optional[str] = None   # New field for exit source
+    entry_suggested_price: Optional[float] = None # New field for entry suggested price
+    exit_suggested_price: Optional[float] = None # New field for exit suggested price
 
 @dataclass
 class ProfitabilityReport:

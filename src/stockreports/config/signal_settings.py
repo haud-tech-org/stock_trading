@@ -263,4 +263,4 @@ TREND_MINIMUM_MAGNITUDE = 3  # The minimum point change required to validate a t
 # --- Validation Settings ---
 # Defines the time window in minutes after an alert is generated to check its outcome (profit/loss).
 # This is only used when running in DEVELOPMENT mode against historical "truth" data.
-VALIDATION_PERIOD_MINUTES = 30
+VALIDATION_PERIOD_MINUTES = 10
