@@ -209,14 +209,15 @@ APPROACH_CONFIG = {
         # How significant a peak/trough must be to be considered a reversal point. Higher values ignore minor fluctuations.
         "PEAK_TROUGH_PROMINENCE": 4,
         # How many candles to wait for confirmation
-        "CONFIRMATION_WINDOW": 1,
+        "CONFIRMATION_WINDOW": 3,
         # How many of those candles must agree with the trend (for simple confirmation)
-        "CONFIRMATION_MIN_CONSISTENCY": 3,
+        "CONFIRMATION_MIN_CONSISTENCY": 4,
     },
     "CONSISTENT_MOMENTUM": {
         "USE_ADVANCED_CONFIRMATION": True,
-        "CONFIRMATION_WINDOW": 1, # Rolling window to check for momentum
+        "CONFIRMATION_WINDOW": 3, # Rolling window to check for momentum
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 30, # Lookback period (in minutes) for finding peaks/bottoms
+        "BODY_TO_RANGE_MIN_RATIO": 0.8, # The average body-to-range ratio required for the momentum window
     },
     "ICHIMOKU": {
         "USE_ADVANCED_CONFIRMATION": True,

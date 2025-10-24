@@ -140,9 +140,20 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict) -> list[Ale
         if not is_breakout_confirmed:
             continue
 
-        # --- 5. Original: Check for body dominance over wicks ---
+        # --- 5. New: Average Body-to-Range Ratio Confirmation ---
+        body_to_range_min_ratio = config.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
         window['body'] = abs(window['close'] - window['open'])
-        window['wick'] = window['high'] - window['low'] - window['body']
+        window['range'] = window['high'] - window['low']
+        
+        # Avoid division by zero for doji candles
+        valid_candles = window[window['range'] > 0]
+        if not valid_candles.empty:
+            avg_body_to_range_ratio = (valid_candles['body'] / valid_candles['range']).mean()
+            if avg_body_to_range_ratio < body_to_range_min_ratio:
+                continue
+
+        # --- 6. Original: Check for body dominance over wicks ---
+        window['wick'] = window['range'] - window['body']
         
         total_body = window['body'].sum()
         total_wick = window['wick'].sum()
@@ -150,7 +161,7 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict) -> list[Ale
         if total_body <= total_wick:
             continue
 
-        # --- 6. Advanced Confirmation (optional) ---
+        # --- 7. Advanced Confirmation (optional) ---
         if use_advanced_confirmation:
             # Get the specific candles we need from the indicator-rich dataframe
             adv_current_candle = df_with_indicators.loc[current_candle.name]
