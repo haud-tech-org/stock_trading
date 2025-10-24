@@ -128,8 +128,7 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict) -> list[AlertData
                         alert_time = candle['time']
                         start_time = df.iloc[last_strong_candle_idx]['time']
                         
-                        alert_ts = int(alert_time.tz_convert('UTC').timestamp())
-                        alert_id = f"{alert_ts}_{signal}"
+                        alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
                         details = {
                             "strong_candle_body": round(df.iloc[last_strong_candle_idx]['body_size'], 2),
