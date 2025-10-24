@@ -193,10 +193,10 @@ def _find_support_breakdown_alerts(df: pd.DataFrame, config: dict, approach_name
             
             magnitude = ((support_level - alert_price) / support_level) * 100 if support_level > 0 else 0
             
-            alert_id = f"{approach_name}_{alert_time.strftime('%Y%m%d%H%M%S')}"
+            alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
             details = {
-                "support_level": support_level,
+                "support_level": round(support_level, 2),
                 "breakdown_candle_time": breakdown_candle['time'].isoformat(),
                 "confirmation_candle_time": confirmation_candle['time'].isoformat(),
                 "support_touches": len(touch_indices),
