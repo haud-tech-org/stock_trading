@@ -209,20 +209,20 @@ APPROACH_CONFIG = {
         # How significant a peak/trough must be to be considered a reversal point. Higher values ignore minor fluctuations.
         "PEAK_TROUGH_PROMINENCE": 4,
         # How many candles to wait for confirmation
-        "CONFIRMATION_WINDOW": 4,
+        "CONFIRMATION_WINDOW": 1,
         # How many of those candles must agree with the trend (for simple confirmation)
-        "CONFIRMATION_MIN_CONSISTENCY": 2,
+        "CONFIRMATION_MIN_CONSISTENCY": 3,
     },
     "CONSISTENT_MOMENTUM": {
         "USE_ADVANCED_CONFIRMATION": True,
-        "CONFIRMATION_WINDOW": 4, # Rolling window to check for momentum
+        "CONFIRMATION_WINDOW": 1, # Rolling window to check for momentum
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 30, # Lookback period (in minutes) for finding peaks/bottoms
     },
     "ICHIMOKU": {
         "USE_ADVANCED_CONFIRMATION": True,
     },
     "STRONG_CANDLE": {
-        "USE_ADVANCED_CONFIRMATION": False,
+        "USE_ADVANCED_CONFIRMATION": True,
     },
     "SUPPORT_BREAKDOWN": {
         "PRICE_TOLERANCE": 0.0025, # Max % difference between lows in a support shelf
@@ -234,7 +234,7 @@ APPROACH_CONFIG = {
     },
     # A default block for any approach not explicitly listed
     "default": {
-        "USE_ADVANCED_CONFIRMATION": False,
+        "USE_ADVANCED_CONFIRMATION": True,
         "PEAK_TROUGH_PROMINENCE": 5,
         "CONFIRMATION_WINDOW": 4,
         "CONFIRMATION_MIN_CONSISTENCY": 2,
@@ -245,11 +245,11 @@ APPROACH_CONFIG = {
 # --- DEPRECATED: To be removed after full refactoring ---
 # When True, the smart alerter will use MA Cross, Ichimoku Cross, or Strong Candle for confirmation.
 # When False, it will use the simple logic of counting consistent candles.
-USE_ADVANCED_CONFIRMATION = False
+USE_ADVANCED_CONFIRMATION = True
 
 # --- Simple Confirmation Settings (for when USE_ADVANCED_CONFIRMATION is False) ---
-CONFIRMATION_WINDOW = 4  # How many candles to wait for confirmation
-CONFIRMATION_MIN_CONSISTENCY = 2  # How many of those candles must agree with the trend
+CONFIRMATION_WINDOW = 1  # How many candles to wait for confirmation
+CONFIRMATION_MIN_CONSISTENCY = 3  # How many of those candles must agree with the trend
 
 # --- Trend Validation Settings ---
 
@@ -258,7 +258,7 @@ CONFIRMATION_MIN_CONSISTENCY = 2  # How many of those candles must agree with th
 # Guidance: This acts as a filter to ignore very small, insignificant price movements. Set to 0 to disable this check.
 # Range: Integer >= 0.
 # Example: `TREND_MINIMUM_MAGNITUDE = 3`
-TREND_MINIMUM_MAGNITUDE = 3  # The minimum point change required to validate a trend
+TREND_MINIMUM_MAGNITUDE = 4  # The minimum point change required to validate a trend
 
 # --- Validation Settings ---
 # Defines the time window in minutes after an alert is generated to check its outcome (profit/loss).
