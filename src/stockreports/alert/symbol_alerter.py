@@ -161,8 +161,9 @@ class SymbolAlerter:
                     start_h, start_m = map(int, start_time_str.split(':'))
                     from_dt = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
                 else:
-                    # Subsequent runs: fetch the last minute of data
-                    from_dt = to_dt - timedelta(minutes=1)
+                    # Subsequent runs: fetch data from the last known point in time
+                    last_known_time = master_df['time'].max()
+                    from_dt = last_known_time
 
                 from_timestamp = int(from_dt.timestamp())
                 to_timestamp = int(to_dt.timestamp())
