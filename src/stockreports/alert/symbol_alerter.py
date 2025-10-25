@@ -171,14 +171,15 @@ class SymbolAlerter:
                 # Fetch the latest data slice
                 latest_df = load_live_data(self.symbol, from_timestamp, to_timestamp)
 
-                if not latest_df.empty:
-                    # Append new data and remove duplicates, keeping the last entry
-                    master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
-                
-                if master_df.empty:
-                    self.logger.warning("Master DataFrame is still empty. Waiting for data.")
+                if latest_df.empty:
+                    self.logger.warning("The latest DataFrame is still empty. Waiting for data.")
                     time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                     continue
+                
+                new_candle_count = len(latest_df)
+                
+                # Append new data and remove duplicates, keeping the last entry
+                master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
 
                 # --- Price Movement Alerter ---
                 price_alerter = PriceMovementAlerter(self.symbol, triggered_levels_today)
@@ -217,7 +218,7 @@ class SymbolAlerter:
                     self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} ---")
                     executor = self._get_approach_executor(approach_name)
                     if not executor: continue
-                    result = executor(processing_df.copy())
+                    result = executor(df=processing_df.copy(), new_candle_count=new_candle_count)
                     if result.has_alerts:
                         self.notification_manager.process_and_notify(result, self.symbol, processing_df)
                 
@@ -263,7 +264,8 @@ class SymbolAlerter:
             executor = self._get_approach_executor(approach_name)
             if not executor: continue
             
-            result = executor(daily_df.copy())
+            # Pass the full length of the daily dataframe as new_candle_count in development mode
+            result = executor(df=daily_df.copy(), new_candle_count=len(daily_df))
             
             if result.has_alerts:
                 # Step 1: Send notifications (fire-and-forget)
