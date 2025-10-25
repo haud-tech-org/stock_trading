@@ -131,6 +131,7 @@ class SymbolAlertManager:
                         report_data = json.load(f)
                     
                     trades = report_data.get("trades", [])
+                    
                     # Enumerate through trades to identify the last one
                     for i, trade in enumerate(trades):
                         # Always add the entry signal for every trade
@@ -138,7 +139,8 @@ class SymbolAlertManager:
                             "alert_time": pd.to_datetime(trade["entry_timestamp"]),
                             "signal": trade["entry_signal"],
                             "approach": trade.get("entry_approach"),
-                            "source_symbol": symbol  # Tag with the source symbol
+                            "source_symbol": symbol,  # Tag with the source symbol
+                            "suggested_price": trade.get("entry_suggested_price") # Get suggested price directly from the trade
                         })
 
                         # For the last trade only, add the exit signal to ensure it's included
@@ -147,7 +149,8 @@ class SymbolAlertManager:
                                 "alert_time": pd.to_datetime(trade["exit_timestamp"]),
                                 "signal": trade["exit_signal"],
                                 "approach": trade.get("exit_approach"),
-                                "source_symbol": symbol  # Tag with the source symbol
+                                "source_symbol": symbol,  # Tag with the source symbol
+                                "suggested_price": trade.get("exit_suggested_price") # Get suggested price directly from the trade
                             })
                     
                     logging.info(f"Loaded signals from {symbol} for {date_str}, including last exit.")

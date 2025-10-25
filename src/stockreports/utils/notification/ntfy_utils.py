@@ -14,8 +14,8 @@ def send_ntfy_notification(notification: AlertNotification):
         logging.warning("Ntfy is enabled but no topics are configured. Skipping.")
         return
 
-    title = f"{notification.signal} for {notification.symbol} ({notification.approach})"
-    message = f"Price: {notification.alert_price:.2f}\nTime: {notification.alert_time.strftime('%H:%M:%S')}"
+    title = f"{notification.signal} - {notification.symbol} - Suggest: {notification.suggested_price:.2f} - at signal price {notification.alert_price:.2f} ({notification.approach})"
+    message = f"Time: {notification.alert_time.strftime('%H:%M:%S')}"
 
     for topic in notification_settings.NTFY_TOPICS:
         try:

@@ -9,10 +9,41 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
-from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
 from src.stockreports.alert.model.models import AlertResult, AlertData
 
-def run_analysis(df: pd.DataFrame) -> AlertResult:
+logger = logging.getLogger(__name__)
+
+def _calculate_ichimoku_indicators(df: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """Calculates all necessary Ichimoku indicators."""
+    tenkan_period = config.get('TENKAN_PERIOD', 9)
+    kijun_period = config.get('KIJUN_PERIOD', 26)
+    senkou_b_period = config.get('SENKOU_B_PERIOD', 52)
+    chikou_lag = config.get('CHIKOU_LAG', 26)
+
+    # Tenkan-sen (Conversion Line)
+    high_tenkan = df['high'].rolling(window=tenkan_period).max()
+    low_tenkan = df['low'].rolling(window=tenkan_period).min()
+    df['tenkan_sen'] = (high_tenkan + low_tenkan) / 2
+
+    # Kijun-sen (Base Line)
+    high_kijun = df['high'].rolling(window=kijun_period).max()
+    low_kijun = df['low'].rolling(window=kijun_period).min()
+    df['kijun_sen'] = (high_kijun + low_kijun) / 2
+
+    # Senkou Span A (Leading Span A)
+    df['senkou_a'] = ((df['tenkan_sen'] + df['kijun_sen']) / 2).shift(kijun_period)
+
+    # Senkou Span B (Leading Span B)
+    high_senkou_b = df['high'].rolling(window=senkou_b_period).max()
+    low_senkou_b = df['low'].rolling(window=senkou_b_period).min()
+    df['senkou_b'] = ((high_senkou_b + low_senkou_b) / 2).shift(kijun_period)
+
+    # Chikou Span (Lagging Span)
+    df['chikou'] = df['close'].shift(-chikou_lag)
+    
+    return df
+
+def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
     Entry point for the Ichimoku approach. It identifies strong Ichimoku signals
     based on multiple conditions including Kumo, Chikou, and Kijun-sen distance.
@@ -25,7 +56,7 @@ def run_analysis(df: pd.DataFrame) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
         
-        alerts_data = _find_ichimoku_alerts(df, config)
+        alerts_data = _find_ichimoku_alerts(df, config, new_candle_count, approach_name)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
 
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
@@ -43,98 +74,76 @@ def run_analysis(df: pd.DataFrame) -> AlertResult:
             message=str(e)
         )
 
-def _find_ichimoku_alerts(df: pd.DataFrame, config: dict) -> list[AlertData]:
+def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int, approach_name: str) -> list[AlertData]:
     """
-    Finds alerts based on a comprehensive Ichimoku Cloud analysis.
-    This is based on the logic from `tests/manual/validate_alerts.py`.
+    Internal function to find alerts based on Ichimoku signals.
     """
     alerts = []
-    # Need at least 52 periods for Senkou Span B and 26 for Chikou lag.
-    if len(df) < 52 + 26: 
-        logging.warning(f"Ichimoku: DataFrame has less than {52+26} rows, cannot generate alerts.")
+    min_required_len = max(
+        config.get('TENKAN_PERIOD', 9),
+        config.get('KIJUN_PERIOD', 26),
+        config.get('SENKOU_B_PERIOD', 52)
+    )
+    if len(df) < min_required_len:
+        logging.warning(f"ICHIMOKU: DataFrame has less than {min_required_len} rows, cannot generate alerts.")
         return alerts
 
-    df.set_index('time', inplace=True)
-    # Use the common indicator preparation function
-    df = prepare_indicators(df)
+    df = _calculate_ichimoku_indicators(df, config)
+    df_indexed = df.set_index('time')
     
-    # --- Add Ichimoku-specific indicators not in the common function ---
-    # Senkou Span A: (Tenkan-sen + Kijun-sen) / 2
-    df['senkou_span_a'] = (df['tenkan_sen'] + df['kijun_sen']) / 2
+    candles_to_check = new_candle_count
+    i = len(df_indexed) - 1
     
-    # Senkou Span B: (52-period high + 52-period low) / 2
-    high_52 = df['high'].rolling(window=signal_settings.ICHI_SENKOU_B_PERIOD).max()
-    low_52 = df['low'].rolling(window=signal_settings.ICHI_SENKOU_B_PERIOD).min()
-    df['senkou_span_b'] = (high_52 + low_52) / 2
-    
-    # Chikou Span (Lagging Span) is handled in the loop by comparing current close to past close.
+    chikou_lag = config.get('CHIKOU_LAG', 26)
+    min_index = max(1, chikou_lag)
 
-    # --- Iterate and find signals ---
-    # Start from a point where all data is available (52 for Senkou B, 26 for Chikou lag)
-    start_index = max(signal_settings.ICHI_SENKOU_B_PERIOD, signal_settings.ICHI_CHIKOU_LAG)
-    for i in range(start_index, len(df)):
-        candle = df.iloc[i]
-        prev_candle = df.iloc[i-1]
-
-        # --- Condition Checks ---
-        
-        # 1. Tenkan/Kijun Cross
-        is_bullish_cross = candle['tenkan_sen'] > candle['kijun_sen'] and prev_candle['tenkan_sen'] <= prev_candle['kijun_sen']
-        is_bearish_cross = candle['tenkan_sen'] < candle['kijun_sen'] and prev_candle['tenkan_sen'] >= prev_candle['kijun_sen']
-
-        # 2. Kumo (Cloud) Confirmation
-        # The Kumo for the current price is composed of the Senkou spans from 26 periods ago.
-        kumo_a = df['senkou_span_a'].iloc[i - signal_settings.ICHI_CHIKOU_LAG]
-        kumo_b = df['senkou_span_b'].iloc[i - signal_settings.ICHI_CHIKOU_LAG]
-        price_above_kumo = candle['close'] > max(kumo_a, kumo_b)
-        price_below_kumo = candle['close'] < min(kumo_a, kumo_b)
-
-        # 3. Chikou Span Confirmation
-        # The current close price (acting as Chikou) must be above/below the close from 26 periods ago.
-        chikou_confirms_bullish = candle['close'] > df['close'].iloc[i - signal_settings.ICHI_CHIKOU_LAG]
-        chikou_confirms_bearish = candle['close'] < df['close'].iloc[i - signal_settings.ICHI_CHIKOU_LAG]
-
-        # 4. Kijun-sen Distance Filter
-        kijun_dist_min, kijun_dist_max = signal_settings.ICHI_MAX_KIJUN_DISTANCE_PCT_RANGE
-        kijun_distance_pct = (abs(candle['close'] - candle['kijun_sen']) / candle['kijun_sen']) * 100
-        kijun_distance_ok = kijun_dist_min <= kijun_distance_pct <= kijun_dist_max
-
-        # --- Signal Aggregation ---
+    while candles_to_check > 0 and i >= min_index:
+        candle = df_indexed.iloc[i]
+        prev_candle = df_indexed.iloc[i-1]
         signal = None
-        if is_bullish_cross and price_above_kumo and chikou_confirms_bullish and kijun_distance_ok:
-            signal = 'BUY'
-        elif is_bearish_cross and price_below_kumo and chikou_confirms_bearish and kijun_distance_ok:
-            signal = 'SELL'
 
+        # --- Bullish Signal Conditions ---
+        tenkan_cross_up_kijun = candle['tenkan_sen'] > candle['kijun_sen'] and prev_candle['tenkan_sen'] <= prev_candle['kijun_sen']
+        price_above_kumo = candle['close'] > candle['senkou_a'] and candle['close'] > candle['senkou_b']
+        chikou_above_price = candle['chikou'] > df_indexed.iloc[i - chikou_lag]['high']
+
+        if tenkan_cross_up_kijun and price_above_kumo and chikou_above_price:
+            signal = "BUY"
+
+        # --- Bearish Signal Conditions ---
+        else:
+            tenkan_cross_down_kijun = candle['tenkan_sen'] < candle['kijun_sen'] and prev_candle['tenkan_sen'] >= prev_candle['kijun_sen']
+            price_below_kumo = candle['close'] < candle['senkou_a'] and candle['close'] < candle['senkou_b']
+            chikou_below_price = candle['chikou'] < df_indexed.iloc[i - chikou_lag]['low']
+            if tenkan_cross_down_kijun and price_below_kumo and chikou_below_price:
+                signal = "SELL"
+
+        # --- Common Alert Creation Logic ---
         if signal:
-            alert_time = candle.name # Use the index (timestamp)
-            alert_price = candle['close']
-            
-            start_time = prev_candle.name
-            start_price = prev_candle['close']
-            magnitude = abs(alert_price - start_price)
-
+            alert_time = candle.name
             alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-
+            
             details = {
                 "tenkan_sen": round(candle['tenkan_sen'], 2),
                 "kijun_sen": round(candle['kijun_sen'], 2),
-                "price_kumo_relation": "Above" if price_above_kumo else ("Below" if price_below_kumo else "Inside"),
-                "chikou_confirmation": "Yes",
-                "kijun_distance_pct": round(kijun_distance_pct, 2)
+                "price_kumo_relation": "Above" if signal == "BUY" else "Below",
+                "chikou_confirmation": "Yes"
             }
 
-            alert_data = AlertData(
-                approach="ICHIMOKU",
+            alert = AlertData(
+                approach=approach_name,
                 id=alert_id,
                 signal=signal,
-                alert_price=alert_price,
+                alert_price=candle['close'],
                 alert_time=alert_time,
-                start_price=start_price,
-                start_time=start_time,
-                magnitude=magnitude,
+                start_price=prev_candle['close'],
+                start_time=prev_candle.name,
+                magnitude=abs(candle['close'] - prev_candle['close']),
                 details=json.dumps(details)
             )
-            alerts.append(alert_data)
-            
+            alerts.append(alert)
+
+        i -= 1
+        candles_to_check -= 1
+        
     return alerts

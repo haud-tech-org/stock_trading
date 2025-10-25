@@ -39,6 +39,7 @@ from src.stockreports.alert.common.validation.validation import calculate_alert_
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
 from src.stockreports.alert.common.profitability_simulator import simulate_profitability
 from src.stockreports.utils.report_utils import save_profitability_report, save_alert_report, update_alert_summary
+from src.stockreports.utils.alert_utils import calculate_suggested_price
 from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
 
 # --- Constants & Configuration ---
@@ -100,6 +101,28 @@ class SymbolAlerter:
             self._run_deployment_mode()
         self.logger.info(f"Execution finished for symbol: {self.symbol}.")
 
+    def _enrich_and_save_reports(self, result: AlertResult, market_data: pd.DataFrame, processing_date: str):
+        """
+        Enriches the alert result with suggested prices and saves all relevant reports.
+        """
+        # Calculate suggested prices for all alerts in the result
+        suggested_prices = []
+        for _, alert_row in result.alerts.iterrows():
+            price = calculate_suggested_price(
+                signal=alert_row['signal'],
+                alert_time=alert_row['alert_time'],
+                market_data=market_data
+            )
+            suggested_prices.append(price)
+        
+        # Add the list of prices as a new column to the DataFrame
+        result.alerts['suggested_price'] = suggested_prices
+
+        # Save the reports using the now-enriched result object
+        save_alert_report(result, self.symbol, processing_date)
+        if settings.MODE == "DEVELOPMENT":
+            update_alert_summary(result, self.symbol, processing_date)
+
     def _run_development_mode(self):
         self.logger.info(f"Running in DEVELOPMENT mode for {self.symbol}.")
         master_df = load_data_for_development(self.symbol)
@@ -138,8 +161,9 @@ class SymbolAlerter:
                     start_h, start_m = map(int, start_time_str.split(':'))
                     from_dt = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
                 else:
-                    # Subsequent runs: fetch the last minute of data
-                    from_dt = to_dt - timedelta(minutes=1)
+                    # Subsequent runs: fetch data from the last known point in time
+                    last_known_time = master_df['time'].max()
+                    from_dt = last_known_time
 
                 from_timestamp = int(from_dt.timestamp())
                 to_timestamp = int(to_dt.timestamp())
@@ -147,14 +171,15 @@ class SymbolAlerter:
                 # Fetch the latest data slice
                 latest_df = load_live_data(self.symbol, from_timestamp, to_timestamp)
 
-                if not latest_df.empty:
-                    # Append new data and remove duplicates, keeping the last entry
-                    master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
-                
-                if master_df.empty:
-                    self.logger.warning("Master DataFrame is still empty. Waiting for data.")
+                if latest_df.empty:
+                    self.logger.warning("The latest DataFrame is still empty. Waiting for data.")
                     time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                     continue
+                
+                new_candle_count = len(latest_df)
+                
+                # Append new data and remove duplicates, keeping the last entry
+                master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
 
                 # --- Price Movement Alerter ---
                 price_alerter = PriceMovementAlerter(self.symbol, triggered_levels_today)
@@ -175,7 +200,7 @@ class SymbolAlerter:
                         alerts=pd.DataFrame(price_alerts_data),
                         approach_name="PriceMovement"
                     )
-                    self.notification_manager.process_and_notify(price_alert_result, self.symbol)
+                    self.notification_manager.process_and_notify(price_alert_result, self.symbol, master_df)
 
 
                 # --- Standard Approach Alerter ---
@@ -193,9 +218,9 @@ class SymbolAlerter:
                     self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} ---")
                     executor = self._get_approach_executor(approach_name)
                     if not executor: continue
-                    result = executor(processing_df.copy())
+                    result = executor(df=processing_df.copy(), new_candle_count=new_candle_count)
                     if result.has_alerts:
-                        self.notification_manager.process_and_notify(result, self.symbol)
+                        self.notification_manager.process_and_notify(result, self.symbol, processing_df)
                 
                 self.logger.info(f"Interval finished. Waiting {settings.MONITORING_INTERVAL_SECONDS}s...")
                 time.sleep(settings.MONITORING_INTERVAL_SECONDS)
@@ -239,9 +264,14 @@ class SymbolAlerter:
             executor = self._get_approach_executor(approach_name)
             if not executor: continue
             
-            result = executor(daily_df.copy())
+            # Pass the full length of the daily dataframe as new_candle_count in development mode
+            result = executor(df=daily_df.copy(), new_candle_count=len(daily_df))
             
             if result.has_alerts:
+                # Step 1: Send notifications (fire-and-forget)
+                self.notification_manager.process_and_notify(result, self.symbol, daily_df)
+
+                # Step 2: Enrich data and save reports
                 if settings.MODE == "DEVELOPMENT":
                     validated_alerts = []
                     for _, alert_row in result.alerts.iterrows():
@@ -250,16 +280,15 @@ class SymbolAlerter:
                         validated_alert = calculate_alert_performance(alert_data, daily_df, signal_settings.VALIDATION_PERIOD_MINUTES)
                         validated_alerts.append(validated_alert.to_dict())
                     result.alerts = pd.DataFrame(validated_alerts)
-                    all_alerts_for_day.extend(result.alerts.to_dict('records'))
-                    self.notification_manager.process_and_notify(result, self.symbol)
                 
-                save_alert_report(result, self.symbol, processing_date)
-                if settings.MODE == "DEVELOPMENT":
-                    update_alert_summary(result, self.symbol, processing_date)
+                self._enrich_and_save_reports(result, daily_df, processing_date)
+                
+                # Collect alerts for end-of-day profitability simulation
+                all_alerts_for_day.extend(result.alerts.to_dict('records'))
 
         if settings.MODE == "DEVELOPMENT" and all_alerts_for_day:
             self.logger.info(f"\n--- Running Profitability Simulation for {self.symbol} on {processing_date} ---")
-            simulation_summary = simulate_profitability(all_alerts_for_day)
+            simulation_summary = simulate_profitability(all_alerts_for_day, daily_df)
             
             # Log the summary in a readable format
             self.logger.info("Profitability Simulation Summary:")

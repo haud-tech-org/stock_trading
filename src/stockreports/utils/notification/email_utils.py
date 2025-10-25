@@ -13,14 +13,16 @@ notification_settings = loader.get_notification_settings()
 
 
 def format_email_subject(notification: AlertNotification) -> str:
-    """Formats the subject line for an alert email."""
-    return f"{notification.signal} Signal for {notification.symbol} at {notification.alert_price:.2f} ({notification.approach})"
+    """Formats the subject for an email alert."""
+    return f"{notification.signal} - {notification.symbol} - Suggest: {notification.suggested_price:.2f} - at signal price {notification.alert_price:.2f} ({notification.approach})"
 
 
 def format_email_body(notification: AlertNotification) -> str:
-    """Formats the body content for an alert email."""
+    """Formats the body for an email alert."""
     body = f"A new trading signal has been generated for {notification.symbol}.\n\n"
     body += f"Signal:     {notification.signal}\nPrice:      {notification.alert_price:.2f}\n"
+    if notification.suggested_price is not None:
+        body += f"Suggested:  {notification.suggested_price:.2f}\n"
     body += f"Time:       {notification.alert_time.strftime('%Y-%m-%d %H:%M:%S')}\nApproach:   {notification.approach}\n"
     if notification.details:
         body += "\n--- Details ---\n"
