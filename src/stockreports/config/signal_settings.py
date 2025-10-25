@@ -36,14 +36,14 @@ MA_LONG_PERIOD = 10
 # Guidance: Standard value is 9. Changing this alters the sensitivity of the line.
 # Range: Integer > 0.
 # Example: `ICHIMOKU_TENKAN_PERIOD = 9`
-ICHIMOKU_TENKAN_PERIOD = 9
+TENKAN_PERIOD = 9
 
 # Kijun-sen (Base Line) Period
 # Meaning: The lookback period for the Kijun-sen line, representing the midpoint of the last 26 candles. It acts as a measure of medium-term momentum and a level of support/resistance.
 # Guidance: Standard value is 26.
 # Range: Integer > 0.
 # Example: `ICHIMOKU_KIJUN_PERIOD = 26`
-ICHIMOKU_KIJUN_PERIOD = 26
+KIJUN_PERIOD = 26
 
 # Senkou Span B (Leading Span B) Period
 # Meaning: The lookback period for Senkou Span B, which forms the slower boundary of the Kumo (cloud). It represents the midpoint of the last 52 candles and is a measure of long-term momentum.
@@ -63,7 +63,7 @@ ICHI_CHIKOU_LAG = 26
 # Meaning: For a signal to be valid, the price must be within a certain percentage distance from the Kijun-sen. This prevents taking signals when the price has moved too far, too fast.
 # Guidance: The tuple represents (min_distance_pct, max_distance_pct). A range of (0.1, 3.5) means the price must be between 0.1% and 3.5% away from the Kijun line.
 # Example: `ICHI_MAX_KIJUN_DISTANCE_PCT_RANGE = (0.1, 3.5)`
-ICHI_MAX_KIJUN_DISTANCE_PCT_RANGE = (0.1, 3.5)  # Price should be within 0.1% to 3.5% of the Kijun-sen.
+# ICHI_MAX_KIJUN_DISTANCE_PCT_RANGE = (0.1, 3.5)  # Price should be within 0.1% to 3.5% of the Kijun-sen.
 
 # Strong Close Condition
 
@@ -220,18 +220,24 @@ APPROACH_CONFIG = {
         "BODY_TO_RANGE_MIN_RATIO": 0.8, # The average body-to-range ratio required for the momentum window
     },
     "ICHIMOKU": {
-        "USE_ADVANCED_CONFIRMATION": True,
+        "USE_ADVANCED_CONFIRMATION": False, # Ichimoku is its own confirmation, so this is not needed.
+        "TENKAN_PERIOD": 9,
+        "KIJUN_PERIOD": 26,
+        "SENKOU_B_PERIOD": 52,
+        "CHIKOU_LAG": 26,
+        "MAX_KIJUN_DISTANCE_PCT_RANGE": (0.1, 3.5),
     },
     "STRONG_CANDLE": {
         "USE_ADVANCED_CONFIRMATION": True,
     },
-    "SUPPORT_BREAKDOWN": {
-        "PRICE_TOLERANCE": 0.0025, # Max % difference between lows in a support shelf
-        "MIN_TOUCHES": 3,          # Min number of candles touching the support level
-        "LOOKBACK_PERIOD": 60,     # How many candles back to look for a support shelf
-        "COOLDOWN_PERIOD": 30,     # How many minutes to wait before generating a new alert
-        "CONFIRMATION_CANDLE_BODY": 0.5, # The confirmation candle must close in the bottom 50% of its range
-        "USE_VOLUME_CONFIRMATION": True, # Master switch to enable/disable the volume check
+    "SUPPORT_RESISTANCE_BREAK": {
+        "PRICE_TOLERANCE": 0.0025,      # Max % difference between points in a level
+        "MIN_TOUCHES": 3,               # Min number of candles touching the level
+        "LOOKBACK_PERIOD": 60,          # How many candles back to look for a level
+        "COOLDOWN_PERIOD": 30,          # How many minutes to wait before a new alert
+        "CONFIRMATION_CANDLE_BODY_SELL": 0.5, # For SELL, confirmation candle must close in the bottom 50% of its range
+        "CONFIRMATION_CANDLE_BODY_BUY": 0.5, # For BUY, confirmation candle must close in the top 50% of its range
+        "USE_VOLUME_CONFIRMATION": True,  # Master switch to enable/disable the volume check
     },
     # A default block for any approach not explicitly listed
     "default": {
