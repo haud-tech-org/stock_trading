@@ -33,7 +33,7 @@ from src.stockreports.utils.data_utils import (
     fetch_intraday_data, calculate_max_lookback_period, 
     load_data_for_development, load_live_data
 )
-from src.stockreports.utils.time_utils import is_trading_hours, TIMEZONE_STR, SESSIONS
+from src.stockreports.utils.time_utils import is_trading_hours, SESSIONS, TimeSimulator, TIMEZONE
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
@@ -43,8 +43,6 @@ from src.stockreports.utils.alert_utils import calculate_suggested_price
 from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
 
 # --- Constants & Configuration ---
-# The primary timezone is now driven by the market setting
-TIMEZONE = pytz.timezone(TIMEZONE_STR)
 DEFAULT_APPROACH = "RCM"
 
 
@@ -137,15 +135,21 @@ class SymbolAlerter:
 
     def _run_deployment_mode(self):
         """
-        Acts as a resilient supervisor for the real-time monitoring session.
-        If the session crashes for any reason, this function logs the error,
-        waits, and then starts a completely new session.
+        Acts as a resilient supervisor for the monitoring session.
+        If the session crashes, this function logs the error and restarts it.
+        If the session completes cleanly (replay or live), it exits.
         """
         self.logger.info(f"Entering resilient deployment mode for {self.symbol}.")
         while True:
             try:
-                # The actual monitoring work is delegated to a separate function.
-                self._perform_monitoring_session()
+                # This function returns True when the monitoring loop finishes without error.
+                session_completed_cleanly = self._perform_monitoring_session()
+
+                # If the session finished its work, break the supervisor loop.
+                if session_completed_cleanly:
+                    self.logger.info(f"Monitoring session for {self.symbol} completed successfully. Exiting supervisor.")
+                    break
+
             except KeyboardInterrupt:
                 self.logger.info(f"Stopping real-time monitor for {self.symbol}.")
                 break  # Exit the supervisor loop.
@@ -154,32 +158,49 @@ class SymbolAlerter:
                     f"The monitoring session for {self.symbol} crashed. Restarting... Error: {e}",
                     exc_info=True
                 )
-                self.logger.info(f"Waiting for {settings.MONITORING_INTERVAL_SECONDS} seconds before restarting...")
-                time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+                # In live mode, wait before restarting. In replay, stop immediately on error.
+                if settings.DEBUG_REPLAY_START_TIME is None:
+                    self.logger.info(f"Waiting for {settings.MONITORING_INTERVAL_SECONDS} seconds before restarting...")
+                    time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+                else:
+                    self.logger.error("Exiting replay due to critical error.")
+                    break
 
-    def _perform_monitoring_session(self):
+    def _perform_monitoring_session(self) -> bool:
         """
-        Executes a single, continuous real-time monitoring session for the symbol.
-        This function is designed to run indefinitely until an error occurs.
+        Executes a single, continuous monitoring session for the symbol.
+        This function runs until the time simulator indicates it should stop.
+
+        Returns:
+            bool: True if the session completed without error, signaling a clean exit.
         """
-        # Initialization happens here, ensuring a clean state for each new session.
-        processing_date = datetime.now(pytz.utc).astimezone(TIMEZONE).strftime('%Y-%m-%d')
-        self.logger.info(f"Starting new monitoring session for {self.symbol} on {processing_date}")
+        time_simulator = TimeSimulator(
+            replay_start_str=settings.DEBUG_REPLAY_START_TIME,
+            interval_seconds=settings.MONITORING_INTERVAL_SECONDS
+        )
+        
+        self.logger.info(f"Starting new monitoring session for {self.symbol} on {time_simulator.processing_date}")
         
         master_df = pd.DataFrame()
         triggered_levels_today = set()
 
         # This is the main operational loop for fetching and analyzing data.
-        while True:
-            if not is_trading_hours():
-                self.logger.info(f"Market is currently closed for {self.symbol}. Waiting 15 minutes...")
-                time.sleep(900)
-                continue
+        while time_simulator.is_running():
+            current_time = time_simulator.get_current_time()
             
-            self.logger.info(f"\n--- New Interval for {self.symbol}: Fetching and Analyzing Data ---")
+            if not is_trading_hours(current_time):
+                self.logger.info(f"Market is currently closed for {self.symbol}. Waiting...")
+                if time_simulator.is_replay_mode():
+                    time_simulator.advance() # Move time forward to find the next trading window
+                    continue
+                else:
+                    time.sleep(900) # In live mode, wait 15 minutes
+                    continue
+            
+            self.logger.info(f"\n--- New Interval for {self.symbol}: Analyzing at {current_time.strftime('%Y-%m-%d %H:%M:%S')} ---")
 
             # Define the time window for the data fetch
-            to_dt = datetime.now(pytz.utc).astimezone(TIMEZONE)
+            to_dt = current_time
             if master_df.empty:
                 # First run: fetch all data from the start of the day
                 all_starts = [times['start'] for times in SESSIONS.values()]
@@ -197,15 +218,21 @@ class SymbolAlerter:
             # Fetch the latest data slice
             latest_df = load_live_data(self.symbol, from_timestamp, to_timestamp)
 
-            if latest_df.empty:
-                self.logger.warning("The latest DataFrame is still empty. Waiting for data.")
+            if latest_df.empty and not time_simulator.is_replay_mode():
+                self.logger.warning("The latest DataFrame is still empty in live mode. Waiting for data.")
                 time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                 continue
             
-            new_candle_count = len(latest_df)
-            
-            # Append new data and remove duplicates, keeping the last entry
-            master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
+            new_candle_count = 0
+            if not latest_df.empty:
+                new_candle_count = len(latest_df)
+                # Append new data and remove duplicates, keeping the last entry
+                master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
+
+            if master_df.empty:
+                self.logger.warning("Master DataFrame is empty. Advancing to next interval.")
+                time_simulator.advance()
+                continue
 
             # --- Price Movement Alerter ---
             price_alerter = PriceMovementAlerter(self.symbol, triggered_levels_today)
@@ -230,13 +257,13 @@ class SymbolAlerter:
 
 
             # --- Standard Approach Alerter ---
-            max_lookback = calculate_max_lookback_period()
-            cutoff_time = master_df['time'].max() - timedelta(minutes=max_lookback)
-            processing_df = master_df[master_df['time'] >= cutoff_time].copy()
-            
-            if processing_df.empty:
-                self.logger.warning("No data in lookback window. Waiting.")
-                time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+            # The logic for slicing the dataframe is now removed.
+            # The full master_df is passed to the executors.
+            if master_df.empty:
+                self.logger.warning("Master DataFrame is empty, cannot run approaches. Waiting.")
+                time_simulator.advance()
+                if not time_simulator.is_replay_mode():
+                    time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                 continue
 
             approaches_to_run = getattr(settings, 'ALERT_APPROACHES', [DEFAULT_APPROACH])
@@ -244,15 +271,23 @@ class SymbolAlerter:
                 self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} ---")
                 executor = self._get_approach_executor(approach_name)
                 if not executor: continue
-                result = executor(df=processing_df.copy(), new_candle_count=new_candle_count)
+                # Pass the full master_df to the executor.
+                result = executor(df=master_df.copy(), new_candle_count=new_candle_count)
                 if result.has_alerts:
                     # Send notification immediately for low latency.
-                    self.notification_manager.process_and_notify(result, self.symbol, processing_df)
+                    self.notification_manager.process_and_notify(result, self.symbol, master_df)
                     # Then, enrich data and save the report.
-                    self._enrich_and_save_reports(result, processing_df, processing_date)
+                    self._enrich_and_save_reports(result, master_df, time_simulator.processing_date)
             
-            self.logger.info(f"Interval finished. Waiting {settings.MONITORING_INTERVAL_SECONDS}s...")
-            time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+            self.logger.info(f"Interval finished. Advancing time...")
+            time_simulator.advance()
+            # In live mode, we still need to wait for the actual interval time to pass.
+            if not time_simulator.is_replay_mode():
+                time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+
+        self.logger.info(f"Monitoring session for {self.symbol} has concluded.")
+        # The session finished cleanly, return True to stop the supervisor loop.
+        return True
 
     def _process_date(self, master_df, processing_date):
         self.logger.info(f"\n{'='*20} Processing Date: {processing_date} for {self.symbol} {'='*20}")

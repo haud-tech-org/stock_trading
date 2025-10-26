@@ -6,9 +6,10 @@ and other time-based calculations.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
+import pandas as pd
 import pytz
 
 from src.stockreports.config import loader
@@ -20,6 +21,7 @@ settings = loader.get_settings()
 MARKET_CONFIG = settings.TRADING_HOURS.get(settings.MARKET_COUNTRY_CODE, {})
 TIMEZONE_STR = MARKET_CONFIG.get("timezone", "UTC")
 SESSIONS = MARKET_CONFIG.get("sessions", {})
+TIMEZONE = pytz.timezone(TIMEZONE_STR)
 
 # Time format strings
 TIME_FORMATS = {
@@ -28,6 +30,63 @@ TIME_FORMATS = {
     'time_only': '%H:%M:%S',
     'filename_timestamp': '%Y-%m-%d-%H-%M-%S'
 }
+
+
+class TimeSimulator:
+    """
+    Manages time for the application, allowing for both live and simulated replay modes.
+    """
+    def __init__(self, replay_start_str: Optional[str], interval_seconds: int):
+        self._is_replay = replay_start_str is not None
+        self._interval = timedelta(seconds=interval_seconds)
+        
+        if self._is_replay:
+            # Use pandas for robust datetime parsing
+            self._current_time = pd.to_datetime(replay_start_str).tz_localize(TIMEZONE)
+            self.processing_date = self._current_time.strftime('%Y-%m-%d')
+            self.end_of_day = self._get_session_end(self._current_time)
+            logging.info(f"TimeSimulator initialized in REPLAY mode. Start: {self._current_time}, End: {self.end_of_day}")
+        else:
+            self._current_time = self._get_live_time()
+            self.processing_date = self._current_time.strftime('%Y-%m-%d')
+            self.end_of_day = None # Not fixed in live mode
+            logging.info("TimeSimulator initialized in LIVE mode.")
+
+    def _get_live_time(self) -> datetime:
+        return datetime.now(pytz.utc).astimezone(TIMEZONE)
+
+    def _get_session_end(self, dt: datetime) -> datetime:
+        """Calculates the end of the last trading session for the given datetime."""
+        if not SESSIONS:
+            # Default to 4 PM if no sessions are defined
+            return dt.replace(hour=16, minute=0, second=0, microsecond=0)
+        
+        all_ends = [times['end'] for times in SESSIONS.values()]
+        end_time_str = max(all_ends)
+        h, m = map(int, end_time_str.split(':'))
+        return dt.replace(hour=h, minute=m, second=0, microsecond=0)
+
+    def get_current_time(self) -> datetime:
+        """Returns the current time, either simulated or live."""
+        if self._is_replay:
+            return self._current_time
+        return self._get_live_time()
+
+    def advance(self):
+        """Advances the simulated time by one interval."""
+        if self._is_replay:
+            self._current_time += self._interval
+
+    def is_running(self) -> bool:
+        """Checks if the simulation/monitoring should continue."""
+        if self._is_replay:
+            # Stop if the current time has passed the end of the trading day
+            return self._current_time <= self.end_of_day
+        return True # Live mode always runs indefinitely
+
+    def is_replay_mode(self) -> bool:
+        """Returns True if in replay mode."""
+        return self._is_replay
 
 
 def _get_session_minutes() -> List[Tuple[int, int]]:
