@@ -205,7 +205,6 @@ SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.5
 # Guidance: You can enable/disable advanced confirmation or tweak parameters like prominence and window sizes for each approach independently. The "default" block applies to any approach not explicitly defined.
 APPROACH_CONFIG = {
     "RCM": {
-        "USE_ADVANCED_CONFIRMATION": True,
         # How significant a peak/trough must be to be considered a reversal point. Higher values ignore minor fluctuations.
         "PEAK_TROUGH_PROMINENCE": 4,
         # How many candles to wait for confirmation
@@ -214,13 +213,11 @@ APPROACH_CONFIG = {
         "CONFIRMATION_MIN_CONSISTENCY": 4,
     },
     "CONSISTENT_MOMENTUM": {
-        "USE_ADVANCED_CONFIRMATION": True,
         "CONFIRMATION_WINDOW": 3, # Rolling window to check for momentum
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 30, # Lookback period (in minutes) for finding peaks/bottoms
         "BODY_TO_RANGE_MIN_RATIO": 0.8, # The average body-to-range ratio required for the momentum window
     },
     "ICHIMOKU": {
-        "USE_ADVANCED_CONFIRMATION": False, # Ichimoku is its own confirmation, so this is not needed.
         "TENKAN_PERIOD": 9,
         "KIJUN_PERIOD": 26,
         "SENKOU_B_PERIOD": 52,
@@ -228,7 +225,8 @@ APPROACH_CONFIG = {
         "MAX_KIJUN_DISTANCE_PCT_RANGE": (0.1, 3.5),
     },
     "STRONG_CANDLE": {
-        "USE_ADVANCED_CONFIRMATION": True,
+        # This approach now dynamically checks for advanced confirmation availability.
+        # No specific settings are needed here unless we want to override CONFIRMATION_WINDOW, etc.
     },
     "SUPPORT_RESISTANCE_BREAK": {
         "PRICE_TOLERANCE": 0.0025,      # Max % difference between points in a level
@@ -241,7 +239,6 @@ APPROACH_CONFIG = {
     },
     # A default block for any approach not explicitly listed
     "default": {
-        "USE_ADVANCED_CONFIRMATION": True,
         "PEAK_TROUGH_PROMINENCE": 5,
         "CONFIRMATION_WINDOW": 4,
         "CONFIRMATION_MIN_CONSISTENCY": 2,
@@ -250,13 +247,14 @@ APPROACH_CONFIG = {
 
 
 # --- DEPRECATED: To be removed after full refactoring ---
-# When True, the smart alerter will use MA Cross, Ichimoku Cross, or Strong Candle for confirmation.
-# When False, it will use the simple logic of counting consistent candles.
-USE_ADVANCED_CONFIRMATION = True
+# The logic for using advanced confirmation is now handled dynamically within each executor
+# based on data availability. These global settings are no longer used.
+# USE_ADVANCED_CONFIRMATION = True
 
 # --- Simple Confirmation Settings (for when USE_ADVANCED_CONFIRMATION is False) ---
-CONFIRMATION_WINDOW = 1  # How many candles to wait for confirmation
-CONFIRMATION_MIN_CONSISTENCY = 3  # How many of those candles must agree with the trend
+# These are now configured within the "default" block of APPROACH_CONFIG if needed.
+# CONFIRMATION_WINDOW = 1
+# CONFIRMATION_MIN_CONSISTENCY = 3
 
 # --- Trend Validation Settings ---
 
