@@ -42,6 +42,8 @@ def _save_json_report(data: Any, filepath: str, logger_instance: logging.Logger)
 def save_alert_report(result: AlertResult, symbol: str, date_str: str):
     """
     Saves the detailed alerts from an analysis result to a JSON file.
+    In 'deployment' mode, it appends new alerts to the existing file for the day.
+    In 'development' mode, it overwrites the file.
     """
     if not result.has_alerts:
         return
@@ -50,7 +52,24 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
     reports_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), result.approach_name.lower())
     filepath = os.path.join(reports_dir, f"alert_notification_{date_str.replace('-', '')}.json")
 
-    alerts_to_save = result.alerts.copy()
+    new_alerts_df = result.alerts.copy()
+
+    # In deployment mode, read existing alerts and append new ones
+    if settings.MODE.lower() == 'deployment' and os.path.exists(filepath):
+        try:
+            existing_alerts_df = pd.read_json(filepath, orient='records')
+            if not existing_alerts_df.empty:
+                # Ensure timezone consistency before combining
+                new_alerts_df['alert_time'] = pd.to_datetime(new_alerts_df['alert_time']).dt.tz_convert(TIMEZONE)
+                existing_alerts_df['alert_time'] = pd.to_datetime(existing_alerts_df['alert_time']).dt.tz_convert(TIMEZONE)
+                
+                combined_df = pd.concat([existing_alerts_df, new_alerts_df]).drop_duplicates(subset=['id'], keep='last')
+                new_alerts_df = combined_df
+        except (ValueError, KeyError, json.JSONDecodeError) as e:
+            logger.error(f"Could not read or merge existing alert report {filepath}. Overwriting. Error: {e}")
+
+    # --- Save the final DataFrame ---
+    alerts_to_save = new_alerts_df
     datetime_cols = alerts_to_save.select_dtypes(include=['datetime64[ns]', 'datetimetz']).columns
     for col in datetime_cols:
         if alerts_to_save[col].dt.tz is None:

@@ -136,98 +136,123 @@ class SymbolAlerter:
             self._process_date(master_df, processing_date)
 
     def _run_deployment_mode(self):
-        # In DEPLOYMENT mode, always use the current date for live monitoring.
+        """
+        Acts as a resilient supervisor for the real-time monitoring session.
+        If the session crashes for any reason, this function logs the error,
+        waits, and then starts a completely new session.
+        """
+        self.logger.info(f"Entering resilient deployment mode for {self.symbol}.")
+        while True:
+            try:
+                # The actual monitoring work is delegated to a separate function.
+                self._perform_monitoring_session()
+            except KeyboardInterrupt:
+                self.logger.info(f"Stopping real-time monitor for {self.symbol}.")
+                break  # Exit the supervisor loop.
+            except Exception as e:
+                self.logger.critical(
+                    f"The monitoring session for {self.symbol} crashed. Restarting... Error: {e}",
+                    exc_info=True
+                )
+                self.logger.info(f"Waiting for {settings.MONITORING_INTERVAL_SECONDS} seconds before restarting...")
+                time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+
+    def _perform_monitoring_session(self):
+        """
+        Executes a single, continuous real-time monitoring session for the symbol.
+        This function is designed to run indefinitely until an error occurs.
+        """
+        # Initialization happens here, ensuring a clean state for each new session.
         processing_date = datetime.now(pytz.utc).astimezone(TIMEZONE).strftime('%Y-%m-%d')
-        self.logger.info(f"Running in DEPLOYMENT mode. Starting real-time monitoring for {self.symbol} on {processing_date}")
+        self.logger.info(f"Starting new monitoring session for {self.symbol} on {processing_date}")
         
         master_df = pd.DataFrame()
         triggered_levels_today = set()
 
-        try:
-            while True:
-                if not is_trading_hours():
-                    self.logger.info(f"Market is currently closed for {self.symbol}. Waiting 15 minutes...")
-                    time.sleep(900)
-                    continue
-                
-                self.logger.info(f"\n--- New Interval for {self.symbol}: Fetching and Analyzing Data ---")
+        # This is the main operational loop for fetching and analyzing data.
+        while True:
+            if not is_trading_hours():
+                self.logger.info(f"Market is currently closed for {self.symbol}. Waiting 15 minutes...")
+                time.sleep(900)
+                continue
+            
+            self.logger.info(f"\n--- New Interval for {self.symbol}: Fetching and Analyzing Data ---")
 
-                # Define the time window for the data fetch
-                to_dt = datetime.now(pytz.utc).astimezone(TIMEZONE)
-                if master_df.empty:
-                    # First run: fetch all data from the start of the day
-                    all_starts = [times['start'] for times in SESSIONS.values()]
-                    start_time_str = min(all_starts)
-                    start_h, start_m = map(int, start_time_str.split(':'))
-                    from_dt = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-                else:
-                    # Subsequent runs: fetch data from the last known point in time
-                    last_known_time = master_df['time'].max()
-                    from_dt = last_known_time
+            # Define the time window for the data fetch
+            to_dt = datetime.now(pytz.utc).astimezone(TIMEZONE)
+            if master_df.empty:
+                # First run: fetch all data from the start of the day
+                all_starts = [times['start'] for times in SESSIONS.values()]
+                start_time_str = min(all_starts)
+                start_h, start_m = map(int, start_time_str.split(':'))
+                from_dt = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+            else:
+                # Subsequent runs: fetch data from the last known point in time
+                last_known_time = master_df['time'].max()
+                from_dt = last_known_time
 
-                from_timestamp = int(from_dt.timestamp())
-                to_timestamp = int(to_dt.timestamp())
+            from_timestamp = int(from_dt.timestamp())
+            to_timestamp = int(to_dt.timestamp())
 
-                # Fetch the latest data slice
-                latest_df = load_live_data(self.symbol, from_timestamp, to_timestamp)
+            # Fetch the latest data slice
+            latest_df = load_live_data(self.symbol, from_timestamp, to_timestamp)
 
-                if latest_df.empty:
-                    self.logger.warning("The latest DataFrame is still empty. Waiting for data.")
-                    time.sleep(settings.MONITORING_INTERVAL_SECONDS)
-                    continue
-                
-                new_candle_count = len(latest_df)
-                
-                # Append new data and remove duplicates, keeping the last entry
-                master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
-
-                # --- Price Movement Alerter ---
-                price_alerter = PriceMovementAlerter(self.symbol, triggered_levels_today)
-                price_alerts = price_alerter.execute(master_df)
-                if price_alerts:
-                    self.logger.info(f"Found {len(price_alerts)} price movement alerts.")
-                    price_alerts_data = []
-                    for msg in price_alerts:
-                        price_alerts_data.append({
-                            'alert_time': master_df['time'].iloc[-1],
-                            'signal': 'Price Level Cross',
-                            'alert_price': master_df['close'].iloc[-1],
-                            'approach': 'PriceMovement',
-                            'details': json.dumps({'message': msg})
-                        })
-                    
-                    price_alert_result = AlertResult(
-                        alerts=pd.DataFrame(price_alerts_data),
-                        approach_name="PriceMovement"
-                    )
-                    self.notification_manager.process_and_notify(price_alert_result, self.symbol, master_df)
-
-
-                # --- Standard Approach Alerter ---
-                max_lookback = calculate_max_lookback_period()
-                cutoff_time = master_df['time'].max() - timedelta(minutes=max_lookback)
-                processing_df = master_df[master_df['time'] >= cutoff_time].copy()
-                
-                if processing_df.empty:
-                    self.logger.warning("No data in lookback window. Waiting.")
-                    time.sleep(settings.MONITORING_INTERVAL_SECONDS)
-                    continue
-
-                approaches_to_run = getattr(settings, 'ALERT_APPROACHES', [DEFAULT_APPROACH])
-                for approach_name in approaches_to_run:
-                    self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} ---")
-                    executor = self._get_approach_executor(approach_name)
-                    if not executor: continue
-                    result = executor(df=processing_df.copy(), new_candle_count=new_candle_count)
-                    if result.has_alerts:
-                        self.notification_manager.process_and_notify(result, self.symbol, processing_df)
-                
-                self.logger.info(f"Interval finished. Waiting {settings.MONITORING_INTERVAL_SECONDS}s...")
+            if latest_df.empty:
+                self.logger.warning("The latest DataFrame is still empty. Waiting for data.")
                 time.sleep(settings.MONITORING_INTERVAL_SECONDS)
-        except KeyboardInterrupt:
-            self.logger.info(f"Stopping real-time monitor for {self.symbol}.")
-        except Exception as e:
-            self.logger.critical(f"Critical error in deployment loop for {self.symbol}: {e}", exc_info=True)
+                continue
+            
+            new_candle_count = len(latest_df)
+            
+            # Append new data and remove duplicates, keeping the last entry
+            master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
+
+            # --- Price Movement Alerter ---
+            price_alerter = PriceMovementAlerter(self.symbol, triggered_levels_today)
+            price_alerts = price_alerter.execute(master_df)
+            if price_alerts:
+                self.logger.info(f"Found {len(price_alerts)} price movement alerts.")
+                price_alerts_data = []
+                for msg in price_alerts:
+                    price_alerts_data.append({
+                        'alert_time': master_df['time'].iloc[-1],
+                        'signal': 'Price Level Cross',
+                        'alert_price': master_df['close'].iloc[-1],
+                        'approach': 'PriceMovement',
+                        'details': json.dumps({'message': msg})
+                    })
+                
+                price_alert_result = AlertResult(
+                    alerts=pd.DataFrame(price_alerts_data),
+                    approach_name="PriceMovement"
+                )
+                self.notification_manager.process_and_notify(price_alert_result, self.symbol, master_df)
+
+
+            # --- Standard Approach Alerter ---
+            max_lookback = calculate_max_lookback_period()
+            cutoff_time = master_df['time'].max() - timedelta(minutes=max_lookback)
+            processing_df = master_df[master_df['time'] >= cutoff_time].copy()
+            
+            if processing_df.empty:
+                self.logger.warning("No data in lookback window. Waiting.")
+                time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+                continue
+
+            approaches_to_run = getattr(settings, 'ALERT_APPROACHES', [DEFAULT_APPROACH])
+            for approach_name in approaches_to_run:
+                self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} ---")
+                executor = self._get_approach_executor(approach_name)
+                if not executor: continue
+                result = executor(df=processing_df.copy(), new_candle_count=new_candle_count)
+                if result.has_alerts:
+                    # Send notification immediately for low latency.
+                    self.notification_manager.process_and_notify(result, self.symbol, processing_df)
+                    # Then, enrich data and save the report.
+                    self._enrich_and_save_reports(result, processing_df, processing_date)
+            
+            self.logger.info(f"Interval finished. Waiting {settings.MONITORING_INTERVAL_SECONDS}s...")
+            time.sleep(settings.MONITORING_INTERVAL_SECONDS)
 
     def _process_date(self, master_df, processing_date):
         self.logger.info(f"\n{'='*20} Processing Date: {processing_date} for {self.symbol} {'='*20}")
