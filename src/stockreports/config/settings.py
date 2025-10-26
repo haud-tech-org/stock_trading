@@ -17,7 +17,7 @@ notifications, and market-specific details.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
-SYMBOLS = ["VN30","41I1FB000","VIC","VCB","SSI","NVL","DPG","CEO","CII"]
+SYMBOLS = ["VN30","41I1FB000"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -104,8 +104,8 @@ DATA_DIR = "src/stockreports/data"
 # Defines the date range for fetching data when running in DEVELOPMENT mode.
 # Format: YYYY-MM-DD
 DEV_DATA_DATE_RANGE = {
-    "start_date": "2025-10-20",
-    "end_date": "2025-10-20"
+    "start_date": "2025-10-23",
+    "end_date": "2025-10-23"
 }
 
 # If True, saves the raw JSON response to a file when running in DEVELOPMENT mode.
@@ -124,7 +124,7 @@ ALERT_APPROACHES = [
     "CONSISTENT_MOMENTUM",
     "ICHIMOKU",
     "STRONG_CANDLE", # NEED IMPROVEMENT - UNSTABLE TO SUPPORT NOW (2025/10/08)
-    "SUPPORT_BREAKDOWN",
+    "SUPPORT_RESISTANCE_BREAK",
     # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 
