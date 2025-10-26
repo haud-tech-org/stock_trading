@@ -10,7 +10,8 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
-from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation
+from src.stockreports.alert.common.constants import Approach, Mode
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation, can_apply_advanced_confirmation
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.model.models import AlertResult, AlertData
 
@@ -22,7 +23,7 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
     Entry point for the RCM approach. It takes a DataFrame and returns an AlertResult.
     """
-    approach_name = "RCM"
+    approach_name = Approach.RCM
     try:
         logging.info(f"Running '{approach_name}' approach...")
         
@@ -55,11 +56,18 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
     Internal function to find alerts using the Reversal-Confirmation-Magnitude (RCM) approach.
     """
     alerts = []
-    if len(df) < 30: 
-        logging.warning("RCM: Input DataFrame has less than 30 rows, cannot generate alerts.")
-        return alerts
+    
+    # Dynamically check if advanced confirmation can be used.
+    use_advanced_confirmation = can_apply_advanced_confirmation(df)
 
-    df = prepare_indicators(df)
+    if use_advanced_confirmation:
+        logging.info(f"{Approach.RCM}: Sufficient data available ({len(df)} candles). Advanced confirmation will be used.")
+        df = prepare_indicators(df)
+    else:
+        logging.warning(
+            f"{Approach.RCM}: Insufficient data for advanced confirmation. "
+            "Falling back to simple confirmation."
+        )
     
     peak_trough_prominence = config.get("PEAK_TROUGH_PROMINENCE", 5)
     peaks, _ = find_peaks(df['high'], prominence=peak_trough_prominence)
@@ -75,34 +83,23 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
     last_reversal_idx = -1
     confirmation_deadline = -1
     
-    confirmation_window = config.get("CONFIRMATION_WINDOW", 4)
-    use_advanced_confirmation = config.get("USE_ADVANCED_CONFIRMATION", False)
+    confirmation_window = config.get("CONFIRMATION_WINDOW", 3)
 
     # --- 1. Initial Settings ---
     df_indexed = df.reset_index()
     
-    # Determine the starting point for the loop.
-    start_index = 0
-    # In deployment mode, we need to look back further than just the new candles
-    # to correctly establish the state of the RCM state machine.
-    # The lookback should be at least the size of the confirmation window.
-    if new_candle_count > 0:
-        lookback = confirmation_window + 5 # Add a small buffer
-        start_index = max(0, len(df_indexed) - new_candle_count - lookback)
-
-    for i in range(start_index, len(df_indexed)):
-        # The check for new candles is now simplified as new_candle_count is always > 0
-        is_new_candle = (i >= len(df_indexed) - new_candle_count)
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
+    grace_period = confirmation_window
+    
+    # The loop now iterates over the entire dataframe to find all historical alerts.
+    for i in range(1, len(df_indexed)):
+        # In deployment mode, check if the alert is recent enough to be notified.
+        is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
 
         current_candle = df_indexed.iloc[i]
-        
-        # We need at least one previous candle to proceed
-        if i == 0:
-            continue
-            
         prev_candle = df_indexed.iloc[i-1]
 
-        # --- 2. Basic Signal Check ---
+        # --- 2. State Machine Logic ---
 
         # 1. If we are in a trend, look for an opposing reversal to reset the state
         if trend_state in ['IN_UPTREND', 'IN_DOWNTREND']:
@@ -162,7 +159,9 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                 
                 is_sufficient, magnitude = check_magnitude(current_price, reversal_price, signal_settings)
 
-                if is_sufficient and is_new_candle: # Only create alert for new candles
+                # In development mode, generate all alerts.
+                # In deployment mode, only generate alerts that are new enough.
+                if is_sufficient and (is_development_mode or is_new_alert):
                     alert_time = current_candle['time']
                     reversal_time = df.iloc[last_reversal_idx]['time']
 
@@ -171,7 +170,7 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
 
                     # Create the standardized AlertData object
                     alert_data = AlertData(
-                        approach="RCM",
+                        approach=Approach.RCM,
                         id=alert_id,
                         signal=signal,
                         alert_price=current_price,

@@ -1,56 +1,117 @@
 import pandas as pd
+import pandas_ta as ta
 
-from src.stockreports.config.signal_settings import (
-    MA_LONG_PERIOD,
-    MA_SHORT_PERIOD,
-    TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO,
-    TENKAN_PERIOD,
-    KIJUN_PERIOD,
-)
+# --- Project Imports ---
+from src.stockreports.config import loader
 
-def prepare_indicators(df):
-    """Prepares the DataFrame with all potential technical indicators."""
-    # --- Indicator Calculations ---
-    df['ma_short'] = df['close'].rolling(window=MA_SHORT_PERIOD).mean()
-    df['ma_long'] = df['close'].rolling(window=MA_LONG_PERIOD).mean()
+signal_settings = loader.get_signal_settings()
 
-    high_tenkan = df['high'].rolling(window=TENKAN_PERIOD).max()
-    low_tenkan = df['low'].rolling(window=TENKAN_PERIOD).min()
+def get_min_data_required_for_advanced_confirmation() -> int:
+    """
+    Calculates and returns the minimum number of data points required for
+    all indicators used in the advanced confirmation logic.
+    
+    Returns:
+        int: The maximum lookback period required among all indicators.
+    """
+    return max(
+        getattr(signal_settings, 'TENKAN_SEN_PERIOD', 9),
+        getattr(signal_settings, 'KIJUN_SEN_PERIOD', 26),
+        getattr(signal_settings, 'SENKOU_SPAN_B_PERIOD', 52),
+        getattr(signal_settings, 'MA_LONG_PERIOD', 50),
+        getattr(signal_settings, 'RSI_PERIOD', 14),
+        getattr(signal_settings, 'MACD_SLOW_PERIOD', 26),
+        getattr(signal_settings, 'ADX_PERIOD', 14)
+    )
+
+def can_apply_advanced_confirmation(df: pd.DataFrame) -> bool:
+    """
+    Checks if the DataFrame has enough data to apply advanced confirmation.
+    
+    Args:
+        df (pd.DataFrame): The input dataframe.
+        
+    Returns:
+        bool: True if advanced confirmation can be applied, False otherwise.
+    """
+    min_data_required = get_min_data_required_for_advanced_confirmation()
+    return len(df) >= min_data_required
+
+def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepares the DataFrame by adding various technical indicators.
+    """
+    # --- Moving Averages ---
+    df['ma_short'] = df['close'].rolling(window=signal_settings.MA_SHORT_PERIOD).mean()
+    df['ma_long'] = df['close'].rolling(window=signal_settings.MA_LONG_PERIOD).mean()
+
+    # --- Ichimoku Cloud ---
+    high_tenkan = df['high'].rolling(window=signal_settings.TENKAN_SEN_PERIOD).max()
+    low_tenkan = df['low'].rolling(window=signal_settings.TENKAN_SEN_PERIOD).min()
     df['tenkan_sen'] = (high_tenkan + low_tenkan) / 2
 
-    high_kijun = df['high'].rolling(window=KIJUN_PERIOD).max()
-    low_kijun = df['low'].rolling(window=KIJUN_PERIOD).min()
+    high_kijun = df['high'].rolling(window=signal_settings.KIJUN_SEN_PERIOD).max()
+    low_kijun = df['low'].rolling(window=signal_settings.KIJUN_SEN_PERIOD).min()
     df['kijun_sen'] = (high_kijun + low_kijun) / 2
 
+    df['senkou_span_a'] = ((df['tenkan_sen'] + df['kijun_sen']) / 2).shift(signal_settings.KIJUN_SEN_PERIOD)
+    
+    high_senkou_b = df['high'].rolling(window=signal_settings.SENKOU_SPAN_B_PERIOD).max()
+    low_senkou_b = df['low'].rolling(window=signal_settings.SENKOU_SPAN_B_PERIOD).min()
+    df['senkou_span_b'] = ((high_senkou_b + low_senkou_b) / 2).shift(signal_settings.KIJUN_SEN_PERIOD)
+
+    # --- RSI ---
+    df['rsi'] = ta.rsi(df['close'], length=signal_settings.RSI_PERIOD)
+
+    # --- MACD ---
+    macd = ta.macd(df['close'], fast=signal_settings.MACD_FAST_PERIOD, slow=signal_settings.MACD_SLOW_PERIOD, signal=signal_settings.MACD_SIGNAL_PERIOD)
+    if macd is not None and not macd.empty:
+        df['macd'] = macd[f'MACD_{signal_settings.MACD_FAST_PERIOD}_{signal_settings.MACD_SLOW_PERIOD}_{signal_settings.MACD_SIGNAL_PERIOD}']
+        df['macdsignal'] = macd[f'MACDs_{signal_settings.MACD_FAST_PERIOD}_{signal_settings.MACD_SLOW_PERIOD}_{signal_settings.MACD_SIGNAL_PERIOD}']
+        df['macdhist'] = macd[f'MACDh_{signal_settings.MACD_FAST_PERIOD}_{signal_settings.MACD_SLOW_PERIOD}_{signal_settings.MACD_SIGNAL_PERIOD}']
+
+    # --- ADX ---
+    adx = ta.adx(df['high'], df['low'], df['close'], length=signal_settings.ADX_PERIOD)
+    if adx is not None and not adx.empty:
+        df['adx'] = adx[f'ADX_{signal_settings.ADX_PERIOD}']
+
+    # --- Candle Properties ---
     df['body_size'] = abs(df['close'] - df['open'])
     df['upper_wick'] = df['high'] - df.apply(lambda row: max(row['open'], row['close']), axis=1)
     df['lower_wick'] = df.apply(lambda row: min(row['open'], row['close']), axis=1) - df['low']
     
     return df
 
-def check_advanced_confirmation(candle, prev_candle):
+def check_advanced_confirmation(current_candle: pd.Series, prev_candle: pd.Series) -> str:
     """
-    Checks for a variety of advanced confirmation signals, such as MA Cross,
-    Ichimoku Cross, or a Strong Candle, to determine a 'BUY' or 'SELL' signal.
+    Checks for advanced confirmation signals (e.g., RSI, MACD, ADX) to validate a primary signal.
     """
-    # Bullish Signals
-    ma_cross_up = candle['ma_short'] > candle['ma_long'] and prev_candle['ma_short'] < prev_candle['ma_long']
-    ichi_cross_up = candle['tenkan_sen'] > candle['kijun_sen'] and prev_candle['tenkan_sen'] < prev_candle['kijun_sen']
-    strong_bullish_candle = (
-        candle['close'] > candle['open'] and
-        candle['upper_wick'] < candle['body_size'] * TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
+    # --- Bullish Confirmation ---
+    is_bullish_confirmed = (
+        # Price is above the long-term moving average
+        current_candle['close'] > current_candle['ma_long'] and
+        # RSI is in a bullish regime
+        current_candle['rsi'] > 50 and
+        # MACD is showing bullish momentum (MACD line is above signal line)
+        current_candle['macd'] > current_candle['macdsignal'] and
+        # Trend is strong enough to be actionable
+        current_candle['adx'] > 25
     )
-    if ma_cross_up or ichi_cross_up or strong_bullish_candle:
+    if is_bullish_confirmed:
         return 'BUY'
 
-    # Bearish Signals
-    ma_cross_down = candle['ma_short'] < candle['ma_long'] and prev_candle['ma_short'] > prev_candle['ma_long']
-    ichi_cross_down = candle['tenkan_sen'] < candle['kijun_sen'] and prev_candle['tenkan_sen'] > prev_candle['kijun_sen']
-    strong_bearish_candle = (
-        candle['close'] < candle['open'] and
-        candle['lower_wick'] < candle['body_size'] * TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
+    # --- Bearish Confirmation ---
+    is_bearish_confirmed = (
+        # Price is below the long-term moving average
+        current_candle['close'] < current_candle['ma_long'] and
+        # RSI is in a bearish regime
+        current_candle['rsi'] < 50 and
+        # MACD is showing bearish momentum
+        current_candle['macd'] < current_candle['macdsignal'] and
+        # Trend is strong enough
+        current_candle['adx'] > 25
     )
-    if ma_cross_down or ichi_cross_down or strong_bearish_candle:
+    if is_bearish_confirmed:
         return 'SELL'
-        
-    return None
+
+    return 'NEUTRAL'

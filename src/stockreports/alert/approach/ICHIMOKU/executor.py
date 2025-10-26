@@ -10,6 +10,7 @@ signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
 from src.stockreports.alert.model.models import AlertResult, AlertData
+from src.stockreports.alert.common.constants import Approach, Mode
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     Entry point for the Ichimoku approach. It identifies strong Ichimoku signals
     based on multiple conditions including Kumo, Chikou, and Kijun-sen distance.
     """
-    approach_name = "ICHIMOKU"
+    approach_name = Approach.ICHIMOKU
     try:
         logging.info(f"Running '{approach_name}' approach...")
         
@@ -56,7 +57,7 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
         
-        alerts_data = _find_ichimoku_alerts(df, config, new_candle_count, approach_name)
+        alerts_data = _find_ichimoku_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
 
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
@@ -74,7 +75,7 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             message=str(e)
         )
 
-def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int, approach_name: str) -> list[AlertData]:
+def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int) -> list[AlertData]:
     """
     Internal function to find alerts based on Ichimoku signals.
     """
@@ -83,21 +84,27 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int,
         config.get('TENKAN_PERIOD', 9),
         config.get('KIJUN_PERIOD', 26),
         config.get('SENKOU_B_PERIOD', 52)
-    )
+    ) + config.get('CHIKOU_LAG', 26) # Add Chikou lag for accurate length check
+
     if len(df) < min_required_len:
-        logging.warning(f"ICHIMOKU: DataFrame has less than {min_required_len} rows, cannot generate alerts.")
+        logging.warning(f"{Approach.ICHIMOKU}: DataFrame has less than {min_required_len} rows, cannot generate alerts.")
         return alerts
 
     df = _calculate_ichimoku_indicators(df, config)
     df_indexed = df.set_index('time')
     
-    candles_to_check = new_candle_count
-    i = len(df_indexed) - 1
-    
     chikou_lag = config.get('CHIKOU_LAG', 26)
-    min_index = max(1, chikou_lag)
+    
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
+    grace_period = 0
+    
+    # The loop now iterates over the entire dataframe to find all historical alerts.
+    # Start index must be high enough to have a valid previous candle and Chikou span.
+    start_index = max(1, chikou_lag)
+    for i in range(start_index, len(df_indexed)):
+        # In deployment mode, check if the alert is recent enough to be notified.
+        is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
 
-    while candles_to_check > 0 and i >= min_index:
         candle = df_indexed.iloc[i]
         prev_candle = df_indexed.iloc[i-1]
         signal = None
@@ -120,30 +127,30 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int,
 
         # --- Common Alert Creation Logic ---
         if signal:
-            alert_time = candle.name
-            alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-            
-            details = {
-                "tenkan_sen": round(candle['tenkan_sen'], 2),
-                "kijun_sen": round(candle['kijun_sen'], 2),
-                "price_kumo_relation": "Above" if signal == "BUY" else "Below",
-                "chikou_confirmation": "Yes"
-            }
+            # In development mode, generate all alerts.
+            # In deployment mode, only generate alerts that are new enough.
+            if is_development_mode or is_new_alert:
+                alert_time = candle.name
+                alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+                
+                details = {
+                    "tenkan_sen": round(candle['tenkan_sen'], 2),
+                    "kijun_sen": round(candle['kijun_sen'], 2),
+                    "price_kumo_relation": "Above" if signal == "BUY" else "Below",
+                    "chikou_confirmation": "Yes"
+                }
 
-            alert = AlertData(
-                approach=approach_name,
-                id=alert_id,
-                signal=signal,
-                alert_price=candle['close'],
-                alert_time=alert_time,
-                start_price=prev_candle['close'],
-                start_time=prev_candle.name,
-                magnitude=abs(candle['close'] - prev_candle['close']),
-                details=json.dumps(details)
-            )
-            alerts.append(alert)
-
-        i -= 1
-        candles_to_check -= 1
+                alert = AlertData(
+                    approach=Approach.ICHIMOKU,
+                    id=alert_id,
+                    signal=signal,
+                    alert_price=candle['close'],
+                    alert_time=alert_time,
+                    start_price=prev_candle['close'],
+                    start_time=prev_candle.name,
+                    magnitude=abs(candle['close'] - prev_candle['close']),
+                    details=json.dumps(details)
+                )
+                alerts.append(alert)
         
     return alerts

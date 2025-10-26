@@ -11,6 +11,7 @@ signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
 from src.stockreports.alert.model.models import AlertResult, AlertData
+from src.stockreports.alert.common.constants import Approach, Mode
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -19,7 +20,7 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     1. "Support Shelf" and generates a SELL alert on a confirmed breakdown.
     2. "Resistance Ceiling" and generates a BUY alert on a confirmed breakout.
     """
-    approach_name = "SUPPORT_RESISTANCE_BREAK"
+    approach_name = Approach.SUPPORT_RESISTANCE_BREAK
     try:
         logging.info(f"Running '{approach_name}' approach...")
         
@@ -27,7 +28,7 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
         
-        alerts_data = _find_break_alerts(df, config, approach_name, new_candle_count)
+        alerts_data = _find_break_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
 
         if not alerts_data:
@@ -139,75 +140,124 @@ def _is_breakout_confirmed(candle: pd.Series, resistance_level: float, config: d
 
 # --- ALERT ORCHESTRATION ---
 
-def _find_break_alerts(df: pd.DataFrame, config: dict, approach_name: str, new_candle_count: int = 0) -> list[AlertData]:
-    """Orchestrates finding both support breakdown and resistance breakout alerts."""
+def _check_for_breakdown(df_indexed, confirmation_candle_index, config, new_candle_count, lookback_period, grace_period) -> Optional[AlertData]:
+    """Checks for a confirmed support breakdown (SELL) signal."""
+    break_candle_index = confirmation_candle_index - 1
+    confirmation_candle = df_indexed.iloc[confirmation_candle_index]
+    break_candle = df_indexed.iloc[break_candle_index]
+
+    # A breakdown must start with a bearish (red) break candle.
+    if break_candle['close'] >= break_candle['open']:
+        return None
+
+    window_end = break_candle_index
+    window_start = max(0, window_end - lookback_period)
+    df_window = df_indexed.iloc[window_start:window_end]
+
+    for support_level, touch_indices in _find_support_shelf(df_window, config):
+        is_confirmed = (
+            _is_breakdown_candle(break_candle, support_level) and
+            _is_volume_confirmed(df_indexed, break_candle_index, config) and
+            _is_breakdown_confirmed(confirmation_candle, support_level, config)
+        )
+        
+        if is_confirmed:
+            is_development_mode = settings.MODE == Mode.DEVELOPMENT
+            # In deployment mode, only generate alerts for the newest candles.
+            is_new_alert = not is_development_mode and (confirmation_candle_index >= len(df_indexed) - (new_candle_count + grace_period))
+            
+            # In development mode, generate all alerts.
+            # In deployment mode, only generate alerts that are new enough.
+            if is_development_mode or is_new_alert:
+                alert = _create_alert(df_indexed, 'SELL', confirmation_candle, break_candle, support_level, touch_indices)
+                logging.info(f"Confirmed Support Breakdown Alert at {alert.alert_time} for price {alert.alert_price:.2f}")
+                return alert
+            # If confirmed but not new, we still stop to honor the first found level.
+            return None 
+    return None
+
+def _check_for_breakout(df_indexed, confirmation_candle_index, config, new_candle_count, lookback_period, grace_period) -> Optional[AlertData]:
+    """Checks for a confirmed resistance breakout (BUY) signal."""
+    break_candle_index = confirmation_candle_index - 1
+    confirmation_candle = df_indexed.iloc[confirmation_candle_index]
+    break_candle = df_indexed.iloc[break_candle_index]
+
+    # A breakout must start with a bullish (green) break candle.
+    if break_candle['close'] <= break_candle['open']:
+        return None
+
+    window_end = break_candle_index
+    window_start = max(0, window_end - lookback_period)
+    df_window = df_indexed.iloc[window_start:window_end]
+
+    for resistance_level, touch_indices in _find_resistance_ceiling(df_window, config):
+        is_confirmed = (
+            _is_breakout_candle(break_candle, resistance_level) and
+            _is_volume_confirmed(df_indexed, break_candle_index, config) and
+            _is_breakout_confirmed(confirmation_candle, resistance_level, config)
+        )
+
+        if is_confirmed:
+            is_development_mode = settings.MODE == Mode.DEVELOPMENT
+            # In deployment mode, only generate alerts for the newest candles.
+            is_new_alert = not is_development_mode and (confirmation_candle_index >= len(df_indexed) - (new_candle_count + grace_period))
+
+            # In development mode, generate all alerts.
+            # In deployment mode, only generate alerts that are new enough.
+            if is_development_mode or is_new_alert:
+                alert = _create_alert(df_indexed, 'BUY', confirmation_candle, break_candle, resistance_level, touch_indices)
+                logging.info(f"Confirmed Resistance Breakout Alert at {alert.alert_time} for price {alert.alert_price:.2f}")
+                return alert
+            # If confirmed but not new, we still stop to honor the first found level.
+            return None
+    return None
+
+
+def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
+    """
+    Orchestrates finding both support breakdown and resistance breakout alerts
+    by iterating through the dataframe and checking for valid patterns.
+    """
     alerts = []
     lookback_period = config.get("LOOKBACK_PERIOD", 60)
     cooldown_period = config.get("COOLDOWN_PERIOD", 30)
     last_alert_break_index = -np.inf
     
+    # Define the grace period for considering an alert "new". For this approach, it's 1.
+    grace_period = 1
+
+    # We need at least 2 candles (break + confirm) plus the lookback window.
     min_required_len = lookback_period + 2
     if len(df) < min_required_len:
         return alerts
 
     df_indexed = df.reset_index()
 
-    start_index = 0
-    if new_candle_count > 0:
-        lookback = lookback_period + cooldown_period + 5 
-        start_index = max(0, len(df_indexed) - new_candle_count - lookback)
-    
-    start_index = max(min_required_len, start_index)
-
-    for i in range(start_index, len(df_indexed)):
-        break_index = i - 1
-        if break_index <= last_alert_break_index + cooldown_period:
-            continue
-
-        confirmation_candle = df_indexed.iloc[i]
-        break_candle = df_indexed.iloc[break_index]
+    # Iterate through each candle that could be a 'confirmation candle'.
+    # The loop starts at index 1 because we always need a 'break_candle' at index-1.
+    for confirmation_candle_index in range(1, len(df_indexed)):
+        break_candle_index = confirmation_candle_index - 1
         
-        window_end = break_index
-        window_start = max(0, window_end - lookback_period)
-        df_window = df_indexed.iloc[window_start:window_end]
-
-        alert_generated_this_iteration = False
-
-        # --- Check for Support Breakdown (SELL) ---
-        if break_candle['close'] < break_candle['open']: # Must be a bearish break candle
-            for support_level, touch_indices in _find_support_shelf(df_window, config):
-                if (_is_breakdown_candle(break_candle, support_level) and
-                    _is_volume_confirmed(df_indexed, break_index, config) and
-                    _is_breakdown_confirmed(confirmation_candle, support_level, config)):
-                    
-                    if (i >= len(df_indexed) - new_candle_count):
-                        alert = _create_alert(df_indexed, 'SELL', confirmation_candle, break_candle, support_level, touch_indices, approach_name)
-                        alerts.append(alert)
-                        logging.info(f"Confirmed Support Breakdown Alert at {alert.alert_time} for price {alert.alert_price:.2f}")
-                        last_alert_break_index = break_index
-                        alert_generated_this_iteration = True
-                        break # Move to next candle
-            
-        # If a SELL alert was generated, skip the BUY check for this candle
-        if alert_generated_this_iteration:
+        # Enforce a cooldown period after an alert to prevent spam.
+        if break_candle_index <= last_alert_break_index + cooldown_period:
             continue
 
-        # --- Check for Resistance Breakout (BUY) ---
-        if break_candle['close'] > break_candle['open']: # Must be a bullish break candle
-            for resistance_level, touch_indices in _find_resistance_ceiling(df_window, config):
-                if (_is_breakout_candle(break_candle, resistance_level) and
-                    _is_volume_confirmed(df_indexed, break_index, config) and
-                    _is_breakout_confirmed(confirmation_candle, resistance_level, config)):
+        # 1. Check for a SELL signal (breakdown)
+        sell_alert = _check_for_breakdown(df_indexed, confirmation_candle_index, config, new_candle_count, lookback_period, grace_period)
+        if sell_alert:
+            alerts.append(sell_alert)
+            last_alert_break_index = break_candle_index
+            continue # Skip BUY check if a SELL was found
 
-                    if (i >= len(df_indexed) - new_candle_count):
-                        alert = _create_alert(df_indexed, 'BUY', confirmation_candle, break_candle, resistance_level, touch_indices, approach_name)
-                        alerts.append(alert)
-                        logging.info(f"Confirmed Resistance Breakout Alert at {alert.alert_time} for price {alert.alert_price:.2f}")
-                        last_alert_break_index = break_index
-                        break # Move to next candle
+        # 2. Check for a BUY signal (breakout)
+        buy_alert = _check_for_breakout(df_indexed, confirmation_candle_index, config, new_candle_count, lookback_period, grace_period)
+        if buy_alert:
+            alerts.append(buy_alert)
+            last_alert_break_index = break_candle_index
+            
     return alerts
 
-def _create_alert(df_indexed, signal, confirmation_candle, break_candle, level, touch_indices, approach_name):
+def _create_alert(df_indexed, signal, confirmation_candle, break_candle, level, touch_indices):
     """Helper function to create an AlertData object."""
     alert_time = confirmation_candle['time']
     alert_price = confirmation_candle['close']
@@ -234,7 +284,7 @@ def _create_alert(df_indexed, signal, confirmation_candle, break_candle, level, 
     }
 
     return AlertData(
-        approach=approach_name,
+        approach=Approach.SUPPORT_RESISTANCE_BREAK,
         id=alert_id,
         signal=signal,
         alert_price=alert_price,
