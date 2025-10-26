@@ -10,13 +10,14 @@ signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
 from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation
+from src.stockreports.alert.common.constants import Approach, Mode
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation, can_apply_advanced_confirmation
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
     Entry point for the CONSISTENT_MOMENTUM approach. It takes a DataFrame and returns an AlertResult.
     """
-    approach_name = "CONSISTENT_MOMENTUM"
+    approach_name = Approach.CONSISTENT_MOMENTUM
     try:
         logging.info(f"Running '{approach_name}' approach...")
         
@@ -167,7 +168,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     momentum_start_ts = int(momentum_start_time.tz_convert('UTC').timestamp())
 
     alert_data = AlertData(
-        approach="CONSISTENT_MOMENTUM",
+        approach=Approach.CONSISTENT_MOMENTUM,
         id=alert_id,
         signal=signal,
         alert_price=current_price,
@@ -179,7 +180,8 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
             "reason": "Consistent Momentum with Breakout",
             "momentum_start_time": momentum_start_ts,
             "momentum_window_size": window_size,
-            "breakout_lookback_minutes": lookback_minutes
+            "breakout_lookback_minutes": lookback_minutes,
+            "used_advanced_confirmation": use_advanced_confirmation
         })
     )
     return alert_data
@@ -190,15 +192,25 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
     This looks for a rolling window of candles that show strong, consistent direction.
     """
     alerts = []
-    window_size = config.get("CONFIRMATION_WINDOW", 4)
-    use_advanced_confirmation = config.get("USE_ADVANCED_CONFIRMATION", False)
+    window_size = config.get("CONFIRMATION_WINDOW", 3)
+    
+    # Determine if we can use advanced confirmation dynamically.
+    use_advanced_confirmation = can_apply_advanced_confirmation(df)
+
+    if use_advanced_confirmation:
+        logging.info(f"{Approach.CONSISTENT_MOMENTUM}: Sufficient data available ({len(df)} candles). Advanced confirmation will be used.")
+    else:
+        logging.warning(
+            f"{Approach.CONSISTENT_MOMENTUM}: Insufficient data for advanced confirmation. "
+            "Falling back to simple confirmation."
+        )
 
     if window_size < 2:
-        logging.error(f"CONSISTENT_MOMENTUM: 'CONFIRMATION_WINDOW' must be at least 2, but got {window_size}. Aborting.")
+        logging.error(f"{Approach.CONSISTENT_MOMENTUM}: 'CONFIRMATION_WINDOW' must be at least 2, but got {window_size}. Aborting.")
         return alerts
 
     if len(df) < window_size:
-        logging.warning(f"CONSISTENT_MOMENTUM: DataFrame has less than {window_size} rows, cannot generate alerts.")
+        logging.warning(f"{Approach.CONSISTENT_MOMENTUM}: DataFrame has less than {window_size} rows, cannot generate alerts.")
         return alerts
 
     # Set a DatetimeIndex to allow for proper time-based lookups
@@ -207,34 +219,24 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
     # Prepare indicators once if advanced confirmation is enabled
     df_with_indicators = None
     if use_advanced_confirmation:
-        # The minimum required length for indicators should be checked.
-        ma_long_period = signal_settings.MA_LONG_PERIOD
-        # For example, Ichimoku's Kijun-sen needs 26 periods.
-        if len(df_indexed) < max(26, ma_long_period):
-            logging.warning("DataFrame too short for advanced confirmation indicators. Skipping.")
-            use_advanced_confirmation = False # Disable it for this run
-        else:
-            df_with_indicators = df_indexed.copy()
-            # First, get the standard indicators
-            df_with_indicators = prepare_indicators(df_with_indicators)
+        df_with_indicators = df_indexed.copy()
+        df_with_indicators = prepare_indicators(df_with_indicators)
 
-    # --- Main Analysis Loop ---
-    # The number of windows to check is now always driven by new_candle_count.
-    windows_to_check = new_candle_count
-    
-    # Start from the end of the DataFrame
-    i = len(df_indexed) - 1
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
+    grace_period = window_size
 
-    # Loop backwards, checking the number of windows determined by the mode.
-    while windows_to_check > 0 and i >= window_size - 1:
+    # The loop now iterates over the entire dataframe to find all historical alerts.
+    for i in range(window_size - 1, len(df_indexed)):
+        # In deployment mode, check if the alert is recent enough to be notified.
+        is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
+
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
         
         alert = _analyze_window(window, df_indexed, df_with_indicators, config, window_size, use_advanced_confirmation)
-        if alert:
-            # To avoid duplicates when processing the whole frame, insert at the beginning
-            alerts.insert(0, alert)
-
-        i -= 1
-        windows_to_check -= 1
+        
+        # In development mode, generate all alerts.
+        # In deployment mode, only generate alerts that are new enough.
+        if alert and (is_development_mode or is_new_alert):
+            alerts.append(alert)
 
     return alerts
