@@ -11,6 +11,7 @@ signal_settings = loader.get_signal_settings()
 # --- Project Imports ---
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing
 
 logger = logging.getLogger(__name__)
 
@@ -127,9 +128,21 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
 
         # --- Common Alert Creation Logic ---
         if signal:
+            # Volume Confirmation
+            use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
+            use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+
+            # For Ichimoku, the "confirmation window" is just the current and previous candle
+            confirmation_df = df_indexed.iloc[i-1:i+1]
+
+            volume_spike_is_confirmed = not use_volume_spike or is_volume_spike_confirmed(df, i, use_volume_spike)
+            volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
+            
+            volume_confirmed = volume_spike_is_confirmed and volume_is_increasing
+
             # In development mode, generate all alerts.
             # In deployment mode, only generate alerts that are new enough.
-            if is_development_mode or is_new_alert:
+            if volume_confirmed and (is_development_mode or is_new_alert):
                 alert_time = candle.name
                 alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
                 

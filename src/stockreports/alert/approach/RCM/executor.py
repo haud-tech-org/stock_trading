@@ -14,6 +14,7 @@ from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation, can_apply_advanced_confirmation
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.model.models import AlertResult, AlertData
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing
 
 # --- Constants ---
 # This constant is specific to the RCM approach.
@@ -152,16 +153,29 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                     if (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
                         signal = 'SELL'
 
-            # If we have a signal, check for magnitude
+            # If we have a signal, check for magnitude and volume
             if signal:
                 reversal_price = df.iloc[last_reversal_idx]['low'] if signal == 'BUY' else df.iloc[last_reversal_idx]['high']
                 current_price = current_candle['close']
                 
                 is_sufficient, magnitude = check_magnitude(current_price, reversal_price, signal_settings)
 
+                # Volume Confirmation
+                confirmation_start_index = last_reversal_idx + 1
+                confirmation_end_index = i + 1
+                confirmation_df = df_indexed.iloc[confirmation_start_index:confirmation_end_index]
+
+                use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
+                use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+
+                volume_spike_is_confirmed = not use_volume_spike or is_volume_spike_confirmed(df_indexed, i, use_volume_spike)
+                volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
+                
+                volume_confirmed = volume_spike_is_confirmed and volume_is_increasing
+
                 # In development mode, generate all alerts.
                 # In deployment mode, only generate alerts that are new enough.
-                if is_sufficient and (is_development_mode or is_new_alert):
+                if is_sufficient and volume_confirmed and (is_development_mode or is_new_alert):
                     alert_time = current_candle['time']
                     reversal_time = df.iloc[last_reversal_idx]['time']
 
