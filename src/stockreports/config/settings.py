@@ -92,7 +92,7 @@ LOG_LEVEL = "INFO"
 # Guidance: Always use "DEVELOPMENT" for testing changes. Switch to "DEPLOYMENT" for actual use.
 # Range: "DEVELOPMENT" or "DEPLOYMENT".
 # Example: `MODE = "DEVELOPMENT"`
-MODE = "DEVELOPMENT"
+MODE = "DEPLOYMENT"
 
 # Data Directory
 # Meaning: The relative path from the project root to the folder containing historical data JSON files.
@@ -125,6 +125,8 @@ ALERT_APPROACHES = [
     "ICHIMOKU",
     "STRONG_CANDLE", # NEED IMPROVEMENT - UNSTABLE TO SUPPORT NOW (2025/10/08)
     "SUPPORT_RESISTANCE_BREAK",
+    "MOMENTUM_EXHAUSTION",
+    "CONSECUTIVE_POWER_CANDLES"
     # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 

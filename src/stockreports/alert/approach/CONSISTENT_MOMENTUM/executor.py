@@ -12,6 +12,7 @@ signal_settings = loader.get_signal_settings()
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation, can_apply_advanced_confirmation
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -114,7 +115,20 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     if not is_breakout_confirmed:
         return None
 
-    # --- 6. New: Average Body-to-Range Ratio Confirmation ---
+    # --- 6. Volume Confirmation ---
+    use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
+    use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+
+    # The confirmation candle for the spike is the last candle in the window
+    confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
+
+    volume_spike_is_confirmed = not use_volume_spike or is_volume_spike_confirmed(df_indexed.reset_index(), confirmation_candle_index, use_volume_spike)
+    volume_is_increasing = not use_increasing_volume or is_volume_increasing(window)
+    
+    if not (volume_spike_is_confirmed and volume_is_increasing):
+        return None
+
+    # --- 7. New: Average Body-to-Range Ratio Confirmation ---
     body_to_range_min_ratio = config.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
     window['body'] = abs(window['close'] - window['open'])
     window['range'] = window['high'] - window['low']
@@ -126,7 +140,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
         if avg_body_to_range_ratio < body_to_range_min_ratio:
             return None
 
-    # --- 7. Original: Check for body dominance over wicks ---
+    # --- 8. Original: Check for body dominance over wicks ---
     window['wick'] = window['range'] - window['body']
     
     total_body = window['body'].sum()
@@ -135,7 +149,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     if total_body <= total_wick:
         return None
 
-    # --- 8. Advanced Confirmation (optional) ---
+    # --- 9. Advanced Confirmation (optional) ---
     if use_advanced_confirmation:
         # Get the specific candles we need from the indicator-rich dataframe
         adv_current_candle = df_with_indicators.loc[current_candle.name]
