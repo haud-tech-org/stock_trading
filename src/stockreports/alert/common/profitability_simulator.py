@@ -54,6 +54,13 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
     for alert in sorted_alerts:
         signal = alert.get('signal')
         alert_time = alert.get('alert_time')
+        # --- FIX: Ensure alert_time is a timezone-aware datetime object ---
+        # If it's a string, parse it. This makes the function more robust.
+        if isinstance(alert_time, str):
+            from dateutil import parser as date_parser
+            alert_time = date_parser.isoparse(alert_time)
+        # --- END FIX ---
+        
         approach = alert.get('approach')
         source_symbol = alert.get('source_symbol')  # Get the source symbol
         suggested_price = alert.get('suggested_price') # Get the suggested price
