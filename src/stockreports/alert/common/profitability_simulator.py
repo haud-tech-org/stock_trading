@@ -8,6 +8,95 @@ from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTE
 
 TIMEZONE = pytz.timezone(get_market_timezone_str())
 
+def calculate_trade_metrics(trade: Dict[str, Any], trade_data: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Calculates advanced metrics for a single trade, such as best/worst profit
+    and signal status, based on historical price data.
+
+    Args:
+        trade: A dictionary representing a single trade, containing timestamps and prices.
+        trade_data: A DataFrame of historical price data for the relevant day.
+
+    Returns:
+        A dictionary with the newly calculated metrics.
+    """
+    entry_time = trade.get('entry_timestamp')
+    exit_time = trade.get('exit_timestamp')
+    entry_price = trade.get('entry_price')
+    exit_price = trade.get('exit_price')
+    current_position = trade.get('entry_signal') # 'BUY' or 'SELL'
+    exit_signal = trade.get('exit_signal')
+
+    entry_best_profit, entry_worst_loss = None, None
+    exit_best_profit, exit_worst_loss = None, None
+    entry_signal_status, exit_signal_status = "Unknown", "Unknown"
+    improvement_suggestion = "None"
+
+    if not all([entry_time, exit_time, entry_price, exit_price, current_position, exit_signal]):
+        return {}
+
+    # --- Calculate for Entry Signal ---
+    entry_validation_end = entry_time + timedelta(minutes=VALIDATION_PERIOD_MINUTES)
+    entry_validation_end = min(entry_validation_end, trade_data.index[-1])
+    entry_window_data = trade_data.loc[entry_time:entry_validation_end]
+
+    if not entry_window_data.empty:
+        max_price_in_entry_window = entry_window_data['high'].max()
+        min_price_in_entry_window = entry_window_data['low'].min()
+
+        if current_position == 'BUY':
+            entry_best_profit = max_price_in_entry_window - entry_price
+            entry_worst_loss = min_price_in_entry_window - entry_price
+        else:  # SELL
+            entry_best_profit = entry_price - min_price_in_entry_window
+            entry_worst_loss = entry_price - max_price_in_entry_window
+        
+        if entry_best_profit is not None and entry_best_profit >= VALIDATION_PRICE_THRESHOLD:
+            entry_signal_status = "Success"
+        else:
+            entry_signal_status = "Failed"
+
+    # --- Calculate for Exit Signal ---
+    exit_validation_end = exit_time + timedelta(minutes=VALIDATION_PERIOD_MINUTES)
+    exit_validation_end = min(exit_validation_end, trade_data.index[-1])
+    exit_window_data = trade_data.loc[exit_time:exit_validation_end]
+
+    if not exit_window_data.empty:
+        max_price_in_exit_window = exit_window_data['high'].max()
+        min_price_in_exit_window = exit_window_data['low'].min()
+
+        if exit_signal == 'BUY': # Closing a SELL trade
+            exit_best_profit = exit_price - min_price_in_exit_window
+            exit_worst_loss = exit_price - max_price_in_exit_window
+        else: # Closing a BUY trade
+            exit_best_profit = max_price_in_exit_window - exit_price
+            exit_worst_loss = min_price_in_exit_window - exit_price
+
+        if exit_best_profit is not None and exit_best_profit >= VALIDATION_PRICE_THRESHOLD:
+            exit_signal_status = "Success"
+        else:
+            exit_signal_status = "Failed"
+
+    # --- Improvement Suggestion Logic ---
+    profit_loss = trade.get('profit_loss', 0)
+    if profit_loss <= 0:
+        if entry_signal_status == "Failed":
+            improvement_suggestion = f"Improve entry signal: {trade.get('entry_approach', 'N/A')}"
+        elif exit_signal_status == "Failed":
+            improvement_suggestion = f"Improve exit signal: {trade.get('exit_approach', 'N/A')}"
+        else:
+            improvement_suggestion = "Review trade timing; both signals were individually successful."
+
+    return {
+        "entry_best_profit": entry_best_profit,
+        "entry_worst_loss": entry_worst_loss,
+        "exit_best_profit": exit_best_profit,
+        "exit_worst_loss": exit_worst_loss,
+        "entry_signal_status": entry_signal_status,
+        "exit_signal_status": exit_signal_status,
+        "improvement_suggestion": improvement_suggestion
+    }
+
 def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFrame = None) -> ProfitabilityReport:
     """
     Simulates trading based on a list of alerts to calculate overall profitability.
@@ -97,66 +186,21 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
             else:  # SELL
                 profit_loss = entry_price - alert_price
 
-            # --- ENHANCEMENT: Calculate best profit and worst loss for both entry and exit ---
-            entry_best_profit, entry_worst_loss = None, None
-            exit_best_profit, exit_worst_loss = None, None
-            entry_signal_status, exit_signal_status = None, None
-
-
+            # --- ENHANCEMENT: Calculate metrics using the new function ---
+            trade_metrics = {}
             if trade_data is not None:
-                # --- Calculate for Entry Signal ---
-                entry_validation_end = entry_time + timedelta(minutes=VALIDATION_PERIOD_MINUTES)
-                entry_validation_end = min(entry_validation_end, trade_data.index[-1])
-                entry_window_data = trade_data.loc[entry_time:entry_validation_end]
-
-                if not entry_window_data.empty:
-                    max_price_in_entry_window = entry_window_data['high'].max()
-                    min_price_in_entry_window = entry_window_data['low'].min()
-
-                    if current_position == 'BUY':
-                        entry_best_profit = max_price_in_entry_window - entry_price
-                        entry_worst_loss = min_price_in_entry_window - entry_price
-                    else:  # SELL
-                        entry_best_profit = entry_price - min_price_in_entry_window
-                        entry_worst_loss = entry_price - max_price_in_entry_window
-                    
-                    if entry_best_profit is not None and entry_best_profit >= VALIDATION_PRICE_THRESHOLD:
-                        entry_signal_status = "Success"
-                    else:
-                        entry_signal_status = "Failed"
-
-                # --- Calculate for Exit Signal ---
-                exit_validation_end = alert_time + timedelta(minutes=VALIDATION_PERIOD_MINUTES)
-                exit_validation_end = min(exit_validation_end, trade_data.index[-1])
-                exit_window_data = trade_data.loc[alert_time:exit_validation_end]
-
-                if not exit_window_data.empty:
-                    max_price_in_exit_window = exit_window_data['high'].max()
-                    min_price_in_exit_window = exit_window_data['low'].min()
-
-                    # Note: The "profit" for an exit signal is conceptual.
-                    # A "BUY" exit signal's "best profit" would come from a subsequent price drop.
-                    if signal == 'BUY': # This is closing a SELL trade
-                        exit_best_profit = alert_price - min_price_in_exit_window
-                        exit_worst_loss = alert_price - max_price_in_exit_window
-                    else: # This is closing a BUY trade
-                        exit_best_profit = max_price_in_exit_window - alert_price
-                        exit_worst_loss = min_price_in_exit_window - alert_price
-
-                    if exit_best_profit is not None and exit_best_profit >= VALIDATION_PRICE_THRESHOLD:
-                        exit_signal_status = "Success"
-                    else:
-                        exit_signal_status = "Failed"
-
-            # --- Improvement Suggestion Logic ---
-            improvement_suggestion = "None"
-            if profit_loss <= 0: # Only suggest improvements for failed or neutral trades
-                if entry_signal_status == "Failed":
-                    improvement_suggestion = f"Improve entry signal: {entry_approach}"
-                elif exit_signal_status == "Failed":
-                    improvement_suggestion = f"Improve exit signal: {approach}"
-                else:
-                    improvement_suggestion = "Review trade timing; both signals were individually successful."
+                temp_trade_for_metrics = {
+                    "entry_timestamp": entry_time,
+                    "exit_timestamp": alert_time,
+                    "entry_price": entry_price,
+                    "exit_price": alert_price,
+                    "entry_signal": current_position,
+                    "exit_signal": signal,
+                    "entry_approach": entry_approach,
+                    "exit_approach": approach,
+                    "profit_loss": profit_loss
+                }
+                trade_metrics = calculate_trade_metrics(temp_trade_for_metrics, trade_data)
 
 
             trades.append(Trade(
@@ -175,13 +219,7 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
                 exit_suggested_price=suggested_price,
                 profit_loss=profit_loss,
                 status="Success" if profit_loss > 0 else "Failed",
-                entry_best_profit=entry_best_profit,
-                entry_worst_loss=entry_worst_loss,
-                exit_best_profit=exit_best_profit,
-                exit_worst_loss=exit_worst_loss,
-                entry_signal_status=entry_signal_status,
-                exit_signal_status=exit_signal_status,
-                improvement_suggestion=improvement_suggestion
+                **trade_metrics
             ))
 
             # Start a new position with the current alert

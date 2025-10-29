@@ -219,26 +219,31 @@ def calculate_max_lookback_period() -> int:
     return max_lookback
 
 
-def load_data_for_development(symbol: str) -> pd.DataFrame:
+def load_data_for_development(symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     Loads and consolidates data for a symbol in development mode by fetching it from the API
     for a specified date range.
     """
     logger = logging.getLogger(__name__)
     
-    date_range = settings.DEV_DATA_DATE_RANGE
-    start_date_str = date_range.get("start_date")
-    end_date_str = date_range.get("end_date")
+    # Use provided dates or fall back to settings
+    if not start_date or not end_date:
+        date_range = settings.DEV_DATA_DATE_RANGE
+        start_date_str = date_range.get("start_date")
+        end_date_str = date_range.get("end_date")
+    else:
+        start_date_str = start_date
+        end_date_str = end_date
 
     if not start_date_str or not end_date_str:
-        logger.error("DEV_DATA_DATE_RANGE is not configured correctly in settings.")
+        logger.error("Date range is not configured correctly in settings or passed as arguments.")
         return pd.DataFrame()
 
     try:
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
     except ValueError:
-        logger.error("Invalid date format in DEV_DATA_DATE_RANGE. Use YYYY-MM-DD.")
+        logger.error("Invalid date format. Use YYYY-MM-DD.")
         return pd.DataFrame()
 
     all_dfs = []

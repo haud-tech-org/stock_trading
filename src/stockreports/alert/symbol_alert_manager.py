@@ -79,6 +79,30 @@ class SymbolAlertManager:
             logging.critical(f"An unexpected error occurred during sequential processing: {e}", exc_info=True)
             sys.exit(1)
 
+    def run_alert_generation(self):
+        """
+        Starts the alert manager for alert generation.
+        """
+        if not self.symbols:
+            logging.error("No symbols configured in settings.py. Exiting.")
+            sys.exit(1)
+
+        logging.info(f"Starting Alerter Manager for symbols: {self.symbols}")
+
+        if self.settings.MODE == "DEPLOYMENT":
+            self._run_deployment()
+        else:
+            self._run_development()
+
+    def run_analysis(self):
+        """
+        Runs the consolidated profitability analysis.
+        """
+        if self.settings.MODE == "DEVELOPMENT" and self.settings.CONSOLIDATED_PROFITABILITY.get('ENABLED', False):
+            self._run_consolidated_profitability_analysis()
+        else:
+            logging.info("Consolidated profitability analysis is disabled or not in DEVELOPMENT mode.")
+
     def _run_consolidated_profitability_analysis(self):
         """
         Runs a special profitability simulation by reading entry signals from
@@ -207,25 +231,30 @@ class SymbolAlertManager:
 
     def run(self):
         """
-        Starts the alert manager, choosing the execution mode based on settings.
+        Starts the alert manager, running both alert generation and analysis.
         """
-        if not self.symbols:
-            logging.error("No symbols configured in settings.py. Exiting.")
-            sys.exit(1)
-
-        logging.info(f"Starting Alerter Manager for symbols: {self.symbols}")
-
-        if self.settings.MODE == "DEPLOYMENT":
-            self._run_deployment()
-        else:
-            self._run_development()
-
-        # After individual processing, run the consolidated analysis if enabled
-        if self.settings.MODE == "DEVELOPMENT" and self.settings.CONSOLIDATED_PROFITABILITY.get('ENABLED', False):
-            self._run_consolidated_profitability_analysis()
+        self.run_alert_generation()
+        self.run_analysis()
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    # Instantiate and run the manager
+    parser = argparse.ArgumentParser(description="Symbol Alert Manager - Generation and Analysis")
+    parser.add_argument('--generate-alerts', action='store_true', help='Run only the alert generation process.')
+    parser.add_argument('--run-analysis', action='store_true', help='Run only the consolidated profitability analysis.')
+    args = parser.parse_args()
+
     manager = SymbolAlertManager()
-    manager.run()
+
+    # Decide which part of the process to run based on arguments
+    if args.generate_alerts and args.run_analysis:
+        logging.info("Running both alert generation and analysis.")
+        manager.run()
+    elif args.generate_alerts:
+        logging.info("Running alert generation ONLY.")
+        manager.run_alert_generation()
+    elif args.run_analysis:
+        logging.info("Running analysis ONLY.")
+        manager.run_analysis()
+    else:
+        logging.info("No specific task selected. Running the full process (generation and analysis).")
+        manager.run()

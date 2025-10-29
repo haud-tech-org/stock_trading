@@ -186,3 +186,13 @@ def get_market_timezone_str() -> str:
         The IANA timezone string (e.g., 'Asia/Ho_Chi_Minh').
     """
     return TIMEZONE_STR
+
+
+def get_market_timezone() -> pytz.BaseTzInfo:
+    """
+    Get the market's timezone object.
+    
+    Returns:
+        A pytz timezone object.
+    """
+    return TIMEZONE
