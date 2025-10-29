@@ -82,6 +82,7 @@ class Trade:
     """
     Represents a single simulated trade with an entry and an exit.
     """
+    trade_index: int
     entry_signal: str
     entry_price: float
     entry_timestamp: str
@@ -96,6 +97,13 @@ class Trade:
     exit_source_symbol: Optional[str] = None   # New field for exit source
     entry_suggested_price: Optional[float] = None # New field for entry suggested price
     exit_suggested_price: Optional[float] = None # New field for exit suggested price
+    entry_best_profit: Optional[float] = None
+    entry_worst_loss: Optional[float] = None
+    exit_best_profit: Optional[float] = None
+    exit_worst_loss: Optional[float] = None
+    entry_signal_status: Optional[str] = None
+    exit_signal_status: Optional[str] = None
+    improvement_suggestion: Optional[str] = None
 
 @dataclass
 class ProfitabilityReport:
