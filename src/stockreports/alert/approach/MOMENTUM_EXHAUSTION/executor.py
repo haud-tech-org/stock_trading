@@ -123,11 +123,20 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
 
     # --- 3. Analyze candle bodies for exhaustion pattern ---
     window['body'] = abs(window['close'] - window['open'])
+    
+    # --- FIX: Check for progressively shrinking candle bodies, not just averages ---
+    exhaustion_bodies = window.loc[exhaustion_candles.index, 'body'].tolist()
+
+    # Check if each exhaustion candle body is smaller than the one before it.
+    is_shrinking = all(exhaustion_bodies[i] < exhaustion_bodies[i-1] for i in range(1, len(exhaustion_bodies)))
+
+    if not is_shrinking:
+        return None
+    # --- END FIX ---
+
+    # For logging purposes, calculate the averages that were previously used for the old logic.
     avg_momentum_body = window.loc[momentum_candles.index, 'body'].mean()
     avg_exhaustion_body = window.loc[exhaustion_candles.index, 'body'].mean()
-
-    if avg_momentum_body == 0 or avg_exhaustion_body >= (avg_momentum_body * body_shrink_factor):
-        return None
 
     # --- 4. Analyze volume for confirmation (if enabled) ---
     if use_volume:

@@ -26,6 +26,8 @@ from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR,
 # --- FIX: Import the correct function, not a class ---
 from src.stockreports.alert.common.profitability_simulator import simulate_profitability
 from src.stockreports.config import loader
+from src.stockreports.config.signal_settings import APPROACH_CONFIG
+from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD
 import pytz
 
 def run_consolidated_simulation(execution_symbol: str, alert_sources: list, date_str: str):
@@ -108,6 +110,23 @@ def run_consolidated_simulation(execution_symbol: str, alert_sources: list, date
     to_timestamp = int(to_dt.timestamp())
 
     raw_data = fetch_intraday_data(execution_symbol, from_timestamp, to_timestamp)
+
+    # --- ENHANCEMENT: Save simulation data if enabled ---
+    if settings.SAVE_DEV_API_RESPONSE_TO_FILE and raw_data and raw_data.get('s') == 'ok':
+        # Use the existing DATA_DIR setting
+        data_path = os.path.join(project_root, settings.DATA_DIR, execution_symbol)
+        os.makedirs(data_path, exist_ok=True)
+        
+        file_date_str = simulation_date.strftime('%y%m%d')
+        file_path = os.path.join(data_path, f"{execution_symbol.lower()}_response_{file_date_str}.json")
+        
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(raw_data, f, indent=4)
+            logging.info(f"Successfully saved simulation source data to {file_path}")
+        except IOError as e:
+            logging.error(f"Failed to save simulation source data to {file_path}: {e}")
+    # --- END ENHANCEMENT ---
     
     price_data_df = pd.DataFrame()
     if raw_data and raw_data.get('s') == 'ok':
@@ -182,7 +201,14 @@ def run_consolidated_simulation(execution_symbol: str, alert_sources: list, date
         with open(output_path, 'w') as f:
             # The function returns a dataclass-like object, convert it to dict
             from dataclasses import asdict
-            json.dump(asdict(summary), f, indent=4)
+            summary_dict = asdict(summary)
+            summary_dict['app_config'] = APPROACH_CONFIG
+            validation_config = {
+                "VALIDATION_PERIOD_MINUTES": VALIDATION_PERIOD_MINUTES,
+                "VALIDATION_PRICE_THRESHOLD": VALIDATION_PRICE_THRESHOLD
+            }
+            summary_dict['validation_config'] = validation_config
+            json.dump(summary_dict, f, indent=4)
         # --- END FIX ---
         logging.info(f"Successfully saved consolidated simulation report to {output_path}")
     except Exception as e:
