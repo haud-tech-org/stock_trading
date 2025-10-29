@@ -51,3 +51,5 @@ tzdata==2025.2
 urllib3==2.5.0
 yarl==1.22.0
 zipp==3.23.0
+gunicorn==23.0.0
+flask==2.3.0

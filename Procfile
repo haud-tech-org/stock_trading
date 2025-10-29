@@ -1,1 +1,1 @@
-web: python -u -m stockreports.alert.symbol_alert_manager
+web: gunicorn --bind 0.0.0.0:$PORT stockreports.web:app
