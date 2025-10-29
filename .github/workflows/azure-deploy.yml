@@ -4,10 +4,19 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      build_wheels:
+        description: 'Build wheels locally and include them in release.zip (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -23,12 +32,20 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Select subscription
-        run: az account set --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+        run: |
+          az account set --subscription "${{ env.AZURE_SUBSCRIPTION_ID }}"
+          az account show --query "{name:name, id:id}" -o json
 
-      - name: Install dependencies (optional for CI tests)
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: (optional) Build wheelhouse
+        if: ${{ github.event.inputs.build_wheels == 'true' }}
+        run: |
+          python -m pip wheel -r requirements.txt -w wheelhouse || true
+          ls -lah wheelhouse || true
 
       - name: (optional) Run tests
         run: |
@@ -38,19 +55,27 @@ jobs:
       - name: Package artifact (zip)
         run: |
           # Create a zip artifact for deployment and exclude .git, local venvs, and CI-only folders
-          zip -r release.zip . -x ".git/*" ".venv/*" ".github/*" "tests/*" "__pycache__/*"
+          zip -r release.zip . -x ".git/*" ".venv/*" ".github/*" "tests/*" "__pycache__/*" ".pytest_cache/*"
 
-      - name: Deploy with Azure CLI (zip)
-        env:
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
-        run: |
-          az webapp deploy \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --src-path release.zip \
-            --type zip
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: release.zip
 
       - name: Confirm deployment / show default host
+        if: success()
         run: |
-          az webapp show --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" --name "${{ secrets.AZURE_WEBAPP_NAME }}" --query "{name:name, state:state, defaultHostName:defaultHostName}" -o json
+          az webapp show --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --name "${{ env.AZURE_WEBAPP_NAME }}" --query "{name:name, state:state, defaultHostName:defaultHostName}" -o json
+
+      - name: Test /health endpoint (best-effort)
+        if: success()
+        run: |
+          HOST=$(az webapp show --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --name "${{ env.AZURE_WEBAPP_NAME }}" --query defaultHostName -o tsv)
+          echo "Host: $HOST"
+          if command -v curl >/dev/null 2>&1; then
+            echo "Requesting /health (this may fail if your app has not exposed /health)"
+            curl -I --max-time 15 "https://${HOST}/health" || true
+          else
+            echo "curl not available in runner"
+          fi
