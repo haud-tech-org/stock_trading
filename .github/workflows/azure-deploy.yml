@@ -1,5 +1,4 @@
 # Deploy to Azure Web App using AZURE_CREDENTIALS (service principal)
-# Place this file at .github/workflows/azure-deploy.yml in your repo.
 on:
   push:
     branches:
@@ -26,7 +25,7 @@ jobs:
       - name: Select subscription
         run: az account set --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
-      - name: Install dependencies
+      - name: Install dependencies (optional for CI tests)
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
@@ -36,17 +35,20 @@ jobs:
           # add tests here if you have them, e.g. pytest
           echo "No tests configured"
 
-      - name: Deploy with Azure CLI
+      - name: Package artifact (zip)
+        run: |
+          # Create a zip artifact for deployment and exclude .git, local venvs, and CI-only folders
+          zip -r release.zip . -x ".git/*" ".venv/*" ".github/*" "tests/*" "__pycache__/*"
+
+      - name: Deploy with Azure CLI (zip)
         env:
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
           AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
         run: |
-          # Deploy application files to the web app (zip / folder deploy)
-          # Adjust --src-path if you want to deploy a specific package or folder
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
-            --src-path . \
+            --src-path release.zip \
             --type zip
 
       - name: Confirm deployment / show default host
