@@ -9,9 +9,14 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
+from src.stockreports.alert.common.confirmation.confirmation import (
+    prepare_indicators, 
+    check_advanced_confirmation, 
+    can_apply_advanced_confirmation
+)
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing
 
 logger = logging.getLogger(__name__)
 
@@ -128,42 +133,49 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
 
         # --- Common Alert Creation Logic ---
         if signal:
-            # Volume Confirmation
+            # --- Volume Confirmation ---
             use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
             use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
 
-            # For Ichimoku, the "confirmation window" is just the current and previous candle
-            confirmation_df = df_indexed.iloc[i-1:i+1]
-
-            volume_spike_is_confirmed = not use_volume_spike or is_volume_spike_confirmed(df, i, use_volume_spike)
-            volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
+            volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df) and is_volume_spike_confirmed(df, i))
             
-            volume_confirmed = volume_spike_is_confirmed and volume_is_increasing
+            # For increasing volume, we need to define the window to check
+            # Let's assume it's the confirmation window leading up to the signal
+            confirmation_window_df = df.iloc[max(0, i - config.get("CONFIRMATION_WINDOW", 3)):i+1]
+            volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_window_df)
 
-            # In development mode, generate all alerts.
-            # In deployment mode, only generate alerts that are new enough.
-            if volume_confirmed and (is_development_mode or is_new_alert):
-                alert_time = candle.name
-                alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-                
-                details = {
-                    "tenkan_sen": round(candle['tenkan_sen'], 2),
-                    "kijun_sen": round(candle['kijun_sen'], 2),
-                    "price_kumo_relation": "Above" if signal == "BUY" else "Below",
-                    "chikou_confirmation": "Yes"
-                }
-
-                alert = AlertData(
-                    approach=Approach.ICHIMOKU,
-                    id=alert_id,
-                    signal=signal,
-                    alert_price=candle['close'],
-                    alert_time=alert_time,
-                    start_price=prev_candle['close'],
-                    start_time=prev_candle.name,
-                    magnitude=abs(candle['close'] - prev_candle['close']),
-                    details=json.dumps(details)
-                )
-                alerts.append(alert)
-        
+            if volume_spike_is_confirmed and volume_is_increasing:
+                # Create alert...
+                alert_data = _create_alert(df.iloc[i], df.iloc[i-1], signal, config)
+                if alert_data and (is_development_mode or is_new_alert):
+                    alerts.append(alert_data)
+    
     return alerts
+
+def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config: dict) -> AlertData:
+    """
+    Creates an alert data instance. This function can be extended or modified
+    to include more complex logic for alert creation.
+    """
+    alert_time = candle.name
+    alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+    
+    details = {
+        "tenkan_sen": round(candle['tenkan_sen'], 2),
+        "kijun_sen": round(candle['kijun_sen'], 2),
+        "price_kumo_relation": "Above" if signal == "BUY" else "Below",
+        "chikou_confirmation": "Yes"
+    }
+
+    alert = AlertData(
+        approach=Approach.ICHIMOKU,
+        id=alert_id,
+        signal=signal,
+        alert_price=candle['close'],
+        alert_time=alert_time,
+        start_price=prev_candle['close'],
+        start_time=prev_candle.name,
+        magnitude=abs(candle['close'] - prev_candle['close']),
+        details=json.dumps(details)
+    )
+    return alert

@@ -9,10 +9,14 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
-from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
-from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation, can_apply_advanced_confirmation
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing
+from src.stockreports.alert.common.confirmation.confirmation import (
+    prepare_indicators, 
+    check_advanced_confirmation, 
+    can_apply_advanced_confirmation
+)
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
+from src.stockreports.alert.model.models import AlertResult, AlertData
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -115,19 +119,20 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     if not is_breakout_confirmed:
         return None
 
-    # --- 6. Volume Confirmation ---
+    # --- Volume Confirmation ---
     use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
     use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
 
-    # The confirmation candle for the spike is the last candle in the window
     confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
+    confirmation_df = df_indexed.iloc[confirmation_candle_index - window_size + 1 : confirmation_candle_index + 1]
 
-    volume_spike_is_confirmed = not use_volume_spike or is_volume_spike_confirmed(df_indexed.reset_index(), confirmation_candle_index, use_volume_spike)
-    volume_is_increasing = not use_increasing_volume or is_volume_increasing(window)
-    
+    volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), confirmation_candle_index))
+    volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
+
     if not (volume_spike_is_confirmed and volume_is_increasing):
         return None
 
+    # --- Create Alert ---
     # --- 7. New: Average Body-to-Range Ratio Confirmation ---
     body_to_range_min_ratio = config.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
     window['body'] = abs(window['close'] - window['open'])
