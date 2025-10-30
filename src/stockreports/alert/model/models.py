@@ -27,8 +27,16 @@ class AlertData:
     symbol: Optional[str] = None
 
     def to_dict(self):
-        """Converts the dataclass to a dictionary for JSON serialization."""
-        return asdict(self)
+        """Converts the dataclass to a dictionary for JSON serialization, ensuring ISO 8601 for times."""
+        d = asdict(self)
+        # Ensure ISO 8601 string for alert_time and start_time
+        if isinstance(d["alert_time"], pd.Timestamp):
+            d["alert_time"] = d["alert_time"].isoformat()
+        if isinstance(d["start_time"], pd.Timestamp):
+            d["start_time"] = d["start_time"].isoformat()
+        if d.get("validation_price_time") and isinstance(d["validation_price_time"], pd.Timestamp):
+            d["validation_price_time"] = d["validation_price_time"].isoformat()
+        return d
 
 @dataclass
 class AlertResult:
