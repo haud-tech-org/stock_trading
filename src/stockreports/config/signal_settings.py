@@ -79,12 +79,14 @@ APPROACH_CONFIG = {
         "BB_SQUEEZE_THRESHOLD_RATIO": 0.08
     },
     "ICHIMOKU": {
-        "TENKAN_SEN_PERIOD": 9,
-        "KIJUN_SEN_PERIOD": 26,
-        "SENKOU_SPAN_B_PERIOD": 52,
-        "CHIKOU_SPAN_PERIOD": 26,
+        "TENKAN_SEN_PERIOD": 5,
+        "KIJUN_SEN_PERIOD": 15,
+        "SENKOU_SPAN_B_PERIOD": 30,
+        "CHIKOU_SPAN_PERIOD": 15,
         "USE_VOLUME_CONFIRMATION": False,
-        "USE_INCREASING_VOLUME_CONFIRMATION": False
+        "USE_INCREASING_VOLUME_CONFIRMATION": False,
+        "SKIP_CHIKOU_CONFIRMATION": True,      # (optional, for future code support)
+        "RELAX_KUMO_CONDITION": True           # (optional, for future code support)
     },
     "STRONG_CANDLE": {
         "CONFIRMATION_WINDOW": 2,

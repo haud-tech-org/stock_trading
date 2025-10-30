@@ -107,8 +107,10 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
     # The loop now iterates over the entire dataframe to find all historical alerts.
     # Start index must be high enough to have a valid previous candle and Chikou span.
     start_index = max(1, chikou_lag)
+    skip_chikou = config.get("SKIP_CHIKOU_CONFIRMATION", False)
+    relax_kumo = config.get("RELAX_KUMO_CONDITION", False)
+
     for i in range(start_index, len(df_indexed)):
-        # In deployment mode, check if the alert is recent enough to be notified.
         is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
 
         candle = df_indexed.iloc[i]
@@ -120,7 +122,14 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
         price_above_kumo = candle['close'] > candle['senkou_a'] and candle['close'] > candle['senkou_b']
         chikou_above_price = candle['chikou'] > df_indexed.iloc[i - chikou_lag]['high']
 
-        if tenkan_cross_up_kijun and price_above_kumo and chikou_above_price:
+        # Loosened conditions
+        tenkan_up = candle['tenkan_sen'] > candle['kijun_sen']
+        price_above_either_kumo = candle['close'] > candle['senkou_a'] or candle['close'] > candle['senkou_b']
+        chikou_above_close = candle['chikou'] > df_indexed.iloc[i - chikou_lag]['close']
+
+        # BUY logic
+        if (tenkan_cross_up_kijun and (price_above_kumo if not relax_kumo else price_above_either_kumo) and (chikou_above_price if not skip_chikou else True)) \
+            or (relax_kumo and tenkan_up and price_above_either_kumo and (chikou_above_close if not skip_chikou else True)):
             signal = "BUY"
 
         # --- Bearish Signal Conditions ---
@@ -128,24 +137,26 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
             tenkan_cross_down_kijun = candle['tenkan_sen'] < candle['kijun_sen'] and prev_candle['tenkan_sen'] >= prev_candle['kijun_sen']
             price_below_kumo = candle['close'] < candle['senkou_a'] and candle['close'] < candle['senkou_b']
             chikou_below_price = candle['chikou'] < df_indexed.iloc[i - chikou_lag]['low']
-            if tenkan_cross_down_kijun and price_below_kumo and chikou_below_price:
+
+            tenkan_down = candle['tenkan_sen'] < candle['kijun_sen']
+            price_below_either_kumo = candle['close'] < candle['senkou_a'] or candle['close'] < candle['senkou_b']
+            chikou_below_close = candle['chikou'] < df_indexed.iloc[i - chikou_lag]['close']
+
+            if (tenkan_cross_down_kijun and (price_below_kumo if not relax_kumo else price_below_either_kumo) and (chikou_below_price if not skip_chikou else True)) \
+                or (relax_kumo and tenkan_down and price_below_either_kumo and (chikou_below_close if not skip_chikou else True)):
                 signal = "SELL"
 
         # --- Common Alert Creation Logic ---
         if signal:
-            # --- Volume Confirmation ---
             use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
             use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
 
             volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df) and is_volume_spike_confirmed(df, i))
-            
-            # For increasing volume, we need to define the window to check
-            # Let's assume it's the confirmation window leading up to the signal
+
             confirmation_window_df = df.iloc[max(0, i - config.get("CONFIRMATION_WINDOW", 3)):i+1]
             volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_window_df)
 
             if volume_spike_is_confirmed and volume_is_increasing:
-                # Create alert...
                 alert_data = _create_alert(df.iloc[i], df.iloc[i-1], signal, config)
                 if alert_data and (is_development_mode or is_new_alert):
                     alerts.append(alert_data)
