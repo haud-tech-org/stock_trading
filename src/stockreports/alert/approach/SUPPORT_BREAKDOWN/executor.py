@@ -211,6 +211,8 @@ def _find_support_breakdown_alerts(df: pd.DataFrame, config: dict, approach_name
                 
                 first_touch_candle = df_indexed.loc[touch_indices[0]]
                 start_time = first_touch_candle['time']
+                if isinstance(start_time, pd.Timestamp):
+                    start_time = start_time.isoformat()
                 start_price = first_touch_candle['low']
                 
                 magnitude = ((support_level - alert_price) / support_level) * 100 if support_level > 0 else 0

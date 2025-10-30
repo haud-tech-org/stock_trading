@@ -186,6 +186,10 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
     momentum_start_ts = int(momentum_start_time.tz_convert('UTC').timestamp())
 
+    # Format start_time as ISO string with timezone
+    start_time = momentum_start_time
+    if isinstance(start_time, pd.Timestamp):
+        start_time = start_time.isoformat()
     alert_data = AlertData(
         approach=Approach.CONSISTENT_MOMENTUM,
         id=alert_id,
@@ -193,7 +197,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
         alert_price=current_price,
         alert_time=alert_time,
         start_price=momentum_start_price,
-        start_time=momentum_start_time,
+        start_time=start_time,
         magnitude=round(abs(current_price - momentum_start_price), 2),
         details=json.dumps({
             "reason": "Consistent Momentum with Breakout",

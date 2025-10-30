@@ -168,18 +168,31 @@ def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config
     Creates an alert data instance. This function can be extended or modified
     to include more complex logic for alert creation.
     """
-    alert_time = candle.name
+    # Use the same logic as CONSECUTIVE_POWER_CANDLES for id, alert_time, start_time, suggested_price
     # Ensure alert_time is a pandas Timestamp with timezone info
+    alert_time = candle.name
     if not isinstance(alert_time, pd.Timestamp):
         alert_time = pd.to_datetime(alert_time)
     if alert_time.tzinfo is None:
-        # Use market timezone if available, else UTC
         try:
             from src.stockreports.utils.time_utils import TIMEZONE
             alert_time = alert_time.tz_localize(TIMEZONE)
         except Exception:
             alert_time = alert_time.tz_localize('UTC')
     alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+
+    # start_time: use previous candle's name, ensure it's a timestamp and format as ISO string with timezone (like alert_time)
+    start_time = prev_candle.name
+    if not isinstance(start_time, pd.Timestamp):
+        start_time = pd.to_datetime(start_time)
+    if start_time.tzinfo is None:
+        try:
+            from src.stockreports.utils.time_utils import TIMEZONE
+            start_time = start_time.tz_localize(TIMEZONE)
+        except Exception:
+            start_time = start_time.tz_localize('UTC')
+    # Format as ISO string with timezone, matching alert_time
+    start_time = start_time.isoformat()
 
     details = {
         "tenkan_sen": round(candle['tenkan_sen'], 2),
@@ -195,8 +208,16 @@ def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config
         alert_price=candle['close'],
         alert_time=alert_time,
         start_price=prev_candle['close'],
-        start_time=prev_candle.name,
+        start_time=start_time,
         magnitude=abs(candle['close'] - prev_candle['close']),
-        details=json.dumps(details)
+        details=json.dumps(details),
+        profit_loss=None,
+        period_time=None,
+        status=None,
+        validation_price_time=None,
+        time_to_best_price=None,
+        min_expected_profit_loss=None,
+        symbol=None,
+        suggested_price=suggested_price
     )
     return alert

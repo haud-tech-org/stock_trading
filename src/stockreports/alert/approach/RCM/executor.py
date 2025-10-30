@@ -180,6 +180,8 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                     if is_sufficient and (is_development_mode or is_new_alert):
                         alert_time = current_candle['time']
                         reversal_time = df.iloc[last_reversal_idx]['time']
+                        if isinstance(reversal_time, pd.Timestamp):
+                            reversal_time = reversal_time.isoformat()
 
                         # Generate a unique ID from the alert time's UTC timestamp
                         alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))

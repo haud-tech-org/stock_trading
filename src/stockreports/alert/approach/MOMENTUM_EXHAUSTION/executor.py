@@ -162,6 +162,10 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
     start_time_ts = int(start_candle.name.tz_convert('UTC').timestamp())
 
+    # Format start_time as ISO string with timezone
+    start_time = start_candle.name
+    if isinstance(start_time, pd.Timestamp):
+        start_time = start_time.isoformat()
     alert_data = AlertData(
         approach=Approach.MOMENTUM_EXHAUSTION,
         id=alert_id,
@@ -169,7 +173,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
         alert_price=current_price,
         alert_time=alert_time,
         start_price=start_price,
-        start_time=start_candle.name,
+        start_time=start_time,
         magnitude=round(abs(current_price - start_price), 2),
         details=json.dumps({
             "reason": "Reversal after momentum exhaustion detected.",
