@@ -11,10 +11,14 @@ signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
 from src.stockreports.alert.common.constants import Approach, Mode
-from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, check_advanced_confirmation, can_apply_advanced_confirmation
-from src.stockreports.alert.common.magnitude import check_magnitude
+from src.stockreports.alert.common.confirmation.confirmation import (
+    prepare_indicators, 
+    check_advanced_confirmation, 
+    can_apply_advanced_confirmation
+)
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing
+from src.stockreports.alert.common.magnitude import check_magnitude
 
 # --- Constants ---
 # This constant is specific to the RCM approach.
@@ -160,47 +164,45 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                 
                 is_sufficient, magnitude = check_magnitude(current_price, reversal_price, signal_settings)
 
-                # Volume Confirmation
-                confirmation_start_index = last_reversal_idx + 1
-                confirmation_end_index = i + 1
-                confirmation_df = df_indexed.iloc[confirmation_start_index:confirmation_end_index]
-
+                # --- 7. Check for volume confirmation ---
                 use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
                 use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
 
-                volume_spike_is_confirmed = not use_volume_spike or is_volume_spike_confirmed(df_indexed, i, use_volume_spike)
-                volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
+                volume_spike_ok = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
                 
-                volume_confirmed = volume_spike_is_confirmed and volume_is_increasing
+                # Define the window for checking increasing volume
+                volume_check_window = df_indexed.iloc[last_reversal_idx:i+1]
+                volume_increasing_ok = not use_increasing_volume or is_volume_increasing(volume_check_window)
 
-                # In development mode, generate all alerts.
-                # In deployment mode, only generate alerts that are new enough.
-                if is_sufficient and volume_confirmed and (is_development_mode or is_new_alert):
-                    alert_time = current_candle['time']
-                    reversal_time = df.iloc[last_reversal_idx]['time']
+                if volume_spike_ok and volume_increasing_ok:
+                    # In development mode, generate all alerts.
+                    # In deployment mode, only generate alerts that are new enough.
+                    if is_sufficient and (is_development_mode or is_new_alert):
+                        alert_time = current_candle['time']
+                        reversal_time = df.iloc[last_reversal_idx]['time']
 
-                    # Generate a unique ID from the alert time's UTC timestamp
-                    alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+                        # Generate a unique ID from the alert time's UTC timestamp
+                        alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
-                    # Create the standardized AlertData object
-                    alert_data = AlertData(
-                        approach=Approach.RCM,
-                        id=alert_id,
-                        signal=signal,
-                        alert_price=current_price,
-                        alert_time=alert_time,
-                        start_price=reversal_price,
-                        start_time=reversal_time,
-                        magnitude=magnitude,
-                        details=json.dumps({
-                            "peak_trough_prominence": peak_trough_prominence,
-                            "confirmation_window": confirmation_window,
-                            "used_advanced_confirmation": use_advanced_confirmation
-                        })
-                    )
-                    alerts.append(alert_data)
-                    
-                    # Transition to IN_TREND to prevent more alerts for this move
-                    trend_state = 'IN_UPTREND' if signal == 'BUY' else 'IN_DOWNTREND'
+                        # Create the standardized AlertData object
+                        alert_data = AlertData(
+                            approach=Approach.RCM,
+                            id=alert_id,
+                            signal=signal,
+                            alert_price=current_price,
+                            alert_time=alert_time,
+                            start_price=reversal_price,
+                            start_time=reversal_time,
+                            magnitude=magnitude,
+                            details=json.dumps({
+                                "peak_trough_prominence": peak_trough_prominence,
+                                "confirmation_window": confirmation_window,
+                                "used_advanced_confirmation": use_advanced_confirmation
+                            })
+                        )
+                        alerts.append(alert_data)
+                        
+                        # Transition to IN_TREND to prevent more alerts for this move
+                        trend_state = 'IN_UPTREND' if signal == 'BUY' else 'IN_DOWNTREND'
 
     return alerts

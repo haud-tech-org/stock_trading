@@ -12,7 +12,7 @@ signal_settings = loader.get_signal_settings()
 # --- Project Imports ---
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -148,11 +148,11 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
             
         # Reversal candle should have a volume spike
         reversal_candle_index = df_indexed.index.get_loc(reversal_candle.name)
-        if not is_volume_spike_confirmed(df_indexed.reset_index(), reversal_candle_index, use_volume):
+        if not (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), reversal_candle_index)):
             return None
 
     # --- 5. If all checks pass, create an AlertData object ---
-    logging.info(f"[{confirmation_candle.name}] SUCCESS: Momentum Exhaustion Pattern Found! Signal: {signal}")
+    logging.info(f"[{reversal_candle.name}] SUCCESS: Momentum Exhaustion Pattern Found! Signal: {signal}")
     start_candle = momentum_candles.iloc[0]
     
     alert_time = confirmation_candle.name

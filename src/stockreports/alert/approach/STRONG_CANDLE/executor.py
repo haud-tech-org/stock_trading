@@ -19,7 +19,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 )
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -165,7 +165,7 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
                 use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
                 use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
 
-                volume_spike_is_confirmed = not use_volume_spike or is_volume_spike_confirmed(df_indexed, i, use_volume_spike)
+                volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
                 volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
                 
                 volume_confirmed = volume_spike_is_confirmed and volume_is_increasing

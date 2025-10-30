@@ -10,7 +10,7 @@ signal_settings = loader.get_signal_settings()
 
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -49,7 +49,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     # --- 1. Get config and define pattern structure ---
     candle_count = config.get("CANDLE_COUNT", 3)
     min_body_ratio = config.get("MIN_BODY_TO_RANGE_RATIO", 0.7)
-    use_volume = config.get("USE_VOLUME_CONFIRMATION", True)
+    use_volume = config.get("USE_VOLUME_CONFIRMATION", False)
     min_body_t_minus_2 = config.get("MIN_BODY_SIZE_T_MINUS_2", 3.0)
     min_body_t_minus_1 = config.get("MIN_BODY_SIZE_T_MINUS_1", 3.0)
 
@@ -98,7 +98,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     # --- 8. Volume spike confirmation on the last candle (T) ---
     if use_volume:
         last_candle_index = df_indexed.index.get_loc(t.name)
-        if not is_volume_spike_confirmed(df_indexed.reset_index(), last_candle_index, use_volume):
+        if not (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), last_candle_index)):
             return None
 
     # --- 9. If all checks pass, create an alert ---

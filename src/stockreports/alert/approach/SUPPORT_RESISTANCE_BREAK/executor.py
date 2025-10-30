@@ -13,7 +13,7 @@ signal_settings = loader.get_signal_settings()
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 from src.stockreports.alert.common.volatility import is_bb_squeeze
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
@@ -128,8 +128,9 @@ def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0
             lowest_trough = df_window['low'].min()
 
             # Check for Breakout (BUY)
+            use_volume = config.get("USE_VOLUME_CONFIRMATION", False)
             if _is_breakout_candle(current_candle, highest_peak):
-                if is_volume_spike_confirmed(df_indexed, i, config.get("USE_VOLUME_CONFIRMATION", False)):
+                if (not use_volume) or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i)):
                     state = 'AWAITING_CONFIRMATION'
                     break_candle_index = i
                     level = highest_peak
@@ -141,7 +142,7 @@ def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0
 
             # Check for Breakdown (SELL)
             if _is_breakdown_candle(current_candle, lowest_trough):
-                if is_volume_spike_confirmed(df_indexed, i, config.get("USE_VOLUME_CONFIRMATION", False)):
+                if (not use_volume) or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i)):
                     state = 'AWAITING_CONFIRMATION'
                     break_candle_index = i
                     level = lowest_trough
