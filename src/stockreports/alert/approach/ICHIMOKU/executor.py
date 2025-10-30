@@ -158,8 +158,18 @@ def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config
     to include more complex logic for alert creation.
     """
     alert_time = candle.name
+    # Ensure alert_time is a pandas Timestamp with timezone info
+    if not isinstance(alert_time, pd.Timestamp):
+        alert_time = pd.to_datetime(alert_time)
+    if alert_time.tzinfo is None:
+        # Use market timezone if available, else UTC
+        try:
+            from src.stockreports.utils.time_utils import TIMEZONE
+            alert_time = alert_time.tz_localize(TIMEZONE)
+        except Exception:
+            alert_time = alert_time.tz_localize('UTC')
     alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-    
+
     details = {
         "tenkan_sen": round(candle['tenkan_sen'], 2),
         "kijun_sen": round(candle['kijun_sen'], 2),
