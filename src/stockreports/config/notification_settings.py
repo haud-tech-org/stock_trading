@@ -29,7 +29,7 @@ EMAIL_BCC_RECEIVERS = ["haud.tech@gmail.com"]
 # Meaning: A friendly name for the sender that appears in the email client (e.g., "VN30 Alerter").
 # Guidance: You can set this to something like "My Stock Alerts (No-Reply)" to discourage replies.
 # Example: `EMAIL_SENDER_DISPLAY_NAME = "Stock Alerter (No-Reply)"`
-EMAIL_SENDER_DISPLAY_NAME = "Stock Alerter Services (No-Reply)"
+EMAIL_SENDER_DISPLAY_NAME = "[HDO] Stock Alerter Services (No-Reply)"
 
 # Email App Password
 # Meaning: An "App Password" generated from your email account (e.g., Google Account settings). This is NOT your regular login password.
