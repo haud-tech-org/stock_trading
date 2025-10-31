@@ -57,9 +57,11 @@ APPROACH_CONFIG = {
     },
     "RCM": {
         "PEAK_TROUGH_PROMINENCE": 5,
-        "CONFIRMATION_WINDOW": 3,
+        "CONFIRMATION_WINDOW": 5,
+        "CONFIRMATION_MIN_CONSISTENCY": 3,
         "USE_VOLUME_CONFIRMATION": False,
-        "USE_INCREASING_VOLUME_CONFIRMATION": False
+        "USE_INCREASING_VOLUME_CONFIRMATION": False,
+        "PEAK_BOTTOM_LOOKBACK_PERIOD": 30
     },
     "CONSISTENT_MOMENTUM": {
         "CONFIRMATION_WINDOW": 4,
@@ -79,14 +81,15 @@ APPROACH_CONFIG = {
         "BB_SQUEEZE_THRESHOLD_RATIO": 0.08
     },
     "ICHIMOKU": {
-        "TENKAN_SEN_PERIOD": 5,
-        "KIJUN_SEN_PERIOD": 15,
-        "SENKOU_SPAN_B_PERIOD": 30,
-        "CHIKOU_SPAN_PERIOD": 15,
+        "TENKAN_SEN_PERIOD": 9,
+        "KIJUN_SEN_PERIOD": 26,
+        "SENKOU_SPAN_B_PERIOD": 52,
+        "CHIKOU_SPAN_PERIOD": 26,
         "USE_VOLUME_CONFIRMATION": False,
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
-        "SKIP_CHIKOU_CONFIRMATION": True,      # (optional, for future code support)
-        "RELAX_KUMO_CONDITION": True           # (optional, for future code support)
+        "SKIP_CHIKOU_CONFIRMATION": False,      # (optional, for future code support)
+        "RELAX_KUMO_CONDITION": False,          # (optional, for future code support)
+        "MIN_BARS_BETWEEN_ALERTS": 10           # Minimum bars between consecutive alerts
     },
     "STRONG_CANDLE": {
         "CONFIRMATION_WINDOW": 2,
@@ -99,14 +102,14 @@ APPROACH_CONFIG = {
         "MOMENTUM_CANDLE_COUNT": 5,
         "EXHAUSTION_CANDLE_COUNT": 5,
         "BODY_SHRINK_FACTOR": 0.5,
-        "USE_VOLUME_CONFIRMATION": True
+        "USE_VOLUME_CONFIRMATION": False
     },
     "CONSECUTIVE_POWER_CANDLES": {
         "CANDLE_COUNT": 3,
         "MIN_BODY_TO_RANGE_RATIO": 0.7,
-        "USE_VOLUME_CONFIRMATION": False,
-        "MIN_BODY_SIZE_T_MINUS_2": 2.0,
-        "MIN_BODY_SIZE_T_MINUS_1": 2.0
+        "USE_VOLUME_CONFIRMATION": True,
+        "MIN_BODY_SIZE_T_MINUS_2": 1.5,
+        "MIN_BODY_SIZE_T_MINUS_1": 1.5
     }
 }
 

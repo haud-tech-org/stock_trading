@@ -178,7 +178,7 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
                     if isinstance(start_time, pd.Timestamp):
                         start_time = start_time.isoformat()
                     
-                    alert_id = f"{signal_direction}-{int(alert_time.tz_convert('UTC').timestamp())}"
+                    alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
                     details = {
                         "strong_candle_time": strong_candle['time'].isoformat(),

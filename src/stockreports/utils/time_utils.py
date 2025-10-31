@@ -196,3 +196,15 @@ def get_market_timezone() -> pytz.BaseTzInfo:
         A pytz timezone object.
     """
     return TIMEZONE
+
+# Utility to convert pandas Timestamp or datetime to ISO 8601 string with configured timezone
+def to_iso8601_with_tz(ts):
+    import pandas as pd
+    from src.stockreports.utils.time_utils import TIMEZONE
+    if isinstance(ts, pd.Timestamp):
+        if ts.tzinfo is None:
+            ts = ts.tz_localize(TIMEZONE)
+        else:
+            ts = ts.tz_convert(TIMEZONE)
+        return ts.isoformat()
+    return str(ts)

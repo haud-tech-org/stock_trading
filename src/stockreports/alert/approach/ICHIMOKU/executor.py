@@ -97,7 +97,18 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
         return alerts
 
     df = _calculate_ichimoku_indicators(df, config)
-    df_indexed = df.set_index('time')
+    # Ensure index is set to 'time' and is timezone-aware
+    if 'time' in df.columns:
+        df = df.set_index('time')
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+        if df.index.tz is None:
+            try:
+                from src.stockreports.utils.time_utils import TIMEZONE
+                df.index = df.index.tz_localize(TIMEZONE)
+            except Exception:
+                df.index = df.index.tz_localize('UTC')
+    df_indexed = df
     
     chikou_lag = config.get('CHIKOU_LAG', 26)
     
@@ -109,6 +120,11 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
     start_index = max(1, chikou_lag)
     skip_chikou = config.get("SKIP_CHIKOU_CONFIRMATION", False)
     relax_kumo = config.get("RELAX_KUMO_CONDITION", False)
+
+    # State tracking for signal and alert spacing
+    last_signal = None
+    last_alert_idx = -1000  # Large negative to allow first alert
+    min_bars_between_alerts = config.get('MIN_BARS_BETWEEN_ALERTS', 5)
 
     for i in range(start_index, len(df_indexed)):
         is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
@@ -148,19 +164,22 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
 
         # --- Common Alert Creation Logic ---
         if signal:
-            use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
-            use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+            # Only alert if signal changes or enough bars have passed since last alert
+            if signal != last_signal or (i - last_alert_idx) >= min_bars_between_alerts:
+                use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
+                use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
 
-            volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df) and is_volume_spike_confirmed(df, i))
+                volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df) and is_volume_spike_confirmed(df, i))
 
-            confirmation_window_df = df.iloc[max(0, i - config.get("CONFIRMATION_WINDOW", 3)):i+1]
-            volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_window_df)
+                confirmation_window_df = df.iloc[max(0, i - config.get("CONFIRMATION_WINDOW", 3)):i+1]
+                volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_window_df)
 
-            if volume_spike_is_confirmed and volume_is_increasing:
-                alert_data = _create_alert(df.iloc[i], df.iloc[i-1], signal, config)
-                if alert_data and (is_development_mode or is_new_alert):
-                    alerts.append(alert_data)
-    
+                if volume_spike_is_confirmed and volume_is_increasing:
+                    alert_data = _create_alert(df.iloc[i], df.iloc[i-1], signal, config)
+                    if alert_data and (is_development_mode or is_new_alert):
+                        alerts.append(alert_data)
+                        last_signal = signal
+                        last_alert_idx = i
     return alerts
 
 def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config: dict) -> AlertData:
@@ -170,9 +189,12 @@ def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config
     """
     # Use the same logic as CONSECUTIVE_POWER_CANDLES for id, alert_time, start_time, suggested_price
     # Ensure alert_time is a pandas Timestamp with timezone info
+    # Robustly get alert_time from index or fallback to 'time' column or now
     alert_time = candle.name
-    if not isinstance(alert_time, pd.Timestamp):
-        alert_time = pd.to_datetime(alert_time)
+    if pd.isnull(alert_time) or not isinstance(alert_time, pd.Timestamp):
+        alert_time = candle.get('time', pd.Timestamp.utcnow())
+        if not isinstance(alert_time, pd.Timestamp):
+            alert_time = pd.to_datetime(alert_time)
     if alert_time.tzinfo is None:
         try:
             from src.stockreports.utils.time_utils import TIMEZONE
@@ -183,8 +205,10 @@ def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config
 
     # start_time: use previous candle's name, ensure it's a timestamp and format as ISO string with timezone (like alert_time)
     start_time = prev_candle.name
-    if not isinstance(start_time, pd.Timestamp):
-        start_time = pd.to_datetime(start_time)
+    if pd.isnull(start_time) or not isinstance(start_time, pd.Timestamp):
+        start_time = prev_candle.get('time', pd.Timestamp.utcnow())
+        if not isinstance(start_time, pd.Timestamp):
+            start_time = pd.to_datetime(start_time)
     if start_time.tzinfo is None:
         try:
             from src.stockreports.utils.time_utils import TIMEZONE
@@ -217,7 +241,6 @@ def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config
         validation_price_time=None,
         time_to_best_price=None,
         min_expected_profit_loss=None,
-        symbol=None,
-        suggested_price=suggested_price
+        symbol=None
     )
     return alert
