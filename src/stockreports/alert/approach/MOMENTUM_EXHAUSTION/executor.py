@@ -55,7 +55,6 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     # --- 1. Get config and define pattern structure ---
     momentum_count = config.get("MOMENTUM_CANDLE_COUNT", 2)
     exhaustion_count = config.get("EXHAUSTION_CANDLE_COUNT", 2)
-    body_shrink_factor = config.get("BODY_SHRINK_FACTOR", 0.7)
     use_volume = config.get("USE_VOLUME_CONFIRMATION", True)
     total_pattern_candles = momentum_count + exhaustion_count
 
