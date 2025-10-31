@@ -62,19 +62,36 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
                 # Ensure timezone consistency before combining
                 new_alerts_df['alert_time'] = pd.to_datetime(new_alerts_df['alert_time']).dt.tz_convert(TIMEZONE)
                 existing_alerts_df['alert_time'] = pd.to_datetime(existing_alerts_df['alert_time']).dt.tz_convert(TIMEZONE)
-                
-                combined_df = pd.concat([existing_alerts_df, new_alerts_df]).drop_duplicates(subset=['id'], keep='last')
+                combined_df = pd.concat([existing_alerts_df, new_alerts_df])
                 new_alerts_df = combined_df
         except (ValueError, KeyError, json.JSONDecodeError) as e:
             logger.error(f"Could not read or merge existing alert report {filepath}. Overwriting. Error: {e}")
 
+
+    # Ensure all IDs are strings (do not overwrite with timestamp, just cast to str)
+    if 'id' in new_alerts_df.columns:
+        new_alerts_df['id'] = new_alerts_df['id'].astype(str)
+
+    # Remove duplicates by 'id', keeping the latest (by alert_time if available)
+    if 'alert_time' in new_alerts_df.columns:
+        new_alerts_df = new_alerts_df.sort_values('alert_time')
+    new_alerts_df = new_alerts_df.drop_duplicates(subset=['id'], keep='last')
+
     # --- Save the final DataFrame ---
-    alerts_to_save = new_alerts_df
-    datetime_cols = alerts_to_save.select_dtypes(include=['datetime64[ns]', 'datetimetz']).columns
+    alerts_to_save = new_alerts_df.copy()
+    # Normalize alert_time and start_time to ISO 8601 string with timezone for all rows
+    for col in ["alert_time", "start_time"]:
+        if col in alerts_to_save.columns:
+            # Convert all to datetime, handling int, float, str, or already datetime
+            alerts_to_save[col] = pd.to_datetime(alerts_to_save[col], errors='coerce', utc=True)
+            alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+    # Also process any other datetime columns for robustness
+    datetime_cols = alerts_to_save.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns
     for col in datetime_cols:
-        if alerts_to_save[col].dt.tz is None:
-            alerts_to_save[col] = alerts_to_save[col].dt.tz_localize('UTC')
-        alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
+        if col not in ["alert_time", "start_time"]:
+            alerts_to_save[col] = pd.to_datetime(alerts_to_save[col], errors='coerce', utc=True)
+            alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
 
     _save_json_report(alerts_to_save, filepath, logger)
 

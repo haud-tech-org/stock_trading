@@ -209,6 +209,8 @@ def _create_alert(df_indexed, signal, confirmation_candle, break_candle, level, 
     # For this logic, start_time and start_price are less defined than with touch-based levels.
     # We can set them to the break candle's details.
     start_time = break_candle['time']
+    if isinstance(start_time, pd.Timestamp):
+        start_time = start_time.isoformat()
     start_price = break_candle['close']
     
     if signal == 'SELL':

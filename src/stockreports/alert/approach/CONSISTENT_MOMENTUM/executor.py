@@ -96,12 +96,13 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
         return None
 
     # --- 5. New: Peak/Bottom Breakout Confirmation ---
-    lookback_minutes = config.get("PEAK_BOTTOM_LOOKBACK_PERIOD", 30)
+    lookback_minutes = config.get("PEAK_BOTTOM_LOOKBACK_PERIOD")
     momentum_start_time = window.index[0]
-    lookback_start_time = momentum_start_time - pd.Timedelta(minutes=lookback_minutes)
-    
-    # Filter the main indexed dataframe for the lookback period
-    lookback_df = df_indexed.loc[lookback_start_time:momentum_start_time].iloc[:-1]
+    if lookback_minutes is None:
+        lookback_df = df_indexed.loc[:momentum_start_time].iloc[:-1]
+    else:
+        lookback_start_time = momentum_start_time - pd.Timedelta(minutes=lookback_minutes)
+        lookback_df = df_indexed.loc[lookback_start_time:momentum_start_time].iloc[:-1]
 
     if lookback_df.empty:
         return None
@@ -115,7 +116,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
         lowest_bottom = lookback_df['low'].min()
         if pd.notna(lowest_bottom) and current_candle['close'] < lowest_bottom:
             is_breakout_confirmed = True
-    
+
     if not is_breakout_confirmed:
         return None
 
@@ -184,7 +185,12 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     momentum_start_price = start_candle['open']
 
     alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-    momentum_start_ts = int(momentum_start_time.tz_convert('UTC').timestamp())
+
+    # Format start_time and momentum_start_time as ISO string with configured timezone
+
+    from src.stockreports.utils.time_utils import to_iso8601_with_tz
+    start_time = to_iso8601_with_tz(momentum_start_time)
+    momentum_start_time_iso = to_iso8601_with_tz(momentum_start_time)
 
     alert_data = AlertData(
         approach=Approach.CONSISTENT_MOMENTUM,
@@ -193,11 +199,11 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
         alert_price=current_price,
         alert_time=alert_time,
         start_price=momentum_start_price,
-        start_time=momentum_start_time,
+        start_time=start_time,
         magnitude=round(abs(current_price - momentum_start_price), 2),
         details=json.dumps({
             "reason": "Consistent Momentum with Breakout",
-            "momentum_start_time": momentum_start_ts,
+            "momentum_start_time": momentum_start_time_iso,
             "momentum_window_size": window_size,
             "breakout_lookback_minutes": lookback_minutes,
             "used_advanced_confirmation": use_advanced_confirmation

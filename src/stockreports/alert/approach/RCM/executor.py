@@ -157,11 +157,30 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                     if (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
                         signal = 'SELL'
 
-            # If we have a signal, check for magnitude and volume
+            # If we have a signal, check for magnitude, breakout, and volume
             if signal:
                 reversal_price = df.iloc[last_reversal_idx]['low'] if signal == 'BUY' else df.iloc[last_reversal_idx]['high']
                 current_price = current_candle['close']
-                
+
+                # --- New: Peak/Bottom Breakout Confirmation ---
+                lookback_period = config.get('PEAK_BOTTOM_LOOKBACK_PERIOD')
+                if lookback_period is None:
+                    lookback_df = df_indexed.iloc[:i]
+                else:
+                    lookback_start_idx = max(0, i - lookback_period)
+                    lookback_df = df_indexed.iloc[lookback_start_idx:i]
+                breakout_confirmed = False
+                if signal == 'BUY':
+                    highest_peak = lookback_df['high'].max() if not lookback_df.empty else None
+                    if highest_peak is not None and current_price > highest_peak:
+                        breakout_confirmed = True
+                elif signal == 'SELL':
+                    lowest_trough = lookback_df['low'].min() if not lookback_df.empty else None
+                    if lowest_trough is not None and current_price < lowest_trough:
+                        breakout_confirmed = True
+                if not breakout_confirmed:
+                    continue  # Skip alert if not a true breakout
+
                 is_sufficient, magnitude = check_magnitude(current_price, reversal_price, signal_settings)
 
                 # --- 7. Check for volume confirmation ---
@@ -169,7 +188,7 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                 use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
 
                 volume_spike_ok = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
-                
+
                 # Define the window for checking increasing volume
                 volume_check_window = df_indexed.iloc[last_reversal_idx:i+1]
                 volume_increasing_ok = not use_increasing_volume or is_volume_increasing(volume_check_window)
@@ -180,6 +199,8 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                     if is_sufficient and (is_development_mode or is_new_alert):
                         alert_time = current_candle['time']
                         reversal_time = df.iloc[last_reversal_idx]['time']
+                        if isinstance(reversal_time, pd.Timestamp):
+                            reversal_time = reversal_time.isoformat()
 
                         # Generate a unique ID from the alert time's UTC timestamp
                         alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
@@ -197,7 +218,8 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                             details=json.dumps({
                                 "peak_trough_prominence": peak_trough_prominence,
                                 "confirmation_window": confirmation_window,
-                                "used_advanced_confirmation": use_advanced_confirmation
+                                "used_advanced_confirmation": use_advanced_confirmation,
+                                "peak_bottom_lookback_period": lookback_period
                             })
                         )
                         alerts.append(alert_data)
