@@ -3,14 +3,14 @@ This module provides functions to check the magnitude of a price movement.
 """
 import logging
 
-def check_magnitude(current_price: float, reversal_price: float, signal_settings) -> tuple[bool, float]:
+def check_magnitude(current_price: float, reversal_price: float, min_magnitude: float) -> tuple[bool, float]:
     """
     Checks if the magnitude of a price move meets the minimum requirement.
 
     Args:
         current_price: The current price of the asset.
         reversal_price: The price at the point of reversal (peak or trough).
-        signal_settings: The settings object containing TREND_MINIMUM_MAGNITUDE.
+        min_magnitude: The minimum required magnitude for the alert.
 
     Returns:
         A tuple containing:
@@ -19,7 +19,6 @@ def check_magnitude(current_price: float, reversal_price: float, signal_settings
     """
     magnitude = abs(current_price - reversal_price)
     
-    min_magnitude = getattr(signal_settings, 'TREND_MINIMUM_MAGNITUDE', 0)
     if min_magnitude == 0:
         return True, round(magnitude, 2) # Magnitude check is disabled, always pass.
 

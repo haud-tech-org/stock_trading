@@ -61,10 +61,11 @@ APPROACH_CONFIG = {
         "CONFIRMATION_MIN_CONSISTENCY": 3,
         "USE_VOLUME_CONFIRMATION": False,
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
-        "PEAK_BOTTOM_LOOKBACK_PERIOD": 30
+        "PEAK_BOTTOM_LOOKBACK_PERIOD": 60,
+        "MIN_ALERT_MAGNITUDE": 4
     },
     "CONSISTENT_MOMENTUM": {
-        "CONFIRMATION_WINDOW": 4,
+        "CONFIRMATION_WINDOW": 3,
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 30,
         "BODY_TO_RANGE_MIN_RATIO": 0.7,
         "USE_VOLUME_CONFIRMATION": True,
@@ -95,7 +96,8 @@ APPROACH_CONFIG = {
         "CONFIRMATION_WINDOW": 2,
         "CONSISTENCY_THRESHOLD": 2,
         "USE_VOLUME_CONFIRMATION": True,
-        "USE_INCREASING_VOLUME_CONFIRMATION": True
+        "USE_INCREASING_VOLUME_CONFIRMATION": True,
+        "MIN_ALERT_MAGNITUDE": 5
     },
     "MOMENTUM_EXHAUSTION": {
         "CONFIRMATION_WINDOW": 5,
@@ -115,7 +117,7 @@ APPROACH_CONFIG = {
 
 # --- Trend Validation Settings ---
 # The minimum change in price points required for a trend to be considered significant.
-TREND_MINIMUM_MAGNITUDE = 4
+# TREND_MINIMUM_MAGNITUDE = 4
 
 # --- Validation Settings ---
 # Defines the time window in minutes after an alert to check its outcome (profit/loss).

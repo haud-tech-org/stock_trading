@@ -147,17 +147,31 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                     signal = 'BUY'
                 elif adv_signal == 'SELL' and last_reversal_type == 'peak':
                     signal = 'SELL'
-            else: # Simple confirmation
-                confirmation_df = df.iloc[last_reversal_idx + 1 : i + 1].copy()
-                min_consistency = config.get("CONFIRMATION_MIN_CONSISTENCY", 2)
+            else: # Simple confirmation is now just a pass-through to the consistency check
                 if last_reversal_type == 'trough':
-                    if (confirmation_df['close'] > confirmation_df['open']).sum() >= min_consistency:
-                        signal = 'BUY'
+                    signal = 'BUY'
                 elif last_reversal_type == 'peak':
-                    if (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
-                        signal = 'SELL'
+                    signal = 'SELL'
 
-            # If we have a signal, check for magnitude, breakout, and volume
+            # --- New: Independent Consistency Check ---
+            # This check now runs for both advanced and simple confirmation paths.
+            if signal:
+                min_consistency = config.get("CONFIRMATION_MIN_CONSISTENCY", 2)
+                confirmation_df = df.iloc[last_reversal_idx + 1 : i + 1].copy()
+                
+                is_consistent = False
+                if signal == 'BUY':
+                    if (confirmation_df['close'] > confirmation_df['open']).sum() >= min_consistency:
+                        is_consistent = True
+                elif signal == 'SELL':
+                    if (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
+                        is_consistent = True
+                
+                # If not consistent, reset the signal and skip the rest
+                if not is_consistent:
+                    signal = None
+
+            # If we have a signal that also passed the consistency check, proceed
             if signal:
                 reversal_price = df.iloc[last_reversal_idx]['low'] if signal == 'BUY' else df.iloc[last_reversal_idx]['high']
                 current_price = current_candle['close']
@@ -181,7 +195,8 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                 if not breakout_confirmed:
                     continue  # Skip alert if not a true breakout
 
-                is_sufficient, magnitude = check_magnitude(current_price, reversal_price, signal_settings)
+                min_magnitude = config.get("MIN_ALERT_MAGNITUDE", 0)
+                is_sufficient, magnitude = check_magnitude(current_price, reversal_price, min_magnitude)
 
                 # --- 7. Check for volume confirmation ---
                 use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
