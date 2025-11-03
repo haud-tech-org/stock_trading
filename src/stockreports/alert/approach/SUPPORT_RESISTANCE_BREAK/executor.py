@@ -15,6 +15,7 @@ from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 from src.stockreports.alert.common.volatility import is_bb_squeeze
+from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -27,12 +28,17 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     try:
         logging.info(f"Running '{approach_name}' approach...")
         
-        # Ensure all necessary indicators are present on the DataFrame
-        df = prepare_indicators(df.copy())
-
         config = signal_settings.APPROACH_CONFIG.get(
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
+
+        # --- Market Regime Filter Calculation ---
+        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+        if use_regime_filter:
+            prepare_regime_indicators(df, config)
+        
+        # Ensure all necessary indicators are present on the DataFrame
+        df = prepare_indicators(df.copy())
         
         alerts_data = _find_break_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
@@ -75,6 +81,7 @@ def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0
     lookback_period = config.get("LOOKBACK_PERIOD", 50)
     confirmation_window = config.get("CONFIRMATION_WINDOW", 3)
     consistency_threshold = config.get("CONSISTENCY_THRESHOLD", 2)
+    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
     
     # BB Squeeze parameters
     use_bb_squeeze = config.get("USE_BB_SQUEEZE_CONFIRMATION", False)
@@ -130,6 +137,10 @@ def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0
             # Check for Breakout (BUY)
             use_volume = config.get("USE_VOLUME_CONFIRMATION", False)
             if _is_breakout_candle(current_candle, highest_peak):
+                # --- Apply Market Regime Filter ---
+                if use_regime_filter and not is_regime_favorable(current_candle, 'BUY', config):
+                    continue
+
                 if (not use_volume) or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i)):
                     state = 'AWAITING_CONFIRMATION'
                     break_candle_index = i
@@ -142,6 +153,10 @@ def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0
 
             # Check for Breakdown (SELL)
             if _is_breakdown_candle(current_candle, lowest_trough):
+                # --- Apply Market Regime Filter ---
+                if use_regime_filter and not is_regime_favorable(current_candle, 'SELL', config):
+                    continue
+
                 if (not use_volume) or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i)):
                     state = 'AWAITING_CONFIRMATION'
                     break_candle_index = i
