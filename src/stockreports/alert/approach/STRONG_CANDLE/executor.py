@@ -155,7 +155,8 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
                 start_price = strong_candle['low'] if signal_direction == 'BUY' else strong_candle['high']
                 current_price = current_candle['close']
                 
-                is_sufficient, magnitude = check_magnitude(current_price, start_price, signal_settings)
+                min_magnitude = config.get("MIN_ALERT_MAGNITUDE", 0)
+                is_sufficient, magnitude = check_magnitude(current_price, start_price, min_magnitude)
 
                 # Volume Confirmation
                 confirmation_start_index = strong_candle_idx
