@@ -196,3 +196,6 @@ env*/
 # Keep docs and final examples
 !docs/
 !docs/examples/
+
+# Ignore custom tools directory
+src/tools/
