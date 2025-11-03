@@ -11,6 +11,7 @@ signal_settings = loader.get_signal_settings()
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation
+from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -24,6 +25,11 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
         
+        # --- Market Regime Filter Calculation ---
+        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+        if use_regime_filter:
+            prepare_regime_indicators(df, config)
+
         alerts_data = _find_power_candle_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
 
@@ -144,6 +150,18 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
         is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
         
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
+
+        # --- Apply Market Regime Filter before detailed analysis ---
+        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+        if use_regime_filter:
+            is_bullish_signal = all(window['close'] > window['open'])
+            is_bearish_signal = all(window['close'] < window['open'])
+            potential_signal = 'BUY' if is_bullish_signal else ('SELL' if is_bearish_signal else None)
+            
+            if potential_signal:
+                current_candle_for_regime = df_indexed.iloc[i]
+                if not is_regime_favorable(current_candle_for_regime, potential_signal, config):
+                    continue
         
         alert = _analyze_window(window, df_indexed, config)
         

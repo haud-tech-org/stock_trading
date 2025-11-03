@@ -2,6 +2,8 @@ import pandas as pd
 import logging
 import json
 from typing import Optional
+from scipy.signal import find_peaks
+import ta
 
 # --- Settings Loader ---
 from src.stockreports.config import loader
@@ -17,6 +19,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 )
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 from src.stockreports.alert.model.models import AlertResult, AlertData
+from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -62,18 +65,18 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     if not (is_all_bullish or is_all_bearish):
         return None
 
-    # --- 3. Check for momentum (higher highs/lows or lower highs/lows) ---
+    # --- 3. New: Check for momentum using average price ---
+    window['avg_price'] = (window['high'] + window['low'] + window['close']) / 3
+    
     is_momentum_confirmed = False
     if is_all_bullish:
-        # Uptrend: Higher highs and higher lows
-        if (window['high'].diff().dropna() >= 0).all() and \
-           (window['low'].diff().dropna() >= 0).all():
+        # Uptrend: Consistently increasing average price
+        if (window['avg_price'].diff().dropna() >= 0).all():
             is_momentum_confirmed = True
             signal = 'BUY'
     elif is_all_bearish:
-        # Downtrend: Lower highs and lower lows
-        if (window['high'].diff().dropna() <= 0).all() and \
-           (window['low'].diff().dropna() <= 0).all():
+        # Downtrend: Consistently decreasing average price
+        if (window['avg_price'].diff().dropna() <= 0).all():
             is_momentum_confirmed = True
             signal = 'SELL'
     
@@ -95,9 +98,11 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     if not is_strong_close:
         return None
 
-    # --- 5. New: Peak/Bottom Breakout Confirmation ---
+    # --- 5. New: Peak/Trough Breakout Confirmation ---
     lookback_minutes = config.get("PEAK_BOTTOM_LOOKBACK_PERIOD")
+    prominence = config.get("PEAK_TROUGH_PROMINENCE", 1)
     momentum_start_time = window.index[0]
+    
     if lookback_minutes is None:
         lookback_df = df_indexed.loc[:momentum_start_time].iloc[:-1]
     else:
@@ -109,13 +114,23 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
 
     is_breakout_confirmed = False
     if signal == 'BUY':
-        highest_peak = lookback_df['high'].max()
-        if pd.notna(highest_peak) and current_candle['close'] > highest_peak:
-            is_breakout_confirmed = True
+        # Find all peaks in the lookback period
+        peaks, _ = find_peaks(lookback_df['high'], prominence=prominence)
+        if peaks.size > 0:
+            # Get the last (most recent) peak
+            last_peak_index = peaks[-1]
+            last_peak_high = lookback_df['high'].iloc[last_peak_index]
+            if current_candle['close'] > last_peak_high:
+                is_breakout_confirmed = True
     elif signal == 'SELL':
-        lowest_bottom = lookback_df['low'].min()
-        if pd.notna(lowest_bottom) and current_candle['close'] < lowest_bottom:
-            is_breakout_confirmed = True
+        # Find all troughs (by inverting the price series)
+        troughs, _ = find_peaks(-lookback_df['low'], prominence=prominence)
+        if troughs.size > 0:
+            # Get the last (most recent) trough
+            last_trough_index = troughs[-1]
+            last_trough_low = lookback_df['low'].iloc[last_trough_index]
+            if current_candle['close'] < last_trough_low:
+                is_breakout_confirmed = True
 
     if not is_breakout_confirmed:
         return None
@@ -134,19 +149,23 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
         return None
 
     # --- Create Alert ---
-    # --- 7. New: Average Body-to-Range Ratio Confirmation ---
+    # --- 7. Body-to-Range Ratio Confirmation on Alert Candle ---
     body_to_range_min_ratio = config.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
-    window['body'] = abs(window['close'] - window['open'])
-    window['range'] = window['high'] - window['low']
-    
-    # Avoid division by zero for doji candles
-    valid_candles = window[window['range'] > 0]
-    if not valid_candles.empty:
-        avg_body_to_range_ratio = (valid_candles['body'] / valid_candles['range']).mean()
-        if avg_body_to_range_ratio < body_to_range_min_ratio:
+    current_candle_body = abs(current_candle['close'] - current_candle['open'])
+    current_candle_range = current_candle['high'] - current_candle['low']
+
+    if current_candle_range > 0:
+        body_ratio = current_candle_body / current_candle_range
+        if body_ratio < body_to_range_min_ratio:
+            return None
+    else:
+        # If range is 0 (a doji-like candle), it cannot meet the ratio unless the ratio is 0.
+        if body_to_range_min_ratio > 0:
             return None
 
-    # --- 8. Original: Check for body dominance over wicks ---
+    # --- 8. Original: Check for body dominance over wicks for the entire window ---
+    window['body'] = abs(window['close'] - window['open'])
+    window['range'] = window['high'] - window['low']
     window['wick'] = window['range'] - window['body']
     
     total_body = window['body'].sum()
@@ -211,6 +230,30 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     )
     return alert_data
 
+def _is_immediate_reversal(candle: pd.Series, original_signal: str, config: dict) -> bool:
+    """
+    Checks if the given candle is a strong reversal compared to the original signal.
+    """
+    reversal_ratio = config.get("REVERSAL_CANDLE_BODY_RATIO", 0.6)
+    
+    candle_range = candle['high'] - candle['low']
+    if candle_range == 0:
+        return False
+
+    body_size = abs(candle['close'] - candle['open'])
+    
+    # Check for strong bearish reversal after a BUY signal
+    if original_signal == 'BUY' and candle['close'] < candle['open']:
+        if (body_size / candle_range) >= reversal_ratio:
+            return True
+            
+    # Check for strong bullish reversal after a SELL signal
+    elif original_signal == 'SELL' and candle['close'] > candle['open']:
+        if (body_size / candle_range) >= reversal_ratio:
+            return True
+
+    return False
+
 def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
     """
     Internal function to find alerts based on a consistent momentum pattern.
@@ -238,6 +281,11 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
         logging.warning(f"{Approach.CONSISTENT_MOMENTUM}: DataFrame has less than {window_size} rows, cannot generate alerts.")
         return alerts
 
+    # --- Market Regime Filter Calculation ---
+    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+    if use_regime_filter:
+        prepare_regime_indicators(df, config)
+
     # Set a DatetimeIndex to allow for proper time-based lookups
     df_indexed = df.set_index('time')
 
@@ -257,8 +305,40 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
 
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
         
+        # Determine potential signal direction
+        is_bullish_signal = (window['close'] > window['open']).all()
+        is_bearish_signal = (window['close'] < window['open']).all()
+        
+        potential_signal = None
+        if is_bullish_signal:
+            potential_signal = 'BUY'
+        elif is_bearish_signal:
+            potential_signal = 'SELL'
+
+        # --- Apply Market Regime Filter before detailed analysis ---
+        if use_regime_filter and potential_signal:
+            current_candle_for_regime = df_indexed.iloc[i]
+            if not is_regime_favorable(current_candle_for_regime, potential_signal, config):
+                continue
+
         alert = _analyze_window(window, df_indexed, df_with_indicators, config, window_size, use_advanced_confirmation)
         
+        if alert:
+            # --- Realtime Reversal Confirmation ---
+            if config.get("USE_REALTIME_REVERSAL_CONFIRMATION", False):
+                confirmation_window_size = config.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 1)
+                
+                # Ensure we have enough subsequent candles for the confirmation window
+                if i + confirmation_window_size < len(df_indexed):
+                    confirmation_window = df_indexed.iloc[i + 1 : i + 1 + confirmation_window_size]
+                    
+                    # Check for reversal within the confirmation window
+                    for _, candle in confirmation_window.iterrows():
+                        if _is_immediate_reversal(candle, alert.signal, config):
+                            # Found a reversal candle within the window, invalidate the alert
+                            alert = None
+                            break # No need to check further in this window
+
         # In development mode, generate all alerts.
         # In deployment mode, only generate alerts that are new enough.
         if alert and (is_development_mode or is_new_alert):
