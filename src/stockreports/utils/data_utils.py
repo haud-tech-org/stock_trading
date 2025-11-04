@@ -187,38 +187,6 @@ def fetch_intraday_data(symbol: str, from_timestamp: int, to_timestamp: int) -> 
         return None
 
 
-def calculate_max_lookback_period() -> int:
-    """
-    Calculates the maximum data lookback period needed based on all active alert approaches.
-    This ensures that enough historical data is available for all technical indicators.
-    """
-    signal_settings = loader.get_signal_settings()
-    settings = loader.get_settings()
-    logger = logging.getLogger(__name__)
-
-    max_lookback = getattr(signal_settings, 'DEFAULT_LOOKBACK_PERIOD', 60)
-    active_approaches = getattr(settings, 'ALERT_APPROACHES', [])
-    lookbacks = [max_lookback]
-
-    for approach in active_approaches:
-        if approach.upper() == 'RCM':
-            rcm_lookback = max(
-                getattr(signal_settings, 'MA_LONG_PERIOD', 0),
-                getattr(signal_settings, 'AVG_VOLUME_PERIOD', 0)
-            )
-            lookbacks.append(rcm_lookback)
-        elif approach.upper() == 'CONSISTENT_MOMENTUM':
-            try:
-                cm_lookback = signal_settings.APPROACH_CONFIG['CONSISTENT_MOMENTUM']['MOMENTUM_PERIOD_MINUTES']
-                lookbacks.append(cm_lookback)
-            except (AttributeError, KeyError):
-                logger.warning("Could not find settings for CONSISTENT_MOMENTUM lookback.")
-
-    max_lookback = max(lookbacks) if lookbacks else 0
-    logger.info(f"Calculated maximum required lookback period: {max_lookback} minutes.")
-    return max_lookback
-
-
 def load_data_for_development(symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
     """
     Loads and consolidates data for a symbol in development mode by fetching it from the API

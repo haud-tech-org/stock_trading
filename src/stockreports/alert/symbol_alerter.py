@@ -30,7 +30,7 @@ validation_settings = loader.get_validation_settings()
 # --- Project Imports ---
 from src.stockreports.notification.notification_manager import NotificationManager
 from src.stockreports.utils.data_utils import (
-    fetch_intraday_data, calculate_max_lookback_period, 
+    fetch_intraday_data, 
     load_data_for_development, load_live_data
 )
 from src.stockreports.utils.time_utils import is_trading_hours, SESSIONS, TimeSimulator, TIMEZONE
