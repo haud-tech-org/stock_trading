@@ -197,5 +197,3 @@ env*/
 !docs/
 !docs/examples/
 
-# Ignore custom tools directory
-src/tools/
