@@ -9,6 +9,11 @@ def prepare_regime_indicators(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     ma_period = config.get("REGIME_MA_PERIOD", 50)
     adx_period = config.get("REGIME_ADX_PERIOD", 14)
     
+    # Ensure there is enough data to calculate the indicators
+    if len(df) < ma_period or len(df) < adx_period:
+        # Not enough data, return the original DataFrame without indicators
+        return df
+
     # Calculate indicators only if they don't already exist
     if f'regime_ma' not in df.columns:
         df[f'regime_ma'] = ta.trend.sma_indicator(df['close'], window=ma_period)
