@@ -10,7 +10,6 @@ from .data_utils import (
     validate_data_structure,
     get_column_statistics_map,
     fetch_intraday_data,
-    calculate_max_lookback_period,
     load_data_for_development,
     load_live_data,
 )
@@ -39,7 +38,6 @@ __all__ = [
     'validate_data_structure',
     'get_column_statistics_map',
     'fetch_intraday_data',
-    'calculate_max_lookback_period',
     'load_data_for_development',
     'load_live_data',
     # from time_utils
