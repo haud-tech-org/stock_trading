@@ -20,6 +20,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
+from src.stockreports.alert.common.regime import is_regime_favorable, prepare_regime_indicators
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -33,6 +34,8 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         config = signal_settings.APPROACH_CONFIG.get(
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
+        
+        df = prepare_regime_indicators(df, config)
         
         alerts_data = _find_strong_candle_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
@@ -171,9 +174,13 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
                 
                 volume_confirmed = volume_spike_is_confirmed and volume_is_increasing
 
+                # Regime Filter
+                use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+                regime_is_favorable = not use_regime_filter or is_regime_favorable(current_candle, signal_direction, config)
+
                 # In development mode, generate all alerts.
                 # In deployment mode, only generate alerts that are new enough.
-                if is_sufficient and volume_confirmed and (is_development_mode or is_new_alert):
+                if is_sufficient and volume_confirmed and regime_is_favorable and (is_development_mode or is_new_alert):
                     alert_time = current_candle['time']
                     start_time = strong_candle['time']
                     if isinstance(start_time, pd.Timestamp):
@@ -186,7 +193,8 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
                         "confirmation_candle_time": df_indexed.iloc[confirmation_candle_idx]['time'].isoformat(),
                         "momentum_candle_time": alert_time.isoformat(),
                         "strong_candle_body": round(strong_candle['body_size'], 2),
-                        "used_advanced_confirmation": True
+                        "used_advanced_confirmation": True,
+                        "used_regime_filter": use_regime_filter
                     }
 
                     alert_data = AlertData(
