@@ -60,7 +60,7 @@ APPROACH_CONFIG = {
         "CONFIRMATION_WINDOW": 5,
         "CONFIRMATION_MIN_CONSISTENCY": 3,
         "USE_VOLUME_CONFIRMATION": False,
-        "USE_INCREASING_VOLUME_CONFIRMATION": False,
+        "USE_INCREASING_VOLUME_CONFIRMATION": True,
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 60,
         "MIN_ALERT_MAGNITUDE": 4,
         "USE_MARKET_REGIME_FILTER": True,
@@ -109,7 +109,12 @@ APPROACH_CONFIG = {
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
         "SKIP_CHIKOU_CONFIRMATION": False,      # (optional, for future code support)
         "RELAX_KUMO_CONDITION": False,          # (optional, for future code support)
-        "MIN_BARS_BETWEEN_ALERTS": 10           # Minimum bars between consecutive alerts
+        "MIN_BARS_BETWEEN_ALERTS": 10,           # Minimum bars between consecutive alerts
+        "USE_MARKET_REGIME_FILTER": True,
+        "USE_ADX_REGIME_FILTER": True,
+        "REGIME_ADX_PERIOD": 14,
+        "REGIME_ADX_THRESHOLD": 20,
+        "USE_MA_REGIME_FILTER": False
     },
     "STRONG_CANDLE": {
         "CONFIRMATION_WINDOW": 2,

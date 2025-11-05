@@ -17,6 +17,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
+from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,9 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
         
+        if config.get("USE_MARKET_REGIME_FILTER", False):
+            df = prepare_regime_indicators(df, config)
+
         alerts_data = _find_ichimoku_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
 
@@ -125,6 +129,7 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
     last_signal = None
     last_alert_idx = -1000  # Large negative to allow first alert
     min_bars_between_alerts = config.get('MIN_BARS_BETWEEN_ALERTS', 5)
+    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
 
     for i in range(start_index, len(df_indexed)):
         is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
@@ -164,6 +169,10 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
 
         # --- Common Alert Creation Logic ---
         if signal:
+            if use_regime_filter:
+                if not is_regime_favorable(candle, signal, config):
+                    continue
+
             # Only alert if signal changes or enough bars have passed since last alert
             if signal != last_signal or (i - last_alert_idx) >= min_bars_between_alerts:
                 use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
