@@ -20,15 +20,13 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     approach_name = Approach.CONSECUTIVE_POWER_CANDLES
     try:
         logging.info(f"Running '{approach_name}' approach...")
-        
         config = signal_settings.APPROACH_CONFIG.get(
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
-        
-        # --- Market Regime Filter Calculation ---
-        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
-        if use_regime_filter:
-            prepare_regime_indicators(df, config)
+
+        # Prepare indicators here, before calling the analysis function.
+        if config.get("USE_MARKET_REGIME_FILTER", False):
+            df = prepare_regime_indicators(df, config)
 
         alerts_data = _find_power_candle_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
@@ -137,6 +135,7 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
     """
     alerts = []
     window_size = config.get("CANDLE_COUNT", 3)
+    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
 
     if len(df) < window_size:
         logging.warning(f"{Approach.CONSECUTIVE_POWER_CANDLES}: DataFrame has less than {window_size} rows, cannot generate alerts.")
@@ -152,7 +151,6 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
 
         # --- Apply Market Regime Filter before detailed analysis ---
-        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
         if use_regime_filter:
             is_bullish_signal = all(window['close'] > window['open'])
             is_bearish_signal = all(window['close'] < window['open'])
