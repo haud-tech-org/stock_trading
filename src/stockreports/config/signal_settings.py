@@ -108,13 +108,23 @@ APPROACH_CONFIG = {
         "USE_VOLUME_CONFIRMATION": False,
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
         "SKIP_CHIKOU_CONFIRMATION": False,      # (optional, for future code support)
-        "RELAX_KUMO_CONDITION": False,          # (optional, for future code support)
         "MIN_BARS_BETWEEN_ALERTS": 10,           # Minimum bars between consecutive alerts
         "USE_MARKET_REGIME_FILTER": True,
         "USE_ADX_REGIME_FILTER": True,
         "REGIME_ADX_PERIOD": 14,
-        "REGIME_ADX_THRESHOLD": 20,
-        "USE_MA_REGIME_FILTER": False
+        "REGIME_ADX_THRESHOLD": 25,
+        "USE_MA_REGIME_FILTER": False,
+        "USE_RSI_EXHAUSTION_FILTER": True,
+        "RSI_OVERSOLD_THRESHOLD": 30,
+        "RSI_OVERBOUGHT_THRESHOLD": 70,
+        "USE_MACD_CONFIRMATION_FILTER": True,
+        "USE_DIVERGENCE_FILTER": True,
+        "DIVERGENCE_LOOKBACK_PERIOD": 20,
+        "DIVERGENCE_RSI_PERIOD": 14,
+        "DIVERGENCE_PRICE_PROMINENCE": 0.5,
+        "DIVERGENCE_RSI_PROMINENCE": 2.0,
+        "USE_CONFIRMATION_CANDLE_FILTER": True,
+        "CONFIRMATION_CANDLE_COUNT": 1
     },
     "STRONG_CANDLE": {
         "CONFIRMATION_WINDOW": 2,

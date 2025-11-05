@@ -17,7 +17,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
-from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
+from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable, has_divergence
 
 logger = logging.getLogger(__name__)
 
@@ -123,15 +123,22 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
     # Start index must be high enough to have a valid previous candle and Chikou span.
     start_index = max(1, chikou_lag)
     skip_chikou = config.get("SKIP_CHIKOU_CONFIRMATION", False)
-    relax_kumo = config.get("RELAX_KUMO_CONDITION", False)
 
     # State tracking for signal and alert spacing
     last_signal = None
     last_alert_idx = -1000  # Large negative to allow first alert
     min_bars_between_alerts = config.get('MIN_BARS_BETWEEN_ALERTS', 5)
     use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+    use_divergence_filter = config.get("USE_DIVERGENCE_FILTER", False)
+    use_confirmation_filter = config.get("USE_CONFIRMATION_CANDLE_FILTER", False)
+    confirmation_candles = config.get("CONFIRMATION_CANDLE_COUNT", 1)
 
-    for i in range(start_index, len(df_indexed)):
+    # Adjust loop to leave space for confirmation candles
+    loop_end = len(df_indexed)
+    if use_confirmation_filter:
+        loop_end -= confirmation_candles
+
+    for i in range(start_index, loop_end):
         is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
 
         candle = df_indexed.iloc[i]
@@ -143,14 +150,8 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
         price_above_kumo = candle['close'] > candle['senkou_a'] and candle['close'] > candle['senkou_b']
         chikou_above_price = candle['chikou'] > df_indexed.iloc[i - chikou_lag]['high']
 
-        # Loosened conditions
-        tenkan_up = candle['tenkan_sen'] > candle['kijun_sen']
-        price_above_either_kumo = candle['close'] > candle['senkou_a'] or candle['close'] > candle['senkou_b']
-        chikou_above_close = candle['chikou'] > df_indexed.iloc[i - chikou_lag]['close']
-
         # BUY logic
-        if (tenkan_cross_up_kijun and (price_above_kumo if not relax_kumo else price_above_either_kumo) and (chikou_above_price if not skip_chikou else True)) \
-            or (relax_kumo and tenkan_up and price_above_either_kumo and (chikou_above_close if not skip_chikou else True)):
+        if tenkan_cross_up_kijun and price_above_kumo and (chikou_above_price if not skip_chikou else True):
             signal = "BUY"
 
         # --- Bearish Signal Conditions ---
@@ -159,18 +160,32 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
             price_below_kumo = candle['close'] < candle['senkou_a'] and candle['close'] < candle['senkou_b']
             chikou_below_price = candle['chikou'] < df_indexed.iloc[i - chikou_lag]['low']
 
-            tenkan_down = candle['tenkan_sen'] < candle['kijun_sen']
-            price_below_either_kumo = candle['close'] < candle['senkou_a'] or candle['close'] < candle['senkou_b']
-            chikou_below_close = candle['chikou'] < df_indexed.iloc[i - chikou_lag]['close']
-
-            if (tenkan_cross_down_kijun and (price_below_kumo if not relax_kumo else price_below_either_kumo) and (chikou_below_price if not skip_chikou else True)) \
-                or (relax_kumo and tenkan_down and price_below_either_kumo and (chikou_below_close if not skip_chikou else True)):
+            if tenkan_cross_down_kijun and price_below_kumo and (chikou_below_price if not skip_chikou else True):
                 signal = "SELL"
 
         # --- Common Alert Creation Logic ---
         if signal:
             if use_regime_filter:
                 if not is_regime_favorable(candle, signal, config):
+                    continue
+
+            if use_divergence_filter:
+                if has_divergence(df, i, signal, config):
+                    continue
+
+            # --- Confirmation Candle Logic ---
+            if use_confirmation_filter:
+                is_confirmed = True
+                for j in range(1, confirmation_candles + 1):
+                    confirmation_candle = df_indexed.iloc[i + j]
+                    if signal == 'BUY' and confirmation_candle['close'] <= candle['close']:
+                        is_confirmed = False
+                        break
+                    if signal == 'SELL' and confirmation_candle['close'] >= candle['close']:
+                        is_confirmed = False
+                        break
+                
+                if not is_confirmed:
                     continue
 
             # Only alert if signal changes or enough bars have passed since last alert
