@@ -78,3 +78,17 @@ def is_volume_increasing(df: pd.DataFrame) -> bool:
         True if the volume is strictly increasing, False otherwise.
     """
     return df['volume'].is_monotonic_increasing
+
+def is_last_candle_volume_max(df: pd.DataFrame) -> bool:
+    """
+    Checks if the volume of the last candle in the window is the maximum volume.
+
+    Args:
+        df: The DataFrame window to check.
+
+    Returns:
+        True if the last candle's volume is the maximum in the window, False otherwise.
+    """
+    if df.empty:
+        return False
+    return df['volume'].iloc[-1] == df['volume'].max()

@@ -104,8 +104,8 @@ DATA_DIR = "src/stockreports/data"
 # Defines the date range for fetching data when running in DEVELOPMENT mode.
 # Format: YYYY-MM-DD
 DEV_DATA_DATE_RANGE = {
-    "start_date": "2025-10-31",
-    "end_date": "2025-10-31"
+    "start_date": "2025-11-05",
+    "end_date": "2025-11-05"
 }
 
 # If True, saves the raw JSON response to a file when running in DEVELOPMENT mode.
@@ -183,4 +183,4 @@ CONSOLIDATED_PROFITABILITY = {
 # Guidance: This is useful for testing how the system would have behaved in the past. Set this to a time within the `DEV_DATA_DATE_RANGE`.
 # Format: "YYYY-MM-DD HH:MM:SS"
 # Example: `DEBUG_REPLAY_START_TIME = "2025-10-23 09:30:00"`
-DEBUG_REPLAY_START_TIME = "2025-10-31 09:00:00"
+DEBUG_REPLAY_START_TIME = "2025-11-05 09:00:00"

@@ -10,7 +10,7 @@ signal_settings = loader.get_signal_settings()
 
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
@@ -48,14 +48,14 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
 
 def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict) -> Optional[AlertData]:
     """
-    Analyzes a window for 3 consecutive power candles with advanced logic.
+    Analyzes a window for a configurable number of consecutive power candles.
     """
-    # --- 1. Get config and define pattern structure ---
+    # --- 1. Get config and validate pattern structure ---
     candle_count = config.get("CANDLE_COUNT", 3)
     min_body_ratio = config.get("MIN_BODY_TO_RANGE_RATIO", 0.7)
     use_volume = config.get("USE_VOLUME_CONFIRMATION", False)
-    min_body_t_minus_2 = config.get("MIN_BODY_SIZE_T_MINUS_2", 3.0)
-    min_body_t_minus_1 = config.get("MIN_BODY_SIZE_T_MINUS_1", 3.0)
+    use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+    min_pre_candle_body_sizes = config.get("MIN_PRE_CANDLE_BODY_SIZES", [])
 
     if len(window) != candle_count:
         return None
@@ -75,55 +75,65 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     window['avg_body_price'] = (window['open'] + window['close']) / 2
 
     # --- 4. Apply MIN_BODY_TO_RANGE_RATIO to all candles ---
-    # Avoid division by zero if range is 0
     window_body_ratio = (window['body'] / window['range']).fillna(0)
     if not all(window_body_ratio >= min_body_ratio):
         return None
 
-    # --- 5. Split into individual candles for specific checks ---
-    t_minus_2 = window.iloc[0]
-    t_minus_1 = window.iloc[1]
-    t = window.iloc[2]
-
-    # --- 6. Check minimum body sizes for T-2 and T-1 ---
-    if t_minus_2['body'] < min_body_t_minus_2:
-        return None
-    if t_minus_1['body'] < min_body_t_minus_1:
+    # --- 5. Dynamic validation for pre-candles ---
+    pre_candles = window.iloc[:-1]
+    
+    # Config validation: Ensure the number of body size rules matches the number of pre-candles
+    if len(min_pre_candle_body_sizes) != len(pre_candles):
+        logging.warning(f"Config mismatch: CANDLE_COUNT is {candle_count}, but MIN_PRE_CANDLE_BODY_SIZES has {len(min_pre_candle_body_sizes)} entries. Skipping.")
         return None
 
-    # --- 7. Check open vs. average body price progression ---
-    if is_all_bullish:
-        if not (t_minus_1['open'] > t_minus_2['avg_body_price'] and t['open'] > t_minus_1['avg_body_price']):
-            return None
-    elif is_all_bearish:
-        if not (t_minus_1['open'] < t_minus_2['avg_body_price'] and t['open'] < t_minus_1['avg_body_price']):
+    # Check minimum body sizes for all pre-candles
+    for i, min_size in enumerate(min_pre_candle_body_sizes):
+        if pre_candles.iloc[i]['body'] < min_size:
             return None
 
-    # --- 8. Volume spike confirmation on the last candle (T) ---
+    # --- 6. Dynamic check for open vs. average body price progression ---
+    for i in range(1, len(window)):
+        current_candle = window.iloc[i]
+        prev_candle = window.iloc[i-1]
+        
+        if is_all_bullish:
+            if not (current_candle['open'] > prev_candle['avg_body_price']):
+                return None
+        elif is_all_bearish:
+            if not (current_candle['open'] < prev_candle['avg_body_price']):
+                return None
+
+    # --- 7. Volume spike confirmation on the last candle ---
+    last_candle = window.iloc[-1]
     if use_volume:
-        last_candle_index = df_indexed.index.get_loc(t.name)
+        last_candle_index = df_indexed.index.get_loc(last_candle.name)
         if not (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), last_candle_index)):
             return None
 
-    # --- 9. If all checks pass, create an alert ---
-    logging.info(f"[{t.name}] SUCCESS: Consecutive Power Candles Pattern Found! Signal: {signal}")
+    if use_last_candle_max_volume:
+        if not is_last_candle_volume_max(window):
+            return None
 
-    alert_id = str(int(t.name.tz_convert('UTC').timestamp()))
-    start_time_ts = int(t_minus_2.name.tz_convert('UTC').timestamp())
+    # --- 8. If all checks pass, create an alert ---
+    logging.info(f"[{last_candle.name}] SUCCESS: Consecutive Power Candles Pattern Found! Signal: {signal}")
+
+    alert_id = str(int(last_candle.name.tz_convert('UTC').timestamp()))
+    start_candle = window.iloc[0]
 
     alert_data = AlertData(
         approach=Approach.CONSECUTIVE_POWER_CANDLES,
         id=alert_id,
         signal=signal,
-        alert_price=t['close'],
-        alert_time=t.name,
-        start_price=t_minus_2['open'],
-        start_time=t_minus_2.name,
-        magnitude=round(abs(t['close'] - t_minus_2['open']), 2),
+        alert_price=last_candle['close'],
+        alert_time=last_candle.name,
+        start_price=start_candle['open'],
+        start_time=start_candle.name,
+        magnitude=round(abs(last_candle['close'] - start_candle['open']), 2),
         details=json.dumps({
             "reason": f"{candle_count} consecutive power candles with body/open progression detected.",
-            "pattern_start_time": start_time_ts,
-            "last_candle_volume": t['volume']
+            "pattern_start_time": int(start_candle.name.tz_convert('UTC').timestamp()),
+            "last_candle_volume": last_candle['volume']
         })
     )
     return alert_data
@@ -132,25 +142,35 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
 def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
     """
     Finds alerts based on the consecutive power candles pattern.
+    This function uses a truly unified reverse loop for both deployment and development modes.
+    The loop's scan depth is naturally handled by the value of `new_candle_count`.
     """
     alerts = []
     window_size = config.get("CANDLE_COUNT", 3)
     use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
 
     if len(df) < window_size:
         logging.warning(f"{Approach.CONSECUTIVE_POWER_CANDLES}: DataFrame has less than {window_size} rows, cannot generate alerts.")
         return alerts
 
     df_indexed = df.set_index('time')
-    is_development_mode = settings.MODE == Mode.DEVELOPMENT
-    grace_period = window_size
 
-    for i in range(window_size - 1, len(df_indexed)):
-        is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
-        
+    # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
+    loop_end = len(df_indexed) - 1
+    loop_start = window_size - 1
+    
+    # The loop's scan depth is naturally optimized by this calculation.
+    # In DEV mode, new_candle_count is len(df), so active_region_start is negative, and the loop runs fully.
+    # In DEPLOY mode, new_candle_count is small, so the loop breaks early.
+    active_region_start = len(df_indexed) - new_candle_count - window_size
+
+    for i in range(loop_end, loop_start - 1, -1):
+        if i < active_region_start:
+            break # Stop searching if we are past the active region for the current mode.
+
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
 
-        # --- Apply Market Regime Filter before detailed analysis ---
         if use_regime_filter:
             is_bullish_signal = all(window['close'] > window['open'])
             is_bearish_signal = all(window['close'] < window['open'])
@@ -163,7 +183,11 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
         
         alert = _analyze_window(window, df_indexed, config)
         
-        if alert and (is_development_mode or is_new_alert):
+        if alert:
             alerts.append(alert)
+            # In DEPLOYMENT mode, we exit immediately after finding the first (latest) alert.
+            if not is_development_mode:
+                return alerts
 
-    return alerts
+    # In DEVELOPMENT mode, the loop completes. Return all found alerts in chronological order.
+    return alerts[::-1]

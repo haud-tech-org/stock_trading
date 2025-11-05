@@ -19,7 +19,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 )
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.regime import is_regime_favorable, prepare_regime_indicators
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
@@ -57,15 +57,13 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
 
 def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list[AlertData]:
     """
-    Finds alerts based on a state machine:
-    1. STRONG_CANDLE: A candle with a large body and small wick.
-    2. CONFIRMATION: An advanced signal (e.g., from RSI/MACD) in the same direction.
-    3. MOMENTUM: The next candle continues in the same direction.
-    The alert is triggered on the MOMENTUM candle.
+    Finds alerts based on a state machine pattern, using a unified reverse loop.
+    This function is optimized for both DEPLOYMENT (latest alert) and DEVELOPMENT (all alerts) modes.
     """
     alerts = []
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
-    # This approach requires advanced confirmation. Check if we can apply it.
+    # This approach requires advanced confirmation.
     if not can_apply_advanced_confirmation(df):
         min_data_required = get_min_data_required_for_advanced_confirmation()
         logging.warning(
@@ -78,139 +76,133 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
     logging.info(f"{Approach.STRONG_CANDLE}: Sufficient data available ({len(df)} candles). Advanced confirmation will be used.")
     df = prepare_indicators(df)
     
-    # State machine: NEUTRAL -> AWAITING_CONFIRMATION -> AWAITING_MOMENTUM
-    trend_state = 'NEUTRAL'
-    strong_candle_idx = -1
-    confirmation_candle_idx = -1
-    signal_direction = None
+    confirmation_window = config.get("CONFIRMATION_WINDOW", 4)
+    # Total lookback needed: 1 for momentum, 1 for confirmation, plus the window to find the strong candle.
+    required_lookback = confirmation_window + 2
+    
+    if len(df) < required_lookback:
+        return alerts
 
     df_indexed = df.reset_index()
-    
-    is_development_mode = settings.MODE == Mode.DEVELOPMENT
-    # It's the confirmation window + 1 for the final momentum candle.
-    grace_period = config.get("CONFIRMATION_WINDOW", 4) + 1
 
-    # The loop now iterates over the entire dataframe to find all historical alerts.
-    for i in range(1, len(df_indexed)):
-        # In deployment mode, check if the alert is recent enough to be notified.
-        is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
+    # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
+    loop_end = len(df_indexed) - 1
+    loop_start = required_lookback - 1
+
+    # The loop's scan depth is naturally optimized by this calculation.
+    active_region_start = len(df_indexed) - new_candle_count - required_lookback
+
+    # 'i' is the index of the final momentum candle (the alert candle).
+    for i in range(loop_end, loop_start - 1, -1):
+        if i < active_region_start:
+            break # Stop searching if we are past the active region for the current mode.
+
+        momentum_candle = df_indexed.iloc[i]
+        confirmation_candle = df_indexed.iloc[i-1]
+
+        # --- Inverted State 1: Check for Momentum ---
+        # Check if the current candle 'i' confirms the direction of the previous one.
+        is_bullish_momentum = momentum_candle['close'] > confirmation_candle['close']
+        is_bearish_momentum = momentum_candle['close'] < confirmation_candle['close']
         
-        current_candle = df_indexed.iloc[i]
+        if not (is_bullish_momentum or is_bearish_momentum):
+            continue
         
-        if pd.isna(current_candle['body_size']):
+        potential_signal = 'BUY' if is_bullish_momentum else 'SELL'
+
+        # --- Inverted State 2: Check for Advanced Confirmation ---
+        # Check if the confirmation candle 'i-1' had the correct advanced signal.
+        adv_signal = check_advanced_confirmation(confirmation_candle, df_indexed.iloc[i-2])
+        if adv_signal != potential_signal:
             continue
 
-        # --- STATE: NEUTRAL -> AWAITING_CONFIRMATION ---
-        # Look for a new strong candle to start the sequence.
-        if trend_state == 'NEUTRAL':
+        # --- Inverted State 3: Find the initial Strong Candle in the lookback window ---
+        strong_candle_found = False
+        strong_candle = None
+        
+        # Search for the strong candle in the window *before* the confirmation candle.
+        search_window_start = max(0, i - 1 - confirmation_window)
+        for j in range(i - 2, search_window_start - 1, -1):
+            candidate_strong_candle = df_indexed.iloc[j]
+            
+            if pd.isna(candidate_strong_candle['body_size']):
+                continue
+
             is_strong_bullish = (
-                current_candle['close'] > current_candle['open'] and
-                current_candle['body_size'] > validation_settings.MIN_EXPECTED_PROFIT_LOSS and
-                current_candle['upper_wick'] < current_candle['body_size'] * signal_settings.TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
+                potential_signal == 'BUY' and
+                candidate_strong_candle['close'] > candidate_strong_candle['open'] and
+                candidate_strong_candle['body_size'] > validation_settings.MIN_EXPECTED_PROFIT_LOSS and
+                candidate_strong_candle['upper_wick'] < candidate_strong_candle['body_size'] * signal_settings.TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
             )
             is_strong_bearish = (
-                current_candle['close'] < current_candle['open'] and
-                current_candle['body_size'] > validation_settings.MIN_EXPECTED_PROFIT_LOSS and
-                current_candle['lower_wick'] < current_candle['body_size'] * signal_settings.TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
+                potential_signal == 'SELL' and
+                candidate_strong_candle['close'] < candidate_strong_candle['open'] and
+                candidate_strong_candle['body_size'] > validation_settings.MIN_EXPECTED_PROFIT_LOSS and
+                candidate_strong_candle['lower_wick'] < candidate_strong_candle['body_size'] * signal_settings.TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
             )
 
-            if is_strong_bullish:
-                trend_state = 'AWAITING_CONFIRMATION'
-                strong_candle_idx = i
-                signal_direction = 'BUY'
-            elif is_strong_bearish:
-                trend_state = 'AWAITING_CONFIRMATION'
-                strong_candle_idx = i
-                signal_direction = 'SELL'
+            if is_strong_bullish or is_strong_bearish:
+                strong_candle = candidate_strong_candle
+                strong_candle_found = True
+                break # Found the first valid strong candle, no need to look further back
+
+        if not strong_candle_found:
             continue
 
-        # --- STATE: AWAITING_CONFIRMATION -> AWAITING_MOMENTUM ---
-        # We have a strong candle, now we need an advanced confirmation signal.
-        if trend_state == 'AWAITING_CONFIRMATION':
-            # Reset if too much time has passed
-            if i > strong_candle_idx + config.get("CONFIRMATION_WINDOW", 4):
-                trend_state = 'NEUTRAL'
-                continue
-
-            adv_signal = check_advanced_confirmation(current_candle, df_indexed.iloc[i-1])
-            
-            if adv_signal == signal_direction:
-                trend_state = 'AWAITING_MOMENTUM'
-                confirmation_candle_idx = i
+        # --- All parts of the pattern found, now check final filters ---
+        start_price = strong_candle['low'] if potential_signal == 'BUY' else strong_candle['high']
+        is_sufficient, magnitude = check_magnitude(momentum_candle['close'], start_price, config.get("MIN_ALERT_MAGNITUDE", 0))
+        if not is_sufficient:
             continue
 
-        # --- STATE: AWAITING_MOMENTUM -> ALERT or RESET ---
-        # We have a strong candle and confirmation. This is the final momentum check.
-        if trend_state == 'AWAITING_MOMENTUM':
-            # This state must be resolved on the very next candle. If not, reset.
-            if i > confirmation_candle_idx + 1:
-                trend_state = 'NEUTRAL'
-                continue
+        # Volume Confirmation
+        volume_window_df = df_indexed.iloc[strong_candle.name : i + 1]
+        use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
+        use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+        use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
-            momentum_confirmed = False
-            if signal_direction == 'BUY' and current_candle['close'] > df_indexed.iloc[i-1]['close']:
-                momentum_confirmed = True
-            elif signal_direction == 'SELL' and current_candle['close'] < df_indexed.iloc[i-1]['close']:
-                momentum_confirmed = True
+        volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
+        volume_is_increasing = not use_increasing_volume or is_volume_increasing(volume_window_df)
+        last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(volume_window_df)
 
-            if momentum_confirmed:
-                strong_candle = df_indexed.iloc[strong_candle_idx]
-                start_price = strong_candle['low'] if signal_direction == 'BUY' else strong_candle['high']
-                current_price = current_candle['close']
-                
-                min_magnitude = config.get("MIN_ALERT_MAGNITUDE", 0)
-                is_sufficient, magnitude = check_magnitude(current_price, start_price, min_magnitude)
+        if not (volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed):
+            continue
 
-                # Volume Confirmation
-                confirmation_start_index = strong_candle_idx
-                confirmation_end_index = i + 1
-                confirmation_df = df_indexed.iloc[confirmation_start_index:confirmation_end_index]
+        # Regime Filter
+        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+        if use_regime_filter and not is_regime_favorable(momentum_candle, potential_signal, config):
+            continue
 
-                use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
-                use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+        # --- Alert Generation ---
+        alert_time = momentum_candle['time']
+        start_time = strong_candle['time']
+        if isinstance(start_time, pd.Timestamp):
+            start_time = start_time.isoformat()
+        alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
-                volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
-                volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
-                
-                volume_confirmed = volume_spike_is_confirmed and volume_is_increasing
+        details = {
+            "strong_candle_time": strong_candle['time'].isoformat(),
+            "confirmation_candle_time": confirmation_candle['time'].isoformat(),
+            "momentum_candle_time": alert_time.isoformat(),
+            "strong_candle_body": round(strong_candle['body_size'], 2),
+            "used_advanced_confirmation": True,
+            "used_regime_filter": use_regime_filter
+        }
 
-                # Regime Filter
-                use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
-                regime_is_favorable = not use_regime_filter or is_regime_favorable(current_candle, signal_direction, config)
+        alert_data = AlertData(
+            approach=Approach.STRONG_CANDLE,
+            id=alert_id,
+            signal=potential_signal,
+            alert_price=momentum_candle['close'],
+            alert_time=alert_time,
+            start_price=start_price,
+            start_time=start_time,
+            magnitude=magnitude,
+            details=json.dumps(details)
+        )
+        alerts.append(alert_data)
 
-                # In development mode, generate all alerts.
-                # In deployment mode, only generate alerts that are new enough.
-                if is_sufficient and volume_confirmed and regime_is_favorable and (is_development_mode or is_new_alert):
-                    alert_time = current_candle['time']
-                    start_time = strong_candle['time']
-                    if isinstance(start_time, pd.Timestamp):
-                        start_time = start_time.isoformat()
-                    
-                    alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-
-                    details = {
-                        "strong_candle_time": strong_candle['time'].isoformat(),
-                        "confirmation_candle_time": df_indexed.iloc[confirmation_candle_idx]['time'].isoformat(),
-                        "momentum_candle_time": alert_time.isoformat(),
-                        "strong_candle_body": round(strong_candle['body_size'], 2),
-                        "used_advanced_confirmation": True,
-                        "used_regime_filter": use_regime_filter
-                    }
-
-                    alert_data = AlertData(
-                        approach=Approach.STRONG_CANDLE,
-                        id=alert_id,
-                        signal=signal_direction,
-                        alert_price=current_price,
-                        alert_time=alert_time,
-                        start_price=start_price,
-                        start_time=start_time,
-                        magnitude=magnitude,
-                        details=json.dumps(details)
-                    )
-                    alerts.append(alert_data)
+        if not is_development_mode:
+            return alerts
             
-            # Whether an alert was generated or not, the sequence is complete. Reset.
-            trend_state = 'NEUTRAL'
-            
-    return alerts
+    return alerts[::-1]
