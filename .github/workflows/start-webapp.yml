@@ -1,11 +1,11 @@
 name: Start Web App (trading hours)
 
 on:
-  schedule:
-    # Morning start: 01:30 UTC (08:30 VN) Mon-Fri
-    - cron: '30 1 * * MON-FRI'
-    # Afternoon start: 05:45 UTC (12:45 VN) Mon-Fri
-    - cron: '45 5 * * MON-FRI'
+  # schedule:
+  #   # Morning start: 01:30 UTC (08:30 VN) Mon-Fri
+  #   - cron: '30 1 * * MON-FRI'
+  #   # Afternoon start: 05:45 UTC (12:45 VN) Mon-Fri
+  #   - cron: '45 5 * * MON-FRI'
   workflow_dispatch: {}
 
 jobs:
