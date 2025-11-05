@@ -16,7 +16,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
     check_advanced_confirmation, 
     can_apply_advanced_confirmation
 )
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
@@ -62,9 +62,12 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
 
 def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list[AlertData]:
     """
-    Internal function to find alerts using the Reversal-Confirmation-Magnitude (RCM) approach.
+    Finds alerts using the Reversal-Confirmation-Magnitude (RCM) approach.
+    This function uses a truly unified reverse loop for both deployment and development modes.
+    The loop's scan depth is naturally handled by the value of `new_candle_count`.
     """
     alerts = []
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
     # Dynamically check if advanced confirmation can be used.
     use_advanced_confirmation = can_apply_advanced_confirmation(df)
@@ -80,6 +83,8 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
     
     use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
     peak_trough_prominence = config.get("PEAK_TROUGH_PROMINENCE", 5)
+    
+    # Pre-compute all peaks and troughs once for efficiency
     peaks, _ = find_peaks(df['high'], prominence=peak_trough_prominence)
     troughs, _ = find_peaks(-df['low'], prominence=peak_trough_prominence)
     
@@ -88,168 +93,125 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
         'trough': {idx: True for idx in troughs}
     }
 
-    trend_state = 'NEUTRAL' # Can be NEUTRAL, CONFIRMING, IN_UPTREND, IN_DOWNTREND
-    last_reversal_type = None
-    last_reversal_idx = -1
-    confirmation_deadline = -1
-    
     confirmation_window = config.get("CONFIRMATION_WINDOW", 3)
+    min_consistency = config.get("CONFIRMATION_MIN_CONSISTENCY", 2)
+    lookback_period = config.get('PEAK_BOTTOM_LOOKBACK_PERIOD')
+    min_magnitude = config.get("MIN_ALERT_MAGNITUDE", 0)
+    use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
+    use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+    use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
-    # --- 1. Initial Settings ---
+    # The loop needs enough data for a reversal and confirmation window.
+    required_lookback = confirmation_window + 1
+    if len(df) < required_lookback:
+        return alerts
+
     df_indexed = df.reset_index()
-    
-    is_development_mode = settings.MODE == Mode.DEVELOPMENT
-    grace_period = confirmation_window
-    
-    # The loop now iterates over the entire dataframe to find all historical alerts.
-    for i in range(1, len(df_indexed)):
-        # In deployment mode, check if the alert is recent enough to be notified.
-        is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
+
+    # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
+    loop_end = len(df_indexed) - 1
+    loop_start = required_lookback - 1
+
+    # The loop's scan depth is naturally optimized by this calculation.
+    active_region_start = len(df_indexed) - new_candle_count - required_lookback
+
+    # 'i' is the index of the potential confirmation candle.
+    for i in range(loop_end, loop_start - 1, -1):
+        if i < active_region_start:
+            break # Stop searching if we are past the active region for the current mode.
 
         current_candle = df_indexed.iloc[i]
         prev_candle = df_indexed.iloc[i-1]
 
-        # --- 2. State Machine Logic ---
+        # The core logic of RCM is to find a confirmation *after* a reversal.
+        # So, in our reverse loop, we look for a reversal point *before* the current candle 'i'.
+        # We'll search within the confirmation_window.
+        for j in range(1, confirmation_window + 1):
+            reversal_idx = i - j
+            if reversal_idx < 0:
+                break
 
-        # 1. If we are in a trend, look for an opposing reversal to reset the state
-        if trend_state in ['IN_UPTREND', 'IN_DOWNTREND']:
-            is_peak = reversal_points['peak'].get(i, False)
-            is_trough = reversal_points['trough'].get(i, False)
-            if (trend_state == 'IN_UPTREND' and is_peak) or \
-               (trend_state == 'IN_DOWNTREND' and is_trough):
-                trend_state = 'NEUTRAL' # Reset state
+            reversal_candle = df_indexed.iloc[reversal_idx]
+            is_peak = reversal_points['peak'].get(reversal_idx, False)
+            is_trough = reversal_points['trough'].get(reversal_idx, False)
 
-        # 2. If neutral, look for any new reversal to start the confirmation process
-        if trend_state == 'NEUTRAL':
-            is_peak = reversal_points['peak'].get(i, False)
-            is_trough = reversal_points['trough'].get(i, False)
-            if is_peak:
-                trend_state = 'CONFIRMING'
-                last_reversal_type = 'peak'
-                last_reversal_idx = i
-                confirmation_deadline = i + confirmation_window
-            elif is_trough:
-                trend_state = 'CONFIRMING'
-                last_reversal_type = 'trough'
-                last_reversal_idx = i
-                confirmation_deadline = i + confirmation_window
-
-        # 3. If confirming, check for signal and magnitude within the window
-        elif trend_state == 'CONFIRMING':
-            # If we've passed the deadline, go back to neutral
-            if i > confirmation_deadline:
-                trend_state = 'NEUTRAL'
+            if not (is_peak or is_trough):
                 continue
 
-            # Determine signal based on confirmation type
+            # --- Found a potential reversal, now check the confirmation window ---
+            confirmation_df = df.iloc[reversal_idx + 1 : i + 1].copy()
+            
             signal = None
-            if use_advanced_confirmation:
-                adv_signal = check_advanced_confirmation(
-                    current_candle, 
-                    prev_candle
-                )
-                if adv_signal == 'BUY' and last_reversal_type == 'trough':
+            if is_trough: # Look for BUY signal
+                adv_signal = check_advanced_confirmation(current_candle, prev_candle) if use_advanced_confirmation else 'BUY'
+                if adv_signal == 'BUY' and (confirmation_df['close'] > confirmation_df['open']).sum() >= min_consistency:
                     signal = 'BUY'
-                elif adv_signal == 'SELL' and last_reversal_type == 'peak':
-                    signal = 'SELL'
-            else: # Simple confirmation is now just a pass-through to the consistency check
-                if last_reversal_type == 'trough':
-                    signal = 'BUY'
-                elif last_reversal_type == 'peak':
+            elif is_peak: # Look for SELL signal
+                adv_signal = check_advanced_confirmation(current_candle, prev_candle) if use_advanced_confirmation else 'SELL'
+                if adv_signal == 'SELL' and (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
                     signal = 'SELL'
 
-            # --- New: Independent Consistency Check ---
-            # This check now runs for both advanced and simple confirmation paths.
-            if signal:
-                min_consistency = config.get("CONFIRMATION_MIN_CONSISTENCY", 2)
-                confirmation_df = df.iloc[last_reversal_idx + 1 : i + 1].copy()
-                
-                is_consistent = False
-                if signal == 'BUY':
-                    if (confirmation_df['close'] > confirmation_df['open']).sum() >= min_consistency:
-                        is_consistent = True
-                elif signal == 'SELL':
-                    if (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
-                        is_consistent = True
-                
-                # If not consistent, reset the signal and skip the rest
-                if not is_consistent:
-                    signal = None
+            if not signal:
+                continue
 
-            # If we have a signal that also passed the consistency check, proceed
-            if signal:
-                # --- New: Apply Market Regime Filter ---
-                if use_regime_filter:
-                    if not is_regime_favorable(current_candle, signal, config):
-                        continue # Regime is not favorable, skip this alert
+            # --- Signal Confirmed, now check filters and magnitude ---
+            if use_regime_filter and not is_regime_favorable(current_candle, signal, config):
+                continue
 
-                reversal_price = df.iloc[last_reversal_idx]['low'] if signal == 'BUY' else df.iloc[last_reversal_idx]['high']
-                current_price = current_candle['close']
+            # Peak/Bottom Breakout Confirmation
+            if lookback_period is not None:
+                lookback_start_idx = max(0, reversal_idx - lookback_period)
+                lookback_df = df_indexed.iloc[lookback_start_idx:reversal_idx]
+                if not lookback_df.empty:
+                    if signal == 'BUY' and current_candle['close'] <= lookback_df['high'].max():
+                        continue
+                    if signal == 'SELL' and current_candle['close'] >= lookback_df['low'].min():
+                        continue
+            
+            # Magnitude Check
+            reversal_price = reversal_candle['low'] if signal == 'BUY' else reversal_candle['high']
+            is_sufficient, magnitude = check_magnitude(current_candle['close'], reversal_price, min_magnitude)
+            if not is_sufficient:
+                continue
 
-                # --- New: Peak/Bottom Breakout Confirmation ---
-                lookback_period = config.get('PEAK_BOTTOM_LOOKBACK_PERIOD')
-                if lookback_period is None:
-                    lookback_df = df_indexed.iloc[:i]
-                else:
-                    lookback_start_idx = max(0, i - lookback_period)
-                    lookback_df = df_indexed.iloc[lookback_start_idx:i]
-                breakout_confirmed = False
-                if signal == 'BUY':
-                    highest_peak = lookback_df['high'].max() if not lookback_df.empty else None
-                    if highest_peak is not None and current_price > highest_peak:
-                        breakout_confirmed = True
-                elif signal == 'SELL':
-                    lowest_trough = lookback_df['low'].min() if not lookback_df.empty else None
-                    if lowest_trough is not None and current_price < lowest_trough:
-                        breakout_confirmed = True
-                if not breakout_confirmed:
-                    continue  # Skip alert if not a true breakout
+            # Volume Confirmation
+            volume_spike_ok = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
+            volume_increasing_ok = not use_increasing_volume or is_volume_increasing(confirmation_df)
+            last_candle_max_volume_ok = not use_last_candle_max_volume or is_last_candle_volume_max(confirmation_df)
+            if not (volume_spike_ok and volume_increasing_ok and last_candle_max_volume_ok):
+                continue
 
-                min_magnitude = config.get("MIN_ALERT_MAGNITUDE", 0)
-                is_sufficient, magnitude = check_magnitude(current_price, reversal_price, min_magnitude)
+            # --- All checks passed, create alert ---
+            alert_time = current_candle['time']
+            reversal_time = reversal_candle['time']
+            if isinstance(reversal_time, pd.Timestamp):
+                reversal_time = reversal_time.isoformat()
+            alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
-                # --- 7. Check for volume confirmation ---
-                use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
-                use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+            alert_data = AlertData(
+                approach=Approach.RCM,
+                id=alert_id,
+                signal=signal,
+                alert_price=current_candle['close'],
+                alert_time=alert_time,
+                start_price=reversal_price,
+                start_time=reversal_time,
+                magnitude=magnitude,
+                details=json.dumps({
+                    "peak_trough_prominence": peak_trough_prominence,
+                    "confirmation_window": confirmation_window,
+                    "used_advanced_confirmation": use_advanced_confirmation,
+                    "peak_bottom_lookback_period": lookback_period
+                })
+            )
+            alerts.append(alert_data)
 
-                volume_spike_ok = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
-
-                # Define the window for checking increasing volume
-                volume_check_window = df_indexed.iloc[last_reversal_idx:i+1]
-                volume_increasing_ok = not use_increasing_volume or is_volume_increasing(volume_check_window)
-
-                if volume_spike_ok and volume_increasing_ok:
-                    # In development mode, generate all alerts.
-                    # In deployment mode, only generate alerts that are new enough.
-                    if is_sufficient and (is_development_mode or is_new_alert):
-                        alert_time = current_candle['time']
-                        reversal_time = df.iloc[last_reversal_idx]['time']
-                        if isinstance(reversal_time, pd.Timestamp):
-                            reversal_time = reversal_time.isoformat()
-
-                        # Generate a unique ID from the alert time's UTC timestamp
-                        alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-
-                        # Create the standardized AlertData object
-                        alert_data = AlertData(
-                            approach=Approach.RCM,
-                            id=alert_id,
-                            signal=signal,
-                            alert_price=current_price,
-                            alert_time=alert_time,
-                            start_price=reversal_price,
-                            start_time=reversal_time,
-                            magnitude=magnitude,
-                            details=json.dumps({
-                                "peak_trough_prominence": peak_trough_prominence,
-                                "confirmation_window": confirmation_window,
-                                "used_advanced_confirmation": use_advanced_confirmation,
-                                "peak_bottom_lookback_period": lookback_period
-                            })
-                        )
-                        alerts.append(alert_data)
-                        
-                        # Transition to IN_TREND to prevent more alerts for this move
-                        trend_state = 'IN_UPTREND' if signal == 'BUY' else 'IN_DOWNTREND'
-
-    return alerts
+            # In DEPLOYMENT mode, exit after finding the first valid alert.
+            if not is_development_mode:
+                return alerts
+            
+            # Break the inner loop since we found an alert for this confirmation candle 'i'
+            break 
+    
+    # In DEVELOPMENT mode, return all found alerts in chronological order.
+    return alerts[::-1]

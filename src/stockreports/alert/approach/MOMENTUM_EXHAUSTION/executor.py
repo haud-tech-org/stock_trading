@@ -186,32 +186,42 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
 
 def _find_momentum_exhaustion_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
     """
-    Internal function to find alerts based on a momentum exhaustion pattern.
+    Finds alerts based on a momentum exhaustion pattern using a unified reverse loop.
+    This function is optimized for both DEPLOYMENT (latest alert) and DEVELOPMENT (all alerts) modes.
     """
     alerts = []
-    # Window size is the sum of the pattern components + 1 for the reversal
     momentum_count = config.get("MOMENTUM_CANDLE_COUNT", 2)
     exhaustion_count = config.get("EXHAUSTION_CANDLE_COUNT", 2)
-    window_size = momentum_count + exhaustion_count + 2 # +1 for reversal, +1 for confirmation
+    required_lookback = momentum_count + exhaustion_count + 2 # +1 for reversal, +1 for confirmation
     
-    config["CONFIRMATION_WINDOW"] = window_size # Update config for logging/consistency
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
 
-    if len(df) < window_size:
-        logging.warning(f"{Approach.MOMENTUM_EXHAUSTION}: DataFrame has less than {window_size} rows, cannot generate alerts.")
+    if len(df) < required_lookback:
+        logging.warning(f"{Approach.MOMENTUM_EXHAUSTION}: DataFrame has less than {required_lookback} rows, cannot generate alerts.")
         return alerts
 
     df_indexed = df.set_index('time')
-    is_development_mode = settings.MODE == Mode.DEVELOPMENT
-    grace_period = window_size
 
-    for i in range(window_size - 1, len(df_indexed)):
-        is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
-        
-        window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
+    # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
+    loop_end = len(df_indexed) - 1
+    loop_start = required_lookback - 1
+
+    # The loop's scan depth is naturally optimized by this calculation.
+    active_region_start = len(df_indexed) - new_candle_count - required_lookback
+
+    for i in range(loop_end, loop_start - 1, -1):
+        if i < active_region_start:
+            break # Stop searching if we are past the active region for the current mode.
+
+        window = df_indexed.iloc[i - required_lookback + 1 : i + 1].copy()
         
         alert = _analyze_window(window, df_indexed, config)
         
-        if alert and (is_development_mode or is_new_alert):
+        if alert:
             alerts.append(alert)
+            # In DEPLOYMENT mode, exit after finding the first valid alert.
+            if not is_development_mode:
+                return alerts
 
-    return alerts
+    # In DEVELOPMENT mode, return all found alerts in chronological order.
+    return alerts[::-1]

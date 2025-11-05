@@ -13,7 +13,7 @@ signal_settings = loader.get_signal_settings()
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.volatility import is_bb_squeeze
 from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
@@ -73,148 +73,125 @@ def _is_breakout_candle(candle: pd.Series, resistance_level: float) -> bool:
 
 def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
     """
-    Orchestrates finding both support breakdown and resistance breakout alerts
-    by iterating through the dataframe and checking for valid patterns based on
-    highest peaks and lowest troughs in a lookback period.
+    Orchestrates finding both support breakdown and resistance breakout alerts.
+    This function uses a truly unified reverse loop for both deployment and development modes.
+    The loop's scan depth is naturally handled by the value of `new_candle_count`.
     """
     alerts = []
     lookback_period = config.get("LOOKBACK_PERIOD", 50)
-    confirmation_window = config.get("CONFIRMATION_WINDOW", 3)
+    confirmation_window_size = config.get("CONFIRMATION_WINDOW", 3)
     consistency_threshold = config.get("CONSISTENCY_THRESHOLD", 2)
     use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
     # BB Squeeze parameters
     use_bb_squeeze = config.get("USE_BB_SQUEEZE_CONFIRMATION", False)
     bb_squeeze_lookback = config.get("BB_SQUEEZE_LOOKBACK", 40)
     bb_squeeze_threshold = config.get("BB_SQUEEZE_THRESHOLD_RATIO", 0.08)
 
-    last_alert_break_index = -np.inf
-    
-    # Define the grace period for considering an alert "new".
-    grace_period = confirmation_window
-
-    # We need at least the lookback window + break candle + confirmation window.
-    min_required_len = lookback_period + 1 + confirmation_window
-    if len(df) < min_required_len:
+    # The total lookback needed for one full check.
+    required_lookback = lookback_period + 1 + confirmation_window_size
+    if len(df) < required_lookback:
         return alerts
 
     df_indexed = df.reset_index()
+    last_alert_break_index = float('inf')
 
-    # State machine: NEUTRAL -> AWAITING_CONFIRMATION
-    state = 'NEUTRAL'
-    break_candle_index = -1
-    level = -1
-    level_type = ''
+    # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
+    loop_end = len(df_indexed) - 1
+    loop_start = required_lookback - 1
 
-    # Iterate through each candle that could be a 'break_candle'.
-    # We subtract confirmation_window to ensure there's room for confirmation.
-    for i in range(lookback_period, len(df_indexed) - confirmation_window):
+    # The loop's scan depth is naturally optimized by this calculation.
+    active_region_start = len(df_indexed) - new_candle_count - required_lookback
+
+    # 'i' is the index of the final confirmation candle.
+    for i in range(loop_end, loop_start - 1, -1):
+        if i < active_region_start:
+            break # Stop searching if we are past the active region for the current mode.
         
-        # --- STATE: NEUTRAL -> AWAITING_CONFIRMATION ---
-        if state == 'NEUTRAL':
-            # Enforce a cooldown period after an alert to prevent spam.
-            # For simplicity, we can use a fixed number of candles as cooldown.
-            if i <= last_alert_break_index + lookback_period:
-                continue
-
-            current_candle = df_indexed.iloc[i]
-            window_end = i
-            window_start = max(0, window_end - lookback_period)
-            df_window = df_indexed.iloc[window_start:window_end]
-
-            if df_window.empty:
-                continue
-
-            # --- Bollinger Band Squeeze Check ---
-            # Before checking for a breakout, verify if we are in a squeeze state.
-            # The window passed to the squeeze check should end at the candle *before* the breakout.
-            if use_bb_squeeze and not is_bb_squeeze(df_window, bb_squeeze_lookback, bb_squeeze_threshold):
-                continue
-
-            highest_peak = df_window['high'].max()
-            lowest_trough = df_window['low'].min()
-
-            # Check for Breakout (BUY)
-            use_volume = config.get("USE_VOLUME_CONFIRMATION", False)
-            if _is_breakout_candle(current_candle, highest_peak):
-                # --- Apply Market Regime Filter ---
-                if use_regime_filter and not is_regime_favorable(current_candle, 'BUY', config):
-                    continue
-
-                if (not use_volume) or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i)):
-                    state = 'AWAITING_CONFIRMATION'
-                    break_candle_index = i
-                    level = highest_peak
-                    level_type = 'resistance'
-            
-            # If a breakout is found, continue to the next candle to start confirmation phase
-            if state == 'AWAITING_CONFIRMATION':
-                continue
-
-            # Check for Breakdown (SELL)
-            if _is_breakdown_candle(current_candle, lowest_trough):
-                # --- Apply Market Regime Filter ---
-                if use_regime_filter and not is_regime_favorable(current_candle, 'SELL', config):
-                    continue
-
-                if (not use_volume) or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i)):
-                    state = 'AWAITING_CONFIRMATION'
-                    break_candle_index = i
-                    level = lowest_trough
-                    level_type = 'support'
+        # --- 1. Define Windows ---
+        final_confirmation_candle = df_indexed.iloc[i]
+        break_candle_index = i - confirmation_window_size
         
-        # --- STATE: AWAITING_CONFIRMATION -> ALERT or RESET ---
-        if state == 'AWAITING_CONFIRMATION':
-            confirmation_start = break_candle_index + 1
-            confirmation_end = confirmation_start + confirmation_window
-            
-            # Ensure we don't go out of bounds
-            if confirmation_end > len(df_indexed):
-                state = 'NEUTRAL'
-                continue
+        # Cooldown check
+        if break_candle_index >= last_alert_break_index - lookback_period:
+            continue
 
-            confirmation_df = df_indexed.iloc[confirmation_start:confirmation_end]
+        break_candle = df_indexed.iloc[break_candle_index]
+        
+        lookback_window_end = break_candle_index
+        lookback_window_start = max(0, lookback_window_end - lookback_period)
+        df_lookback_window = df_indexed.iloc[lookback_window_start:lookback_window_end]
 
-            consistency_count = 0
-            for _, confirmation_candle in confirmation_df.iterrows():
-                if level_type == 'resistance' and _is_breakout_candle(confirmation_candle, level):
-                    consistency_count += 1
-                elif level_type == 'support' and _is_breakdown_candle(confirmation_candle, level):
-                    consistency_count += 1
+        if df_lookback_window.empty:
+            continue
 
-            final_confirmation_candle = df_indexed.iloc[confirmation_end - 1]
-            
-            use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-            volume_confirmed = not use_increasing_volume or is_volume_increasing(confirmation_df.reset_index())
+        # --- 2. BB Squeeze Check (if enabled) ---
+        if use_bb_squeeze and not is_bb_squeeze(df_lookback_window, bb_squeeze_lookback, bb_squeeze_threshold):
+            continue
 
-            is_confirmed = (
-                consistency_count >= consistency_threshold and
-                final_confirmation_candle['adx'] > signal_settings.ADX_CONFIRMATION_THRESHOLD and
-                volume_confirmed
-            )
+        # --- 3. Identify Level and Check for Break ---
+        highest_peak = df_lookback_window['high'].max()
+        lowest_trough = df_lookback_window['low'].min()
+        
+        level = -1
+        level_type = ''
+        signal = ''
 
-            if is_confirmed:
-                is_development_mode = settings.MODE == Mode.DEVELOPMENT
-                is_new_alert = not is_development_mode and (break_candle_index >= len(df_indexed) - (new_candle_count + grace_period))
+        # Check for Breakout (BUY)
+        if _is_breakout_candle(break_candle, highest_peak):
+            level = highest_peak
+            level_type = 'resistance'
+            signal = 'BUY'
+        # Check for Breakdown (SELL)
+        elif _is_breakdown_candle(break_candle, lowest_trough):
+            level = lowest_trough
+            level_type = 'support'
+            signal = 'SELL'
+        else:
+            continue # No break occurred
 
-                if is_development_mode or is_new_alert:
-                    signal = 'BUY' if level_type == 'resistance' else 'SELL'
-                    break_candle = df_indexed.iloc[break_candle_index]
-                    
-                    alert = _create_alert(df_indexed, signal, final_confirmation_candle, break_candle, level, lookback_period)
-                    
-                    if level_type == 'resistance':
-                        logging.info(f"Confirmed Resistance Breakout Alert at {alert.alert_time} for price {alert.alert_price:.2f}")
-                    else:
-                        logging.info(f"Confirmed Support Breakdown Alert at {alert.alert_time} for price {alert.alert_price:.2f}")
-                        
-                    alerts.append(alert)
-                    last_alert_break_index = break_candle_index
-            
-            # Reset state regardless of outcome
-            state = 'NEUTRAL'
-            
-    return alerts
+        # --- 4. Filters on the Break Candle ---
+        if use_regime_filter and not is_regime_favorable(break_candle, signal, config):
+            continue
+        
+        use_volume = config.get("USE_VOLUME_CONFIRMATION", False)
+        if use_volume and not (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, break_candle_index)):
+            continue
+
+        # --- 5. Confirmation Window Validation ---
+        confirmation_df = df_indexed.iloc[break_candle_index + 1 : i + 1]
+        
+        consistency_count = 0
+        for _, conf_candle in confirmation_df.iterrows():
+            if level_type == 'resistance' and _is_breakout_candle(conf_candle, level):
+                consistency_count += 1
+            elif level_type == 'support' and _is_breakdown_candle(conf_candle, level):
+                consistency_count += 1
+        
+        use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+        use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+
+        volume_increasing_confirmed = not use_increasing_volume or is_volume_increasing(confirmation_df.reset_index())
+        last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(confirmation_df.reset_index())
+
+        is_confirmed = (
+            consistency_count >= consistency_threshold and
+            final_confirmation_candle['adx'] > signal_settings.ADX_CONFIRMATION_THRESHOLD and
+            volume_increasing_confirmed and
+            last_candle_max_volume_confirmed
+        )
+
+        # --- 6. Alert Generation ---
+        if is_confirmed:
+            alert = _create_alert(df_indexed, signal, final_confirmation_candle, break_candle, level, lookback_period)
+            alerts.append(alert)
+            last_alert_break_index = break_candle_index
+
+            if not is_development_mode:
+                return alerts
+    
+    return alerts[::-1]
 
 def _create_alert(df_indexed, signal, confirmation_candle, break_candle, level, lookback_period):
     """Helper function to create an AlertData object."""

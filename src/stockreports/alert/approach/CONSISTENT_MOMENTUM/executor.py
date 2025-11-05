@@ -17,7 +17,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
     check_advanced_confirmation, 
     can_apply_advanced_confirmation
 )
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
+from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
@@ -142,14 +142,16 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     # --- Volume Confirmation ---
     use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
     use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+    use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
     confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
     confirmation_df = df_indexed.iloc[confirmation_candle_index - window_size + 1 : confirmation_candle_index + 1]
 
     volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), confirmation_candle_index))
     volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
+    last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(confirmation_df)
 
-    if not (volume_spike_is_confirmed and volume_is_increasing):
+    if not (volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed):
         return None
 
     # --- Create Alert ---
@@ -260,62 +262,50 @@ def _is_immediate_reversal(candle: pd.Series, original_signal: str, config: dict
 
 def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
     """
-    Internal function to find alerts based on a consistent momentum pattern.
-    This looks for a rolling window of candles that show strong, consistent direction.
+    Finds alerts based on a consistent momentum pattern using a unified reverse loop.
+    This function is optimized for both DEPLOYMENT (latest alert) and DEVELOPMENT (all alerts) modes.
     """
     alerts = []
     window_size = config.get("CONFIRMATION_WINDOW", 3)
     use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+    is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
-    # Determine if we can use advanced confirmation dynamically.
     use_advanced_confirmation = can_apply_advanced_confirmation(df)
-
     if use_advanced_confirmation:
-        logging.info(f"{Approach.CONSISTENT_MOMENTUM}: Sufficient data available ({len(df)} candles). Advanced confirmation will be used.")
+        logging.info(f"{Approach.CONSISTENT_MOMENTUM}: Advanced confirmation will be used.")
     else:
-        logging.warning(
-            f"{Approach.CONSISTENT_MOMENTUM}: Insufficient data for advanced confirmation. "
-            "Falling back to simple confirmation."
-        )
+        logging.warning(f"{Approach.CONSISTENT_MOMENTUM}: Insufficient data for advanced confirmation.")
 
     if window_size < 2:
-        logging.error(f"{Approach.CONSISTENT_MOMENTUM}: 'CONFIRMATION_WINDOW' must be at least 2, but got {window_size}. Aborting.")
+        logging.error(f"{Approach.CONSISTENT_MOMENTUM}: 'CONFIRMATION_WINDOW' must be at least 2. Aborting.")
         return alerts
 
-    if len(df) < window_size:
-        logging.warning(f"{Approach.CONSISTENT_MOMENTUM}: DataFrame has less than {window_size} rows, cannot generate alerts.")
+    # The lookback for peak/trough analysis is handled within _analyze_window.
+    # The required lookback for the loop is simply the window_size.
+    required_lookback = window_size
+    if len(df) < required_lookback:
+        logging.warning(f"{Approach.CONSISTENT_MOMENTUM}: DataFrame has less than {required_lookback} rows, cannot generate alerts.")
         return alerts
 
-    # Set a DatetimeIndex to allow for proper time-based lookups
     df_indexed = df.set_index('time')
-
-    # Prepare indicators once if advanced confirmation is enabled
-    df_with_indicators = None
+    df_with_indicators = df_indexed.copy() if use_advanced_confirmation else None
     if use_advanced_confirmation:
-        df_with_indicators = df_indexed.copy()
         df_with_indicators = prepare_indicators(df_with_indicators)
 
-    is_development_mode = settings.MODE == Mode.DEVELOPMENT
-    grace_period = window_size
+    # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
+    loop_end = len(df_indexed) - 1
+    loop_start = required_lookback - 1
 
-    # The loop now iterates over the entire dataframe to find all historical alerts.
-    for i in range(window_size - 1, len(df_indexed)):
-        # In deployment mode, check if the alert is recent enough to be notified.
-        is_new_alert = not is_development_mode and (i >= len(df_indexed) - (new_candle_count + grace_period))
+    # The loop's scan depth is naturally optimized by this calculation.
+    active_region_start = len(df_indexed) - new_candle_count - required_lookback
+
+    for i in range(loop_end, loop_start - 1, -1):
+        if i < active_region_start:
+            break # Stop searching if we are past the active region for the current mode.
 
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
         
-        # Determine potential signal direction
-        is_bullish_signal = (window['close'] > window['open']).all()
-        is_bearish_signal = (window['close'] < window['open']).all()
-        
-        potential_signal = None
-        if is_bullish_signal:
-            potential_signal = 'BUY'
-        elif is_bearish_signal:
-            potential_signal = 'SELL'
-
-        # --- Apply Market Regime Filter before detailed analysis ---
+        potential_signal = 'BUY' if (window['close'] > window['open']).all() else ('SELL' if (window['close'] < window['open']).all() else None)
         if use_regime_filter and potential_signal:
             current_candle_for_regime = df_indexed.iloc[i]
             if not is_regime_favorable(current_candle_for_regime, potential_signal, config):
@@ -324,24 +314,25 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
         alert = _analyze_window(window, df_indexed, df_with_indicators, config, window_size, use_advanced_confirmation)
         
         if alert:
-            # --- Realtime Reversal Confirmation ---
+            # Handle look-forward confirmation for reversal
             if config.get("USE_REALTIME_REVERSAL_CONFIRMATION", False):
                 confirmation_window_size = config.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 1)
-                
-                # Ensure we have enough subsequent candles for the confirmation window
+                # Ensure we don't look past the end of the dataframe
                 if i + confirmation_window_size < len(df_indexed):
                     confirmation_window = df_indexed.iloc[i + 1 : i + 1 + confirmation_window_size]
-                    
-                    # Check for reversal within the confirmation window
+                    is_reversal = False
                     for _, candle in confirmation_window.iterrows():
                         if _is_immediate_reversal(candle, alert.signal, config):
-                            # Found a reversal candle within the window, invalidate the alert
-                            alert = None
-                            break # No need to check further in this window
+                            is_reversal = True
+                            break
+                    if is_reversal:
+                        alert = None # Invalidate the alert
+            
+            if alert:
+                alerts.append(alert)
+                # In DEPLOYMENT mode, exit immediately after finding the first (latest) alert.
+                if not is_development_mode:
+                    return alerts
 
-        # In development mode, generate all alerts.
-        # In deployment mode, only generate alerts that are new enough.
-        if alert and (is_development_mode or is_new_alert):
-            alerts.append(alert)
-
-    return alerts
+    # In DEVELOPMENT mode, the loop completes. Return all found alerts in chronological order.
+    return alerts[::-1]
