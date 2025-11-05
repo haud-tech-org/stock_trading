@@ -19,6 +19,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.magnitude import check_magnitude
+from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
 # --- Constants ---
 # This constant is specific to the RCM approach.
@@ -37,6 +38,9 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
         
+        if config.get("USE_MARKET_REGIME_FILTER", False):
+            df = prepare_regime_indicators(df, config)
+
         alerts_data = _find_rcm_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
 
@@ -74,6 +78,7 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
             "Falling back to simple confirmation."
         )
     
+    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
     peak_trough_prominence = config.get("PEAK_TROUGH_PROMINENCE", 5)
     peaks, _ = find_peaks(df['high'], prominence=peak_trough_prominence)
     troughs, _ = find_peaks(-df['low'], prominence=peak_trough_prominence)
@@ -173,6 +178,11 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
 
             # If we have a signal that also passed the consistency check, proceed
             if signal:
+                # --- New: Apply Market Regime Filter ---
+                if use_regime_filter:
+                    if not is_regime_favorable(current_candle, signal, config):
+                        continue # Regime is not favorable, skip this alert
+
                 reversal_price = df.iloc[last_reversal_idx]['low'] if signal == 'BUY' else df.iloc[last_reversal_idx]['high']
                 current_price = current_candle['close']
 
