@@ -33,7 +33,11 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         config = signal_settings.APPROACH_CONFIG.get(
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
-        
+
+        # Prepare indicators here, before calling the analysis function.
+        if config.get("USE_MARKET_REGIME_FILTER", False):
+            df = prepare_regime_indicators(df, config)
+
         alerts_data = _find_consistent_momentum_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
 
@@ -261,6 +265,7 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
     """
     alerts = []
     window_size = config.get("CONFIRMATION_WINDOW", 3)
+    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
     
     # Determine if we can use advanced confirmation dynamically.
     use_advanced_confirmation = can_apply_advanced_confirmation(df)
@@ -280,11 +285,6 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
     if len(df) < window_size:
         logging.warning(f"{Approach.CONSISTENT_MOMENTUM}: DataFrame has less than {window_size} rows, cannot generate alerts.")
         return alerts
-
-    # --- Market Regime Filter Calculation ---
-    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
-    if use_regime_filter:
-        prepare_regime_indicators(df, config)
 
     # Set a DatetimeIndex to allow for proper time-based lookups
     df_indexed = df.set_index('time')
