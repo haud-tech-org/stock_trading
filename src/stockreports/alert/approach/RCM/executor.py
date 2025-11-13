@@ -12,14 +12,16 @@ signal_settings = loader.get_signal_settings()
 # --- Project Imports ---
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import (
-    prepare_indicators, 
-    check_advanced_confirmation, 
-    can_apply_advanced_confirmation
+    prepare_indicators,
+    _is_rsi_not_exhausted,
+    is_signal_confirmed,
+    can_apply_indicator_confirmation,
+    get_min_data_for_indicator_confirmation
 )
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.magnitude import check_magnitude
-from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
+from src.stockreports.alert.common.regime import has_divergence
 
 # --- Constants ---
 # This constant is specific to the RCM approach.
@@ -38,9 +40,6 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
         
-        if config.get("USE_MARKET_REGIME_FILTER", False):
-            df = prepare_regime_indicators(df, config)
-
         alerts_data = _find_rcm_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
 
@@ -69,19 +68,19 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
     alerts = []
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
-    # Dynamically check if advanced confirmation can be used.
-    use_advanced_confirmation = can_apply_advanced_confirmation(df)
-
-    if use_advanced_confirmation:
-        logging.info(f"{Approach.RCM}: Sufficient data available ({len(df)} candles). Advanced confirmation will be used.")
-        df = prepare_indicators(df)
-    else:
-        logging.warning(
-            f"{Approach.RCM}: Insufficient data for advanced confirmation. "
-            "Falling back to simple confirmation."
-        )
+    # All indicators must be prepared first.
+    df = prepare_indicators(df)
     
-    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+    # This approach requires advanced confirmation.
+    can_run_indicator_confirmation = can_apply_indicator_confirmation(df)
+    if not can_run_indicator_confirmation:
+        min_data_required = get_min_data_for_indicator_confirmation()
+        logging.warning(
+            f"{Approach.RCM}: Insufficient data for indicator confirmation "
+            f"(have {len(df)}, need {min_data_required}). "
+            "Indicator confirmation will be skipped, and this approach may not generate alerts."
+        )
+
     peak_trough_prominence = config.get("PEAK_TROUGH_PROMINENCE", 5)
     
     # Pre-compute all peaks and troughs once for efficiency
@@ -97,9 +96,6 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
     min_consistency = config.get("CONFIRMATION_MIN_CONSISTENCY", 2)
     lookback_period = config.get('PEAK_BOTTOM_LOOKBACK_PERIOD')
     min_magnitude = config.get("MIN_ALERT_MAGNITUDE", 0)
-    use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
-    use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-    use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
     # The loop needs enough data for a reversal and confirmation window.
     required_lookback = confirmation_window + 1
@@ -115,10 +111,10 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
     # The loop's scan depth is naturally optimized by this calculation.
     active_region_start = len(df_indexed) - new_candle_count - required_lookback
 
-    # 'i' is the index of the potential confirmation candle.
-    for i in range(loop_end, loop_start - 1, -1):
+    for i in range(loop_end, loop_start, -1):
+        # Stop searching if we are past the active region for the current mode.
         if i < active_region_start:
-            break # Stop searching if we are past the active region for the current mode.
+            break
 
         current_candle = df_indexed.iloc[i]
         prev_candle = df_indexed.iloc[i-1]
@@ -143,20 +139,28 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
             
             signal = None
             if is_trough: # Look for BUY signal
-                adv_signal = check_advanced_confirmation(current_candle, prev_candle) if use_advanced_confirmation else 'BUY'
-                if adv_signal == 'BUY' and (confirmation_df['close'] > confirmation_df['open']).sum() >= min_consistency:
+                if (confirmation_df['close'] > confirmation_df['open']).sum() >= min_consistency:
                     signal = 'BUY'
             elif is_peak: # Look for SELL signal
-                adv_signal = check_advanced_confirmation(current_candle, prev_candle) if use_advanced_confirmation else 'SELL'
-                if adv_signal == 'SELL' and (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
+                if (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
                     signal = 'SELL'
 
             if not signal:
                 continue
 
             # --- Signal Confirmed, now check filters and magnitude ---
-            if use_regime_filter and not is_regime_favorable(current_candle, signal, config):
-                continue
+            if can_run_indicator_confirmation:
+                # For RCM, we only validate the final confirmation candle.
+                # Checking the reversal candle for exhaustion is counter-intuitive,
+                # as a reversal trough often occurs in oversold territory.
+                
+                # Step 1: Check for RSI exhaustion on the current (trigger) candle.
+                if not _is_rsi_not_exhausted([current_candle], signal, config):
+                    continue
+
+                # Step 2: Check for confirmation on the current (trigger) candle.
+                if not is_signal_confirmed(current_candle, signal, config):
+                    continue
 
             # Peak/Bottom Breakout Confirmation
             if lookback_period is not None:
@@ -174,7 +178,14 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
             if not is_sufficient:
                 continue
 
-            # Volume Confirmation
+            # --- State 2: Advanced Confirmation (Optional) ---
+            # This is now handled by the new two-step validation logic above.
+
+            # --- Volume Confirmation (Optional) ---
+            use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
+            use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+            use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+
             volume_spike_ok = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
             volume_increasing_ok = not use_increasing_volume or is_volume_increasing(confirmation_df)
             last_candle_max_volume_ok = not use_last_candle_max_volume or is_last_candle_volume_max(confirmation_df)
@@ -200,7 +211,7 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                 details=json.dumps({
                     "peak_trough_prominence": peak_trough_prominence,
                     "confirmation_window": confirmation_window,
-                    "used_advanced_confirmation": use_advanced_confirmation,
+                    "used_indicator_confirmation": can_run_indicator_confirmation,
                     "peak_bottom_lookback_period": lookback_period
                 })
             )

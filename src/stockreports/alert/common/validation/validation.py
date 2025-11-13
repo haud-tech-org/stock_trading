@@ -23,8 +23,13 @@ def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame,
     Returns:
         The updated AlertData object with profit_loss, status, and validation details populated.
     """
+    # Ensure alert_time is a datetime object
+    if isinstance(alert.alert_time, str):
+        start_time = pd.to_datetime(alert.alert_time)
+    else:
+        start_time = alert.alert_time
+
     # Define the validation window
-    start_time = alert.alert_time
     end_time = start_time + timedelta(minutes=validation_period_minutes)
     
     # Ensure the historical data has a DatetimeIndex for efficient slicing
@@ -76,7 +81,7 @@ def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame,
     alert.min_expected_profit_loss = MIN_PROFIT_LOSS
     
     if validation_price_time:
-        time_diff = validation_price_time - alert.alert_time
+        time_diff = validation_price_time - start_time
         alert.time_to_best_price = int(time_diff.total_seconds() / 60)
 
     logging.info(

@@ -17,7 +17,7 @@ notifications, and market-specific details.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
-SYMBOLS = ["VN30","41I1FB000"]
+SYMBOLS = ["41I1FB000","VN30"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -51,7 +51,7 @@ API_HEADERS = {
 # Guidance: A shorter interval (e.g., 5-10 seconds) provides more real-time data but increases API usage. A longer interval (e.g., 60 seconds) is less resource-intensive. Do not set this lower than the data resolution (e.g., don't check every 5 seconds for 1-minute data).
 # Range: Integer > 0.
 # Example: `MONITORING_INTERVAL_SECONDS = 5`
-MONITORING_INTERVAL_SECONDS = 5
+MONITORING_INTERVAL_SECONDS = 15
 
 
 # --- General Alerting & Reporting ---
@@ -105,7 +105,7 @@ DATA_DIR = "src/stockreports/data"
 # Format: YYYY-MM-DD
 DEV_DATA_DATE_RANGE = {
     "start_date": "2025-11-05",
-    "end_date": "2025-11-05"
+    "end_date": "2025-11-13"
 }
 
 # If True, saves the raw JSON response to a file when running in DEVELOPMENT mode.
@@ -123,7 +123,7 @@ ALERT_APPROACHES = [
     "RCM",
     "CONSISTENT_MOMENTUM",
     "ICHIMOKU",
-    "STRONG_CANDLE", # NEED IMPROVEMENT - UNSTABLE TO SUPPORT NOW (2025/10/08)
+    "STRONG_CANDLE",
     #"SUPPORT_RESISTANCE_BREAK",
     "MOMENTUM_EXHAUSTION",
     "CONSECUTIVE_POWER_CANDLES"
@@ -183,4 +183,4 @@ CONSOLIDATED_PROFITABILITY = {
 # Guidance: This is useful for testing how the system would have behaved in the past. Set this to a time within the `DEV_DATA_DATE_RANGE`.
 # Format: "YYYY-MM-DD HH:MM:SS"
 # Example: `DEBUG_REPLAY_START_TIME = "2025-10-23 09:30:00"`
-DEBUG_REPLAY_START_TIME = "2025-11-05 09:00:00"
+DEBUG_REPLAY_START_TIME = None

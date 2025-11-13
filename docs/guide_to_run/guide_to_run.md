@@ -21,5 +21,10 @@ python3 -m src.tools.individual_trade_simulator \
   --date 2025-11-03
 ```
 
+## Consolidate simulation reports categorized by approach
+```sh
+python3 src/tools/consolidate_reports.py --symbol 41I1FB000 --mode deployment --from-date 2025-11-11 --to-date 2025-11-11
+```
+
 
   

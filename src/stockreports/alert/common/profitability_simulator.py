@@ -37,6 +37,12 @@ def calculate_trade_metrics(trade: Dict[str, Any], trade_data: pd.DataFrame) -> 
 
     # --- Calculate for Entry Signal ---
     entry_validation_end = entry_time + timedelta(minutes=VALIDATION_PERIOD_MINUTES)
+    
+    # The trade_data.index is timezone-aware. We must ensure our slicing keys are also aware.
+    # The timestamps from alerts should already be aware, but we ensure it here for robustness.
+    if entry_time.tzinfo is None:
+        entry_time = TIMEZONE.localize(entry_time)
+    
     entry_validation_end = min(entry_validation_end, trade_data.index[-1])
     entry_window_data = trade_data.loc[entry_time:entry_validation_end]
 
@@ -58,6 +64,10 @@ def calculate_trade_metrics(trade: Dict[str, Any], trade_data: pd.DataFrame) -> 
 
     # --- Calculate for Exit Signal ---
     exit_validation_end = exit_time + timedelta(minutes=VALIDATION_PERIOD_MINUTES)
+
+    if exit_time.tzinfo is None:
+        exit_time = TIMEZONE.localize(exit_time)
+
     exit_validation_end = min(exit_validation_end, trade_data.index[-1])
     exit_window_data = trade_data.loc[exit_time:exit_validation_end]
 

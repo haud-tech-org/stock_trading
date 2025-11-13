@@ -9,6 +9,7 @@ This ensures consistency between backtesting and real-time monitoring.
 # -- Moving Averages --
 MA_SHORT_PERIOD = 5  # Lookback for fastest moving average (immediate momentum).
 MA_LONG_PERIOD = 10 # Lookback for slowest moving average (long-term trend).
+MA_LONG_TERM_PERIOD = 50 # Lookback for the primary trend direction filter.
 
 # -- Ichimoku Cloud --
 TENKAN_PERIOD = 9  # Tenkan-sen (Conversion Line) period.
@@ -57,33 +58,26 @@ APPROACH_CONFIG = {
     },
     "RCM": {
         "PEAK_TROUGH_PROMINENCE": 3,
-        "CONFIRMATION_WINDOW": 3,
-        "CONFIRMATION_MIN_CONSISTENCY": 3,
+        "CONFIRMATION_WINDOW": 4,
+        "CONFIRMATION_MIN_CONSISTENCY": 2,
         "USE_VOLUME_CONFIRMATION": True,
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
         "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 60,
         "MIN_ALERT_MAGNITUDE": 4,
-        "USE_MARKET_REGIME_FILTER": True,
-        "USE_MA_REGIME_FILTER": True,
-        "REGIME_MA_PERIOD": 50,
-        "USE_ADX_REGIME_FILTER": True,
-        "REGIME_ADX_PERIOD": 14,
-        "REGIME_ADX_THRESHOLD": 20
+        "USE_MA_CONFIRMATION": True,
+        "USE_ADX_CONFIRMATION": True
     },
     "CONSISTENT_MOMENTUM": {
         "REVERSAL_CANDLE_BODY_RATIO": 0.3,
-        "USE_MARKET_REGIME_FILTER": True,
-        "REGIME_MA_PERIOD": 50,
-        "REGIME_ADX_THRESHOLD": 20,
-        "PEAK_TROUGH_PROMINENCE": 10,
+        "PEAK_TROUGH_PROMINENCE": 5,
         "USE_REALTIME_REVERSAL_CONFIRMATION": True,
         "REALTIME_REVERSAL_CONFIRMATION_WINDOW": 2,
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 60,
         "CONFIRMATION_WINDOW": 3,
         "USE_VOLUME_CONFIRMATION": True,
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
-        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
+        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": False,
         "BODY_TO_RANGE_MIN_RATIO": 0.3
     },
     "SUPPORT_RESISTANCE_BREAK": {
@@ -91,17 +85,13 @@ APPROACH_CONFIG = {
         "CONFIRMATION_WINDOW": 3,
         "CONSISTENCY_THRESHOLD": 2,
         "USE_VOLUME_CONFIRMATION": True,
-        "USE_INCREASING_VOLUME_CONFIRMATION": True,
+        "USE_INCREASING_VOLUME_CONFIRMATION": False,
         "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
         "USE_BB_SQUEEZE_CONFIRMATION": True,
         "BB_SQUEEZE_LOOKBACK": 40,
         "BB_SQUEEZE_THRESHOLD_RATIO": 0.08,
-        "USE_MARKET_REGIME_FILTER": True,
-        "USE_MA_REGIME_FILTER": True,
-        "REGIME_MA_PERIOD": 50,
-        "USE_ADX_REGIME_FILTER": True,
-        "REGIME_ADX_PERIOD": 14,
-        "REGIME_ADX_THRESHOLD": 20
+        "USE_MA_CONFIRMATION": True,
+        "USE_ADX_CONFIRMATION": True
     },
     "ICHIMOKU": {
         "TENKAN_SEN_PERIOD": 9,
@@ -110,19 +100,16 @@ APPROACH_CONFIG = {
         "CHIKOU_SPAN_PERIOD": 26,
         "USE_VOLUME_CONFIRMATION": True,
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
-        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
+        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": False,
         "SKIP_CHIKOU_CONFIRMATION": False,      # (optional, for future code support)
         "MIN_BARS_BETWEEN_ALERTS": 10,           # Minimum bars between consecutive alerts
-        "USE_MARKET_REGIME_FILTER": True,
-        "USE_ADX_REGIME_FILTER": True,
-        "REGIME_ADX_PERIOD": 14,
-        "REGIME_ADX_THRESHOLD": 25,
-        "USE_MA_REGIME_FILTER": False,
+        "USE_ADX_CONFIRMATION": False,
+        "USE_MA_CONFIRMATION": False,
         "USE_RSI_EXHAUSTION_FILTER": True,
         "RSI_OVERSOLD_THRESHOLD": 30,
         "RSI_OVERBOUGHT_THRESHOLD": 70,
-        "USE_MACD_CONFIRMATION_FILTER": True,
-        "USE_DIVERGENCE_FILTER": True,
+        "USE_MACD_CONFIRMATION": False,
+        "USE_DIVERGENCE_FILTER": False,
         "DIVERGENCE_LOOKBACK_PERIOD": 20,
         "DIVERGENCE_RSI_PERIOD": 14,
         "DIVERGENCE_PRICE_PROMINENCE": 0.5,
@@ -131,40 +118,36 @@ APPROACH_CONFIG = {
         "CONFIRMATION_CANDLE_COUNT": 1
     },
     "STRONG_CANDLE": {
-        "CONFIRMATION_WINDOW": 2,
-        "CONSISTENCY_THRESHOLD": 2,
+        "CONFIRMATION_WINDOW": 1,
+        "CONSISTENCY_THRESHOLD": 1,
         "USE_VOLUME_CONFIRMATION": True,
-        "USE_INCREASING_VOLUME_CONFIRMATION": True,
+        "USE_INCREASING_VOLUME_CONFIRMATION": False,
         "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
-        "MIN_ALERT_MAGNITUDE": 5,
-        "USE_MARKET_REGIME_FILTER": True,
-        "USE_MA_REGIME_FILTER": True,
-        "REGIME_MA_PERIOD": 50,
-        "USE_ADX_REGIME_FILTER": True,
-        "REGIME_ADX_PERIOD": 14,
-        "REGIME_ADX_THRESHOLD": 20
+        "MIN_ALERT_MAGNITUDE": 4,
+        "USE_MA_CONFIRMATION": True,
+        "USE_ADX_CONFIRMATION": True
     },
     "MOMENTUM_EXHAUSTION": {
-        "CONFIRMATION_WINDOW": 5,
-        "MOMENTUM_CANDLE_COUNT": 5,
-        "EXHAUSTION_CANDLE_COUNT": 5,
+        "MOMENTUM_CANDLE_COUNT": 3,
+        "EXHAUSTION_CANDLE_COUNT": 3,
         "USE_VOLUME_CONFIRMATION": False,
         "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": False,
-        "SMA_SLOPE_THRESHOLD": 0.05
+        "SMA_SLOPE_THRESHOLD": 0.1,
+        "USE_MA_CONFIRMATION": True,
+        "USE_ADX_CONFIRMATION": True,
+        "USE_LONG_TERM_MA_FILTER": True
     },
     "CONSECUTIVE_POWER_CANDLES": {
         "CANDLE_COUNT": 2,
         "MIN_BODY_TO_RANGE_RATIO": 0.7,
         "USE_VOLUME_CONFIRMATION": True,
         "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
-        # Defines min body size for each candle *before* the final one.
-        # The list length should be CANDLE_COUNT - 1.
-        "MIN_PRE_CANDLE_BODY_SIZES": [1.5],
-        "USE_MARKET_REGIME_FILTER": True,
-        "REGIME_MA_PERIOD": 50,
-        "USE_ADX_REGIME_FILTER": True,
-        "REGIME_ADX_PERIOD": 14,
-        "REGIME_ADX_THRESHOLD": 20
+        "MIN_PRE_CANDLE_BODY_SIZES": [2.0],
+        "USE_MA_CONFIRMATION": True,
+        "USE_ADX_CONFIRMATION": True,
+        "USE_RSI_EXHAUSTION_FILTER": True,
+        "RSI_OVERSOLD_THRESHOLD": 30,
+        "RSI_OVERBOUGHT_THRESHOLD": 70
     }
 }
 
@@ -175,4 +158,4 @@ APPROACH_CONFIG = {
 # --- Validation Settings ---
 # Defines the time window in minutes after an alert to check its outcome (profit/loss).
 # Used only in DEVELOPMENT mode against historical data.
-VALIDATION_PERIOD_MINUTES = 10
+VALIDATION_PERIOD_MINUTES = 4

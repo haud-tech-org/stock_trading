@@ -13,13 +13,20 @@ signal_settings = loader.get_signal_settings()
 # --- Project Imports ---
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import (
-    prepare_indicators, 
-    check_advanced_confirmation, 
-    can_apply_advanced_confirmation
+    prepare_indicators,
+    is_signal_confirmed,
+    _is_rsi_not_exhausted,
+    can_apply_indicator_confirmation,
+    get_min_data_for_indicator_confirmation
 )
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
+from src.stockreports.alert.common.magnitude import check_magnitude
+from src.stockreports.alert.common.volume import (
+    is_volume_spike_confirmed, 
+    can_apply_volume_confirmation, 
+    is_last_candle_volume_max,
+    is_volume_increasing
+)
 from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -34,9 +41,8 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
 
-        # Prepare indicators here, before calling the analysis function.
-        if config.get("USE_MARKET_REGIME_FILTER", False):
-            df = prepare_regime_indicators(df, config)
+        # Prepare all indicators here, before calling the analysis function.
+        df = prepare_indicators(df)
 
         alerts_data = _find_consistent_momentum_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
@@ -57,7 +63,7 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             message=str(e)
         )
 
-def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indicators: pd.DataFrame, config: dict, window_size: int, use_advanced_confirmation: bool) -> Optional[AlertData]:
+def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict, window_size: int, can_run_indicator_confirmation: bool) -> Optional[AlertData]:
     """
     Analyzes a single window of data to find a consistent momentum alert.
     This function contains the core alert detection logic.
@@ -180,25 +186,19 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     if total_body <= total_wick:
         return None
 
-    # --- 9. Advanced Confirmation (optional) ---
-    if use_advanced_confirmation:
-        # Get the specific candles we need from the indicator-rich dataframe
-        adv_current_candle = df_with_indicators.loc[current_candle.name]
+    # --- 9. Indicator Confirmation (optional) ---
+    if can_run_indicator_confirmation:
+        # Per the approved plan, check RSI on the start and end candles of the momentum window.
+        start_candle = window.iloc[0]
+        end_candle = window.iloc[-1]
+        candles_for_rsi_check = [start_candle, end_candle]
         
-        # Find the previous candle's timestamp to locate it
-        # This index is relative to the original df_indexed, not the window
-        prev_candle_index = df_indexed.index.get_loc(current_candle.name) - 1
-        if prev_candle_index < 0: return None # Not enough history for advanced check
-        prev_candle_timestamp = df_indexed.index[prev_candle_index]
-        adv_prev_candle = df_with_indicators.loc[prev_candle_timestamp]
-        
-        adv_signal = check_advanced_confirmation(
-            adv_current_candle, 
-            adv_prev_candle
-        )
-        
-        # If the advanced signal doesn't match the momentum signal, invalidate it
-        if adv_signal != signal:
+        # Step 1: Check for RSI exhaustion on the start and end candles.
+        if not _is_rsi_not_exhausted(candles_for_rsi_check, signal, config):
+            return None
+
+        # Step 2: Check for confirmation on the final candle of the window.
+        if not is_signal_confirmed(end_candle, signal, config):
             return None
 
     # --- If all checks pass, create an AlertData object ---
@@ -231,7 +231,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
             "momentum_start_time": momentum_start_time_iso,
             "momentum_window_size": window_size,
             "breakout_lookback_minutes": lookback_minutes,
-            "used_advanced_confirmation": use_advanced_confirmation
+            "used_indicator_confirmation": can_run_indicator_confirmation
         })
     )
     return alert_data
@@ -267,14 +267,16 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
     """
     alerts = []
     window_size = config.get("CONFIRMATION_WINDOW", 3)
-    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
-    use_advanced_confirmation = can_apply_advanced_confirmation(df)
-    if use_advanced_confirmation:
-        logging.info(f"{Approach.CONSISTENT_MOMENTUM}: Advanced confirmation will be used.")
-    else:
-        logging.warning(f"{Approach.CONSISTENT_MOMENTUM}: Insufficient data for advanced confirmation.")
+    can_run_indicator_confirmation = can_apply_indicator_confirmation(df)
+    if not can_run_indicator_confirmation:
+        min_data_required = get_min_data_for_indicator_confirmation()
+        logging.warning(
+            f"{Approach.CONSISTENT_MOMENTUM}: Insufficient data for indicator confirmation "
+            f"(have {len(df)}, need {min_data_required}). "
+            "Indicator confirmation will be skipped."
+        )
 
     if window_size < 2:
         logging.error(f"{Approach.CONSISTENT_MOMENTUM}: 'CONFIRMATION_WINDOW' must be at least 2. Aborting.")
@@ -288,9 +290,6 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
         return alerts
 
     df_indexed = df.set_index('time')
-    df_with_indicators = df_indexed.copy() if use_advanced_confirmation else None
-    if use_advanced_confirmation:
-        df_with_indicators = prepare_indicators(df_with_indicators)
 
     # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
     loop_end = len(df_indexed) - 1
@@ -305,13 +304,8 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
 
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
         
-        potential_signal = 'BUY' if (window['close'] > window['open']).all() else ('SELL' if (window['close'] < window['open']).all() else None)
-        if use_regime_filter and potential_signal:
-            current_candle_for_regime = df_indexed.iloc[i]
-            if not is_regime_favorable(current_candle_for_regime, potential_signal, config):
-                continue
-
-        alert = _analyze_window(window, df_indexed, df_with_indicators, config, window_size, use_advanced_confirmation)
+        # All logic, including indicator checks, is now self-contained in _analyze_window.
+        alert = _analyze_window(window, df_indexed, config, window_size, can_run_indicator_confirmation)
         
         if alert:
             # Handle look-forward confirmation for reversal

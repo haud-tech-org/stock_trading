@@ -13,6 +13,11 @@ signal_settings = loader.get_signal_settings()
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation
+from src.stockreports.alert.common.confirmation.confirmation import (
+    prepare_indicators, 
+    _is_rsi_not_exhausted,
+    is_signal_confirmed
+)
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -196,6 +201,9 @@ def _find_momentum_exhaustion_alerts(df: pd.DataFrame, config: dict, new_candle_
     
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
 
+    # All indicators must be prepared first.
+    df = prepare_indicators(df)
+    
     if len(df) < required_lookback:
         logging.warning(f"{Approach.MOMENTUM_EXHAUSTION}: DataFrame has less than {required_lookback} rows, cannot generate alerts.")
         return alerts
@@ -218,6 +226,17 @@ def _find_momentum_exhaustion_alerts(df: pd.DataFrame, config: dict, new_candle_
         alert = _analyze_window(window, df_indexed, config)
         
         if alert:
+            confirmation_candle = df_indexed.iloc[i]
+
+            # Step 1: Check for RSI exhaustion on the confirmation candle.
+            candles_for_exhaustion_check = [confirmation_candle]
+            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, alert.signal, config):
+                continue
+
+            # Step 2: Check for confirmation on the confirmation candle.
+            if not is_signal_confirmed(confirmation_candle, alert.signal, config):
+                continue
+
             alerts.append(alert)
             # In DEPLOYMENT mode, exit after finding the first valid alert.
             if not is_development_mode:
