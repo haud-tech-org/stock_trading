@@ -99,7 +99,8 @@ class Trade:
     exit_price: float
     exit_timestamp: str
     exit_approach: str
-    profit_loss: float
+    synthetic_profit_loss: float
+    actual_profit_loss: float
     status: str
     entry_source_symbol: Optional[str] = None  # New field for entry source
     exit_source_symbol: Optional[str] = None   # New field for exit source
@@ -121,7 +122,8 @@ class ProfitabilityReport:
     failed_trades: int
     success_rate: str
     failure_rate: str
-    total_profit_loss: float
+    total_synthetic_profit_loss: float
+    total_actual_profit_loss: float
     trades: List[Trade]
 
     def to_dict(self):

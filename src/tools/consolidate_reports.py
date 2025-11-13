@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import os
@@ -51,14 +50,25 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
 
     logging.info(f"Found {len(filtered_files)} reports to consolidate from {from_date_str} to {to_date_str}.")
 
-    # --- 2. Aggregate Trade Data ---
+    # --- 2. Aggregate Data ---
+    # Overall summary stats
+    overall_summary = {
+        "total_trades": 0,
+        "successful_trades": 0,
+        "failed_trades": 0,
+        "total_synthetic_profit_loss": 0.0,
+        "total_actual_profit_loss": 0.0,
+    }
+
     # Use defaultdict to easily initialize stats for new approaches
     performance_by_approach = defaultdict(lambda: {
         "total_trades": 0,
         "successful_trades": 0,
         "failed_trades": 0,
-        "total_profit_loss": 0.0,
-        "profit_loss_values": []
+        "total_synthetic_profit_loss": 0.0,
+        "total_actual_profit_loss": 0.0,
+        "synthetic_profit_loss_values": [],
+        "actual_profit_loss_values": []
     })
 
     all_trades = []
@@ -66,6 +76,14 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         try:
             with open(report_file, 'r') as f:
                 data = json.load(f)
+                
+                # Aggregate overall summary fields
+                overall_summary["total_trades"] += data.get("total_trades", 0)
+                overall_summary["successful_trades"] += data.get("successful_trades", 0)
+                overall_summary["failed_trades"] += data.get("failed_trades", 0)
+                overall_summary["total_synthetic_profit_loss"] += data.get("total_synthetic_profit_loss", 0.0)
+                overall_summary["total_actual_profit_loss"] += data.get("total_actual_profit_loss", 0.0)
+
                 trades = data.get("trades", [])
                 all_trades.extend(trades)
         except (json.JSONDecodeError, IOError) as e:
@@ -84,8 +102,10 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
 
         stats = performance_by_approach[approach]
         stats["total_trades"] += 1
-        stats["total_profit_loss"] += trade.get("profit_loss", 0.0)
-        stats["profit_loss_values"].append(trade.get("profit_loss", 0.0))
+        stats["total_synthetic_profit_loss"] += trade.get("synthetic_profit_loss", 0.0)
+        stats["total_actual_profit_loss"] += trade.get("actual_profit_loss", 0.0)
+        stats["synthetic_profit_loss_values"].append(trade.get("synthetic_profit_loss", 0.0))
+        stats["actual_profit_loss_values"].append(trade.get("actual_profit_loss", 0.0))
         
         if trade.get("status") == "Success":
             stats["successful_trades"] += 1
@@ -93,29 +113,59 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
             stats["failed_trades"] += 1
 
     # Finalize calculations
-    final_summary = {}
+    final_performance_by_approach = {}
     for approach, stats in performance_by_approach.items():
         total_trades = stats["total_trades"]
-        profit_loss_values = stats.pop("profit_loss_values") # Remove the list from final output
+        synthetic_profit_loss_values = stats.pop("synthetic_profit_loss_values")
+        actual_profit_loss_values = stats.pop("actual_profit_loss_values")
 
-        final_summary[approach] = {
+        final_performance_by_approach[approach] = {
             "total_trades": total_trades,
             "successful_trades": stats["successful_trades"],
             "failed_trades": stats["failed_trades"],
             "success_rate": f"{(stats['successful_trades'] / total_trades * 100):.2f}%" if total_trades > 0 else "0.00%",
-            "total_profit_loss": round(stats["total_profit_loss"], 4),
-            "average_profit_loss": round(stats["total_profit_loss"] / total_trades, 4) if total_trades > 0 else 0.0,
-            "best_trade_profit": round(max(profit_loss_values), 4) if profit_loss_values else 0.0,
-            "worst_trade_loss": round(min(profit_loss_values), 4) if profit_loss_values else 0.0,
+            "total_synthetic_profit_loss": round(stats["total_synthetic_profit_loss"], 4),
+            "average_synthetic_profit_loss": round(stats["total_synthetic_profit_loss"] / total_trades, 4) if total_trades > 0 else 0.0,
+            "best_synthetic_profit": round(max(synthetic_profit_loss_values), 4) if synthetic_profit_loss_values else 0.0,
+            "worst_synthetic_loss": round(min(synthetic_profit_loss_values), 4) if synthetic_profit_loss_values else 0.0,
+            "total_actual_profit_loss": round(stats["total_actual_profit_loss"], 4),
+            "average_actual_profit_loss": round(stats["total_actual_profit_loss"] / total_trades, 4) if total_trades > 0 else 0.0,
+            "best_actual_profit": round(max(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
+            "worst_actual_loss": round(min(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
         }
 
     # --- 4. Generate and Save Master Summary File ---
+    # Finalize overall summary calculations
+    total_trades_overall = overall_summary["total_trades"]
+    overall_summary["success_rate"] = f"{(overall_summary['successful_trades'] / total_trades_overall * 100):.2f}%" if total_trades_overall > 0 else "0.00%"
+    overall_summary["failure_rate"] = f"{(overall_summary['failed_trades'] / total_trades_overall * 100):.2f}%" if total_trades_overall > 0 else "0.00%"
+    overall_summary["total_synthetic_profit_loss"] = round(overall_summary["total_synthetic_profit_loss"], 4)
+    overall_summary["total_actual_profit_loss"] = round(overall_summary["total_actual_profit_loss"], 4)
+
+    # --- New: Get app_config from the first available report ---
+    app_config = None
+    if filtered_files:
+        try:
+            with open(filtered_files[0], 'r') as f:
+                first_report_data = json.load(f)
+                app_config = first_report_data.get("app_config")
+        except (json.JSONDecodeError, IOError) as e:
+            logging.warning(f"Could not read app_config from {filtered_files[0]}: {e}")
+    # --- End New ---
+
+    # Combine into a single output object
+    final_report = {
+        "overall_summary": overall_summary,
+        "performance_by_approach": final_performance_by_approach,
+        "app_config": app_config  # Add the config to the final report
+    }
+
     output_filename = f"{symbol}_overall_performance_{from_date_str}_to_{to_date_str}.json"
     output_path = os.path.join(reports_dir, output_filename)
 
     try:
         with open(output_path, 'w') as f:
-            json.dump(final_summary, f, indent=4)
+            json.dump(final_report, f, indent=4)
         logging.info(f"Successfully saved consolidated performance summary to: {output_path}")
     except IOError as e:
         logging.error(f"Failed to write summary report to {output_path}: {e}")

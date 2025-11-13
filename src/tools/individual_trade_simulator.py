@@ -34,7 +34,7 @@ def calculate_performance_by_approach(trades: list) -> dict:
         return {}
 
     # Group by entry approach and calculate stats
-    performance_summary = trades_df.groupby('entry_approach')['profit_loss'].agg(
+    performance_summary = trades_df.groupby('entry_approach')['synthetic_profit_loss'].agg(
         min_profit_loss='min',
         max_profit_loss='max',
         avg_profit_loss='mean',
@@ -54,9 +54,11 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
     and evaluating its outcome within a fixed validation window.
     """
     trades = []
-    total_profit_loss = 0
+    total_synthetic_profit_loss = 0
+    total_actual_profit_loss = 0
     successful_trades = 0
     failed_trades = 0
+    trade_counter = 0
 
     last_trade_end_time = pd.Timestamp.min.tz_localize('UTC')
 
@@ -159,9 +161,16 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
 
         # Calculate final profit/loss based on the determined exit
         if entry_signal == 'BUY':
-            profit_loss = exit_price - entry_price
+            synthetic_profit_loss = exit_price - entry_price
         else: # SELL
-            profit_loss = entry_price - exit_price
+            synthetic_profit_loss = entry_price - exit_price
+
+        # --- New: Calculate Actual Profit/Loss ---
+        if status == "Success":
+            actual_profit_loss = VALIDATION_PRICE_THRESHOLD
+        else: # Failed
+            actual_profit_loss = synthetic_profit_loss
+        # --- End New Calculation ---
 
         # --- `entry_best_profit` and `entry_worst_loss` on the entry candle ---
         if entry_signal == 'BUY':
@@ -188,9 +197,10 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
             exit_worst_loss = exit_price - exit_candle['high']
         # --- End of New Calculation ---
         
+        trade_counter += 1
         # Create and append the trade object
         trade = Trade(
-            trade_index=i + 1,
+            trade_index=trade_counter,
             entry_signal=entry_signal,
             entry_price=entry_price,
             entry_timestamp=entry_time.isoformat(),
@@ -199,7 +209,8 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
             exit_price=exit_price,
             exit_timestamp=exit_time.isoformat(),
             exit_approach='VALIDATION_EXIT',
-            profit_loss=profit_loss,
+            synthetic_profit_loss=synthetic_profit_loss,
+            actual_profit_loss=actual_profit_loss,
             status=status,
             entry_source_symbol=alert.get('source_symbol'),
             exit_source_symbol='SYNTHETIC',
@@ -216,7 +227,8 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
         trades.append(trade)
 
         # --- Aggregate Results ---
-        total_profit_loss += profit_loss
+        total_synthetic_profit_loss += synthetic_profit_loss
+        total_actual_profit_loss += actual_profit_loss
         if status == "Success":
             successful_trades += 1
         elif status == "Failed":
@@ -233,7 +245,8 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
         failed_trades=failed_trades,
         success_rate=success_rate,
         failure_rate=failure_rate,
-        total_profit_loss=total_profit_loss,
+        total_synthetic_profit_loss=total_synthetic_profit_loss,
+        total_actual_profit_loss=total_actual_profit_loss,
         trades=trades
     )
 
