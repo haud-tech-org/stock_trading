@@ -128,19 +128,20 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     # --- 3. Analyze candle bodies for exhaustion pattern ---
     window['body'] = abs(window['close'] - window['open'])
     
-    # --- FIX: Check for progressively shrinking candle bodies, not just averages ---
-    exhaustion_bodies = window.loc[exhaustion_candles.index, 'body'].tolist()
-
-    # Check if each exhaustion candle body is smaller than the one before it.
-    is_shrinking = all(exhaustion_bodies[i] < exhaustion_bodies[i-1] for i in range(1, len(exhaustion_bodies)))
-
-    if not is_shrinking:
-        return None
-    # --- END FIX ---
-
-    # For logging purposes, calculate the averages that were previously used for the old logic.
     avg_momentum_body = window.loc[momentum_candles.index, 'body'].mean()
     avg_exhaustion_body = window.loc[exhaustion_candles.index, 'body'].mean()
+
+    # --- NEW: Check for a significant reduction in candle body size ---
+    # The average body of the exhaustion candles must be smaller than the momentum candles.
+    if avg_exhaustion_body >= avg_momentum_body:
+        return None
+    # --- END NEW ---
+
+    # --- NEW: Validate the strength of the reversal candle ---
+    reversal_candle_body = window.loc[reversal_candle.name, 'body']
+    if reversal_candle_body <= avg_exhaustion_body:
+        return None
+    # --- END NEW ---
 
     # --- 4. Analyze volume for confirmation (if enabled) ---
     if use_volume:
