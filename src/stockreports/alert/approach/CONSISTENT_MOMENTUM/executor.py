@@ -34,8 +34,12 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
 
-        # Prepare indicators here, before calling the analysis function.
-        if config.get("USE_MARKET_REGIME_FILTER", False):
+        # All indicators must be prepared first.
+        df = prepare_indicators(df)
+        
+        # Now, prepare regime-specific indicators if the filter is enabled.
+        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+        if use_regime_filter:
             df = prepare_regime_indicators(df, config)
 
         alerts_data = _find_consistent_momentum_alerts(df, config, new_candle_count)
@@ -86,6 +90,17 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, df_with_indi
     
     if not is_momentum_confirmed:
         return None
+
+    # --- New: Regime Filter Check (Moved here for correctness) ---
+    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+    if use_regime_filter:
+        # The regime indicators (adx, regime_ma) are on the original df_indexed,
+        # not the window copy. We get the last candle's original data for the check.
+        last_candle_timestamp = window.index[-1]
+        candle_for_regime_check = df_indexed.loc[last_candle_timestamp]
+        
+        if not is_regime_favorable(candle_for_regime_check, signal, config):
+            return None
 
     # --- 4. New: Strong Close Confirmation ---
     current_candle = window.iloc[-1]
@@ -267,7 +282,6 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
     """
     alerts = []
     window_size = config.get("CONFIRMATION_WINDOW", 3)
-    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
     use_advanced_confirmation = can_apply_advanced_confirmation(df)
@@ -305,12 +319,7 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
 
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
         
-        potential_signal = 'BUY' if (window['close'] > window['open']).all() else ('SELL' if (window['close'] < window['open']).all() else None)
-        if use_regime_filter and potential_signal:
-            current_candle_for_regime = df_indexed.iloc[i]
-            if not is_regime_favorable(current_candle_for_regime, potential_signal, config):
-                continue
-
+        # The regime check is now correctly handled inside _analyze_window
         alert = _analyze_window(window, df_indexed, df_with_indicators, config, window_size, use_advanced_confirmation)
         
         if alert:

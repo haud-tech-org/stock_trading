@@ -12,6 +12,7 @@ from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -24,8 +25,12 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
 
-        # Prepare indicators here, before calling the analysis function.
-        if config.get("USE_MARKET_REGIME_FILTER", False):
+        # All indicators must be prepared first.
+        df = prepare_indicators(df)
+        
+        # Now, prepare regime-specific indicators if the filter is enabled.
+        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+        if use_regime_filter:
             df = prepare_regime_indicators(df, config)
 
         alerts_data = _find_power_candle_alerts(df, config, new_candle_count)
@@ -46,7 +51,7 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
             message=str(e)
         )
 
-def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict) -> Optional[AlertData]:
+def _analyze_window(window: pd.DataFrame, df_with_indicators: pd.DataFrame, config: dict) -> Optional[AlertData]:
     """
     Analyzes a window for a configurable number of consecutive power candles.
     """
@@ -68,6 +73,19 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
         return None
 
     signal = 'BUY' if is_all_bullish else 'SELL'
+
+    # --- New: Regime Filter Check (Moved here for correctness) ---
+    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
+    if use_regime_filter:
+        # The regime indicators (adx, regime_ma) are on the original df_with_indicators,
+        # not the window copy. We get the last candle's original data for the check.
+        last_candle_timestamp = window.index[-1]
+        
+        # Ensure we are looking up from the dataframe that has the indicators
+        candle_for_regime_check = df_with_indicators.loc[last_candle_timestamp]
+        
+        if not is_regime_favorable(candle_for_regime_check, signal, config):
+            return None
 
     # --- 3. Calculate body, range, and average body price for all candles ---
     window['body'] = abs(window['close'] - window['open'])
@@ -107,8 +125,8 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     # --- 7. Volume spike confirmation on the last candle ---
     last_candle = window.iloc[-1]
     if use_volume:
-        last_candle_index = df_indexed.index.get_loc(last_candle.name)
-        if not (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), last_candle_index)):
+        last_candle_index = df_with_indicators.index.get_loc(last_candle.name)
+        if not (can_apply_volume_confirmation(df_with_indicators) and is_volume_spike_confirmed(df_with_indicators.reset_index(), last_candle_index)):
             return None
 
     if use_last_candle_max_volume:
@@ -139,7 +157,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     return alert_data
 
 
-def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
+def _find_power_candle_alerts(df_with_indicators: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
     """
     Finds alerts based on the consecutive power candles pattern.
     This function uses a truly unified reverse loop for both deployment and development modes.
@@ -147,14 +165,13 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
     """
     alerts = []
     window_size = config.get("CANDLE_COUNT", 3)
-    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
 
-    if len(df) < window_size:
+    if len(df_with_indicators) < window_size:
         logging.warning(f"{Approach.CONSECUTIVE_POWER_CANDLES}: DataFrame has less than {window_size} rows, cannot generate alerts.")
         return alerts
 
-    df_indexed = df.set_index('time')
+    df_indexed = df_with_indicators.set_index('time')
 
     # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
     loop_end = len(df_indexed) - 1
@@ -170,17 +187,8 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
             break # Stop searching if we are past the active region for the current mode.
 
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
-
-        if use_regime_filter:
-            is_bullish_signal = all(window['close'] > window['open'])
-            is_bearish_signal = all(window['close'] < window['open'])
-            potential_signal = 'BUY' if is_bullish_signal else ('SELL' if is_bearish_signal else None)
-            
-            if potential_signal:
-                current_candle_for_regime = df_indexed.iloc[i]
-                if not is_regime_favorable(current_candle_for_regime, potential_signal, config):
-                    continue
         
+        # The regime check is now correctly handled inside _analyze_window
         alert = _analyze_window(window, df_indexed, config)
         
         if alert:
