@@ -12,15 +12,16 @@ validation_settings = loader.get_validation_settings()
 # --- Project Imports ---
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import (
-    prepare_indicators, 
-    check_advanced_confirmation, 
-    can_apply_advanced_confirmation,
-    get_min_data_required_for_advanced_confirmation
+    prepare_indicators,
+    _is_rsi_not_exhausted,
+    is_signal_confirmed,
+    can_apply_indicator_confirmation,
+    get_min_data_for_indicator_confirmation
 )
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
-from src.stockreports.alert.common.regime import is_regime_favorable, prepare_regime_indicators
+from src.stockreports.alert.common.regime import has_divergence
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -34,8 +35,6 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         config = signal_settings.APPROACH_CONFIG.get(
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
-        
-        df = prepare_regime_indicators(df, config)
         
         alerts_data = _find_strong_candle_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
@@ -63,18 +62,18 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
     alerts = []
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
-    # This approach requires advanced confirmation.
-    if not can_apply_advanced_confirmation(df):
-        min_data_required = get_min_data_required_for_advanced_confirmation()
-        logging.warning(
-            f"{Approach.STRONG_CANDLE}: Insufficient data for advanced confirmation "
-            f"(have {len(df)}, need {min_data_required}). "
-            "Cannot generate alerts for this approach."
-        )
-        return alerts
-
-    logging.info(f"{Approach.STRONG_CANDLE}: Sufficient data available ({len(df)} candles). Advanced confirmation will be used.")
+    # All indicators must be prepared first.
     df = prepare_indicators(df)
+    
+    # This approach requires advanced confirmation.
+    can_run_indicator_confirmation = can_apply_indicator_confirmation(df)
+    if not can_run_indicator_confirmation:
+        min_data_required = get_min_data_for_indicator_confirmation()
+        logging.warning(
+            f"{Approach.STRONG_CANDLE}: Insufficient data for indicator confirmation "
+            f"(have {len(df)}, need {min_data_required}). "
+            "Indicator confirmation will be skipped, and this approach may not generate alerts."
+        )
     
     confirmation_window = config.get("CONFIRMATION_WINDOW", 4)
     # Total lookback needed: 1 for momentum, 1 for confirmation, plus the window to find the strong candle.
@@ -92,10 +91,10 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
     # The loop's scan depth is naturally optimized by this calculation.
     active_region_start = len(df_indexed) - new_candle_count - required_lookback
 
-    # 'i' is the index of the final momentum candle (the alert candle).
-    for i in range(loop_end, loop_start - 1, -1):
+    for i in range(loop_end, loop_start, -1):
+        # Stop searching if we are past the active region for the current mode.
         if i < active_region_start:
-            break # Stop searching if we are past the active region for the current mode.
+            break
 
         momentum_candle = df_indexed.iloc[i]
         confirmation_candle = df_indexed.iloc[i-1]
@@ -112,9 +111,10 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
 
         # --- Inverted State 2: Check for Advanced Confirmation ---
         # Check if the confirmation candle 'i-1' had the correct advanced signal.
-        adv_signal = check_advanced_confirmation(confirmation_candle, df_indexed.iloc[i-2])
-        if adv_signal != potential_signal:
-            continue
+        if can_run_indicator_confirmation:
+            # This call validates the setup on the confirmation candle.
+            if not is_signal_confirmed(confirmation_candle, potential_signal, config):
+                continue
 
         # --- Inverted State 3: Find the initial Strong Candle in the lookback window ---
         strong_candle_found = False
@@ -155,7 +155,17 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
         if not is_sufficient:
             continue
 
-        # Volume Confirmation
+        # --- Final RSI exhaustion check on the candle before the strong candle ---
+        # This validates the initiation of the move, not the conclusion.
+        strong_candle_index = strong_candle.name
+        if can_run_indicator_confirmation and strong_candle_index > 0:
+            candle_before_strong = df_indexed.iloc[strong_candle_index - 1]
+            candles_for_exhaustion_check = [candle_before_strong]
+            
+            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, potential_signal, config):
+                continue
+
+        # --- Volume Confirmation (Optional) ---
         volume_window_df = df_indexed.iloc[strong_candle.name : i + 1]
         use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
         use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
@@ -166,11 +176,6 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
         last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(volume_window_df)
 
         if not (volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed):
-            continue
-
-        # Regime Filter
-        use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
-        if use_regime_filter and not is_regime_favorable(momentum_candle, potential_signal, config):
             continue
 
         # --- Alert Generation ---
@@ -185,8 +190,7 @@ def _find_strong_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count=
             "confirmation_candle_time": confirmation_candle['time'].isoformat(),
             "momentum_candle_time": alert_time.isoformat(),
             "strong_candle_body": round(strong_candle['body_size'], 2),
-            "used_advanced_confirmation": True,
-            "used_regime_filter": use_regime_filter
+            "used_indicator_confirmation": can_run_indicator_confirmation
         }
 
         alert_data = AlertData(

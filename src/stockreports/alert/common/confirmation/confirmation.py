@@ -6,10 +6,10 @@ from src.stockreports.config import loader
 
 signal_settings = loader.get_signal_settings()
 
-def get_min_data_required_for_advanced_confirmation() -> int:
+def get_min_data_for_indicator_confirmation() -> int:
     """
     Calculates and returns the minimum number of data points required for
-    all indicators used in the advanced confirmation logic.
+    all indicators used in the indicator confirmation logic.
     
     Returns:
         int: The maximum lookback period required among all indicators.
@@ -28,17 +28,17 @@ def get_min_data_required_for_advanced_confirmation() -> int:
         getattr(signal_settings, 'ADX_PERIOD', 14) * 2 # ADX needs more data to stabilize, 2x period is a safe rule of thumb
     )
 
-def can_apply_advanced_confirmation(df: pd.DataFrame) -> bool:
+def can_apply_indicator_confirmation(df: pd.DataFrame) -> bool:
     """
-    Checks if the DataFrame has enough data to apply advanced confirmation.
+    Checks if the DataFrame has enough data to apply indicator-based confirmation.
     
     Args:
         df (pd.DataFrame): The input dataframe.
         
     Returns:
-        bool: True if advanced confirmation can be applied, False otherwise.
+        bool: True if indicator confirmation can be applied, False otherwise.
     """
-    min_data_required = get_min_data_required_for_advanced_confirmation()
+    min_data_required = get_min_data_for_indicator_confirmation()
     return len(df) >= min_data_required
 
 # --- Manual Indicator Implementations ---
@@ -101,6 +101,7 @@ def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # --- Moving Averages ---
     df['ma_short'] = df['close'].rolling(window=signal_settings.MA_SHORT_PERIOD).mean()
     df['ma_long'] = df['close'].rolling(window=signal_settings.MA_LONG_PERIOD).mean()
+    df['ma_long_term'] = df['close'].rolling(window=signal_settings.MA_LONG_TERM_PERIOD).mean()
 
     # --- Ichimoku Cloud ---
     high_tenkan = df['high'].rolling(window=signal_settings.TENKAN_PERIOD).max()
@@ -143,36 +144,89 @@ def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-def check_advanced_confirmation(current_candle: pd.Series, prev_candle: pd.Series) -> str:
-    """
-    Checks for advanced confirmation signals (e.g., RSI, MACD, ADX) to validate a primary signal.
-    """
-    # --- Bullish Confirmation ---
-    is_bullish_confirmed = (
-        # Price is above the long-term moving average
-        current_candle['close'] > current_candle['ma_long'] and
-        # RSI is in a bullish regime
-        current_candle['rsi'] > signal_settings.RSI_BULLISH_THRESHOLD and
-        # MACD is showing bullish momentum (MACD line is above signal line)
-        current_candle['macd'] > current_candle['macdsignal'] and
-        # Trend is strong enough to be actionable
-        current_candle['adx'] > signal_settings.ADX_CONFIRMATION_THRESHOLD
-    )
-    if is_bullish_confirmed:
-        return 'BUY'
+# --- Individual Confirmation Functions ---
 
-    # --- Bearish Confirmation ---
-    is_bearish_confirmed = (
-        # Price is below the long-term moving average
-        current_candle['close'] < current_candle['ma_long'] and
-        # RSI is in a bearish regime
-        current_candle['rsi'] < signal_settings.RSI_BEARISH_THRESHOLD and
-        # MACD is showing bearish momentum
-        current_candle['macd'] < current_candle['macdsignal'] and
-        # Trend is strong enough
-        current_candle['adx'] > signal_settings.ADX_CONFIRMATION_THRESHOLD
-    )
-    if is_bearish_confirmed:
-        return 'SELL'
+def _is_ma_confirmed(candle: pd.Series, signal: str) -> bool:
+    """Checks if the price is on the correct side of the long-term moving average."""
+    if signal == 'BUY':
+        return candle['close'] > candle['ma_long']
+    elif signal == 'SELL':
+        return candle['close'] < candle['ma_long']
+    return False
 
-    return 'NEUTRAL'
+def _is_rsi_confirmed(candle: pd.Series, signal: str) -> bool:
+    """Checks if the RSI is in a bullish or bearish regime."""
+    if signal == 'BUY':
+        return candle['rsi'] > signal_settings.RSI_BULLISH_THRESHOLD
+    elif signal == 'SELL':
+        return candle['rsi'] < signal_settings.RSI_BEARISH_THRESHOLD
+    return False
+
+def _is_macd_confirmed(candle: pd.Series, signal: str) -> bool:
+    """Checks if the MACD indicates momentum in the signal's direction."""
+    if signal == 'BUY':
+        return candle['macd'] > candle['macdsignal']
+    elif signal == 'SELL':
+        return candle['macd'] < candle['macdsignal']
+    return False
+
+def _is_adx_confirmed(candle: pd.Series) -> bool:
+    """Checks if the ADX indicates a strong trend."""
+    return candle['adx'] > signal_settings.ADX_CONFIRMATION_THRESHOLD
+
+def _is_long_term_ma_confirmed(candle: pd.Series, signal: str) -> bool:
+    """Checks if the price is on the correct side of the long-term moving average."""
+    if signal == 'BUY':
+        return candle['close'] > candle['ma_long_term']
+    elif signal == 'SELL':
+        return candle['close'] < candle['ma_long_term']
+    return False
+
+def _is_rsi_not_exhausted(candles_to_check: list, signal: str, config: dict) -> bool:
+    """
+    Checks if RSI is in an exhaustion zone for any of the provided candles.
+    Returns False if the signal should be stopped, True otherwise.
+    """
+    rsi_oversold = config.get("RSI_OVERSOLD_THRESHOLD", 30)
+    rsi_overbought = config.get("RSI_OVERBOUGHT_THRESHOLD", 70)
+
+    for candle in candles_to_check:
+        if candle is None or 'rsi' not in candle or pd.isna(candle['rsi']):
+            continue  # Skip if candle is invalid or has no RSI
+
+        if signal == 'BUY' and candle['rsi'] > rsi_overbought:
+            return False  # Exhausted: BUY signal when RSI is overbought
+        if signal == 'SELL' and candle['rsi'] < rsi_oversold:
+            return False  # Exhausted: SELL signal when RSI is oversold
+            
+    return True # Signal is not invalidated by RSI exhaustion.
+
+# --- Main Orchestrator Function ---
+
+def is_signal_confirmed(confirmation_candle: pd.Series, signal: str, config: dict) -> bool:
+    """
+    Orchestrates the state of various indicators on a single candle to determine
+    if the given signal is confirmed.
+    Returns True if the signal is confirmed, False otherwise.
+    """
+    # --- Confirmation checks (must all be true) ---
+    checks = []
+    if config.get("USE_MA_CONFIRMATION", False):
+        checks.append(_is_ma_confirmed(confirmation_candle, signal))
+    
+    if config.get("USE_LONG_TERM_MA_FILTER", False):
+        checks.append(_is_long_term_ma_confirmed(confirmation_candle, signal))
+        
+    if config.get("USE_RSI_CONFIRMATION", False):
+        checks.append(_is_rsi_confirmed(confirmation_candle, signal))
+
+    if config.get("USE_MACD_CONFIRMATION", False):
+        checks.append(_is_macd_confirmed(confirmation_candle, signal))
+    
+    # ADX is direction-agnostic, so it's checked for both signals.
+    if config.get("USE_ADX_CONFIRMATION", False):
+        checks.append(_is_adx_confirmed(confirmation_candle))
+    
+    # If 'checks' is empty, it means no confirmations were configured,
+    # so the check implicitly passes because all([]) returns True.
+    return all(checks)

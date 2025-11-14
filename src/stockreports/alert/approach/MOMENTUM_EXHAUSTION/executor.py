@@ -13,6 +13,11 @@ signal_settings = loader.get_signal_settings()
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation
+from src.stockreports.alert.common.confirmation.confirmation import (
+    prepare_indicators, 
+    _is_rsi_not_exhausted,
+    is_signal_confirmed
+)
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -123,19 +128,20 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     # --- 3. Analyze candle bodies for exhaustion pattern ---
     window['body'] = abs(window['close'] - window['open'])
     
-    # --- FIX: Check for progressively shrinking candle bodies, not just averages ---
-    exhaustion_bodies = window.loc[exhaustion_candles.index, 'body'].tolist()
-
-    # Check if each exhaustion candle body is smaller than the one before it.
-    is_shrinking = all(exhaustion_bodies[i] < exhaustion_bodies[i-1] for i in range(1, len(exhaustion_bodies)))
-
-    if not is_shrinking:
-        return None
-    # --- END FIX ---
-
-    # For logging purposes, calculate the averages that were previously used for the old logic.
     avg_momentum_body = window.loc[momentum_candles.index, 'body'].mean()
     avg_exhaustion_body = window.loc[exhaustion_candles.index, 'body'].mean()
+
+    # --- NEW: Check for a significant reduction in candle body size ---
+    # The average body of the exhaustion candles must be smaller than the momentum candles.
+    if avg_exhaustion_body >= avg_momentum_body:
+        return None
+    # --- END NEW ---
+
+    # --- NEW: Validate the strength of the reversal candle ---
+    reversal_candle_body = window.loc[reversal_candle.name, 'body']
+    if reversal_candle_body <= avg_exhaustion_body:
+        return None
+    # --- END NEW ---
 
     # --- 4. Analyze volume for confirmation (if enabled) ---
     if use_volume:
@@ -196,6 +202,9 @@ def _find_momentum_exhaustion_alerts(df: pd.DataFrame, config: dict, new_candle_
     
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
 
+    # All indicators must be prepared first.
+    df = prepare_indicators(df)
+    
     if len(df) < required_lookback:
         logging.warning(f"{Approach.MOMENTUM_EXHAUSTION}: DataFrame has less than {required_lookback} rows, cannot generate alerts.")
         return alerts
@@ -218,6 +227,17 @@ def _find_momentum_exhaustion_alerts(df: pd.DataFrame, config: dict, new_candle_
         alert = _analyze_window(window, df_indexed, config)
         
         if alert:
+            confirmation_candle = df_indexed.iloc[i]
+
+            # Step 1: Check for RSI exhaustion on the confirmation candle.
+            candles_for_exhaustion_check = [confirmation_candle]
+            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, alert.signal, config):
+                continue
+
+            # Step 2: Check for confirmation on the confirmation candle.
+            if not is_signal_confirmed(confirmation_candle, alert.signal, config):
+                continue
+
             alerts.append(alert)
             # In DEPLOYMENT mode, exit after finding the first valid alert.
             if not is_development_mode:

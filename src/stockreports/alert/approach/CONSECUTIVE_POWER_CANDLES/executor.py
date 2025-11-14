@@ -11,7 +11,7 @@ signal_settings = loader.get_signal_settings()
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation, is_last_candle_volume_max
-from src.stockreports.alert.common.regime import prepare_regime_indicators, is_regime_favorable
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, is_signal_confirmed, _is_rsi_not_exhausted
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -23,10 +23,6 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         config = signal_settings.APPROACH_CONFIG.get(
             approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
         )
-
-        # Prepare indicators here, before calling the analysis function.
-        if config.get("USE_MARKET_REGIME_FILTER", False):
-            df = prepare_regime_indicators(df, config)
 
         alerts_data = _find_power_candle_alerts(df, config, new_candle_count)
         logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
@@ -115,25 +111,41 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
         if not is_last_candle_volume_max(window):
             return None
 
-    # --- 8. If all checks pass, create an alert ---
-    logging.info(f"[{last_candle.name}] SUCCESS: Consecutive Power Candles Pattern Found! Signal: {signal}")
+    # --- 8. Validation Step 1: RSI Exhaustion Check ---
+    # Use the "setup candle" (before the pattern) to ensure the move isn't starting from an exhausted state.
+    first_candle_index = df_indexed.index.get_loc(window.iloc[0].name)
+    setup_candle = df_indexed.iloc[first_candle_index - 1] if first_candle_index > 0 else None
+    
+    if config.get("USE_RSI_EXHAUSTION_FILTER", False):
+        candles_for_exhaustion_check = [setup_candle] if setup_candle is not None else []
+        if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, config):
+            return None
 
-    alert_id = str(int(last_candle.name.tz_convert('UTC').timestamp()))
+    # --- 9. Validation Step 2: Signal Confirmation ---
+    # Use the "final candle" of the pattern for all standard confirmation checks (MA, MACD, etc.).
+    final_candle = window.iloc[-1]
+    if not is_signal_confirmed(final_candle, signal, config):
+        return None
+
+    # --- 10. If all checks pass, create an alert ---
+    logging.info(f"[{final_candle.name}] SUCCESS: Consecutive Power Candles Pattern Found! Signal: {signal}")
+
+    alert_id = str(int(final_candle.name.tz_convert('UTC').timestamp()))
     start_candle = window.iloc[0]
 
     alert_data = AlertData(
         approach=Approach.CONSECUTIVE_POWER_CANDLES,
         id=alert_id,
         signal=signal,
-        alert_price=last_candle['close'],
-        alert_time=last_candle.name,
+        alert_price=final_candle['close'],
+        alert_time=final_candle.name,
         start_price=start_candle['open'],
         start_time=start_candle.name,
-        magnitude=round(abs(last_candle['close'] - start_candle['open']), 2),
+        magnitude=round(abs(final_candle['close'] - start_candle['open']), 2),
         details=json.dumps({
             "reason": f"{candle_count} consecutive power candles with body/open progression detected.",
             "pattern_start_time": int(start_candle.name.tz_convert('UTC').timestamp()),
-            "last_candle_volume": last_candle['volume']
+            "last_candle_volume": final_candle['volume']
         })
     )
     return alert_data
@@ -147,9 +159,11 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
     """
     alerts = []
     window_size = config.get("CANDLE_COUNT", 3)
-    use_regime_filter = config.get("USE_MARKET_REGIME_FILTER", False)
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
 
+    # All indicators must be prepared first.
+    df = prepare_indicators(df)
+    
     if len(df) < window_size:
         logging.warning(f"{Approach.CONSECUTIVE_POWER_CANDLES}: DataFrame has less than {window_size} rows, cannot generate alerts.")
         return alerts
@@ -170,17 +184,8 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
             break # Stop searching if we are past the active region for the current mode.
 
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
-
-        if use_regime_filter:
-            is_bullish_signal = all(window['close'] > window['open'])
-            is_bearish_signal = all(window['close'] < window['open'])
-            potential_signal = 'BUY' if is_bullish_signal else ('SELL' if is_bearish_signal else None)
-            
-            if potential_signal:
-                current_candle_for_regime = df_indexed.iloc[i]
-                if not is_regime_favorable(current_candle_for_regime, potential_signal, config):
-                    continue
         
+        # No need to pre-check signal here, _analyze_window handles it all
         alert = _analyze_window(window, df_indexed, config)
         
         if alert:
