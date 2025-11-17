@@ -37,6 +37,10 @@ MACD_FAST_PERIOD = 12   # Lookback for the fast EMA.
 MACD_SLOW_PERIOD = 26   # Lookback for the slow EMA.
 MACD_SIGNAL_PERIOD = 9  # Lookback for the signal line EMA.
 
+# -- Bollinger Bands --
+BBANDS_PERIOD = 20
+BBANDS_STDDEV = 2.0
+
 
 # --- SUPPORT_BREAKDOWN Specific Settings ---
 # Lookback period for average volume to confirm a breakdown.
@@ -70,6 +74,87 @@ APPROACH_CONFIG = {
         "USE_RSI_EXHAUSTION_FILTER": False,
         "RSI_OVERSOLD_THRESHOLD": 30,
         "RSI_OVERBOUGHT_THRESHOLD": 70
+    },
+    "CONSOLIDATION_BREAKOUT": {
+        # --- Main Consolidation Logic: Price Clustering ---
+        # Defines the range of window sizes (in candles) to check for consolidation.
+        # The system will test every lookback period from the min to the max value.
+        "CONSOLIDATION_LOOKBACK": [15, 30],
+        # The maximum distance (in price points) a candle's close can be from the median
+        # price of the window to be considered part of the "cluster".
+        "MAX_DEVIATION_FROM_CENTER": 1.0,
+        # The minimum percentage of candles within the window that must be inside the cluster
+        # for the consolidation to be considered valid. (e.g., 0.7 = 70%).
+        "MIN_CLUSTERED_CANDLE_RATIO": 0.8,
+
+        # --- Oscillation & Sideways Movement Confirmation ---
+        # The minimum number of valid peaks (highs) and troughs (lows) required in the window.
+        # Confirms the price is oscillating and not just flat.
+        "MIN_PEAKS_TROUGHS": 3,
+        # If enabled, this enforces that the identified peaks and troughs must alternate.
+        # (e.g., peak, trough, peak...). This ensures a true oscillating pattern.
+        "USE_ALTERNATING_PEAKS_TROUGHS_CHECK": True,
+        # How much a peak/trough must stand out from its surroundings to be considered valid.
+        # Higher values reduce sensitivity to minor fluctuations.
+        "PEAK_TROUGH_PROMINENCE": 1.5,
+
+        # --- Balanced Sideways Movement Confirmation ---
+        # Master switch to enable/disable the balanced sideways checks.
+        "USE_BALANCED_SIDEWAYS_CHECK": True,
+        # The maximum absolute slope of a linear regression line through the closing prices.
+        # A value near 0 enforces a flat, horizontal trend.
+        "MAX_REGRESSION_SLOPE": 0.05,
+        # The maximum allowed deviation in time spent above vs. below the median price.
+        # (e.g., 0.3 means the number of candles above vs. below cannot differ by more than 30% of the lookback).
+        "MAX_TIME_BALANCE_DEVIATION_RATIO": 0.15,
+
+        # --- Channel Consistency Confirmation ---
+        # Master switch to enable/disable the channel consistency check.
+        "USE_CHANNEL_CONSISTENCY_CHECK": True,
+        # The maximum allowed ratio of "outlier" candles (candles that close outside the
+        # core channel defined by the clustered candles). Prevents erratic price action.
+        "MAX_CHANNEL_OUTLIER_RATIO": 0.1,
+
+        # --- Consecutive Trend Confirmation ---
+        # Master switch to enable/disable the consecutive trend check.
+        "USE_CONSECUTIVE_TREND_CHECK": True,
+        # The maximum number of consecutive candles allowed to move in the same direction.
+        # Prevents slow, drifting consolidations.
+        "MAX_CONSECUTIVE_TREND_CANDLES": 7,
+
+        # --- Optional Indicator-based Filters ---
+        # Master switch to enable/disable the ADX filter.
+        "USE_ADX_FILTER": True,
+        # The ADX value below which the market is considered non-trending.
+        "ADX_THRESHOLD": 25,
+        # The minimum ratio of candles in the window that must be "non-trending" (below ADX_THRESHOLD).
+        "ADX_CONFIRMATION_RATIO": 0.8,
+
+        # Master switch to enable/disable the Bollinger Band Width filter (squeeze).
+        "USE_BB_WIDTH_FILTER": True,
+        # The BB Width must be below this percentage of the middle band to be considered a "squeeze".
+        "BB_WIDTH_THRESHOLD_PERCENT": 1.0,
+        # The minimum ratio of candles in the window that must be in a "squeeze" state.
+        "BB_SQUEEZE_CONFIRMATION_RATIO": 0.6,
+
+        # --- Breakout Candle Confirmation ---
+        # The number of candles to look at immediately following the consolidation window for a breakout.
+        # Almost always set to 1.
+        "BREAKOUT_CONFIRMATION_CANDLES": 1,
+
+        # --- Volume Spike Confirmation ---
+        # Master switch to enable/disable the volume spike check on the breakout candle.
+        "USE_VOLUME_SPIKE_CONFIRMATION": True,
+        # The breakout candle's volume must be at least this many times greater than the
+        # average volume of the consolidation window. (e.g., 1.3 = 1.3x or 30% higher).
+        "VOLUME_SPIKE_MULTIPLIER": 1.1, 
+
+        # --- General Indicator Confirmation ---
+        # Master switch to enable the final signal confirmation step, which uses
+        # a combination of indicators (MA, RSI, etc.) to validate the breakout.
+        "USE_CONFIRMATION": True,
+        "USE_SHORT_TERM_MA_CONFIRMATION": True,
+        "USE_MA_CONFIRMATION": True
     },
     "CONSISTENT_MOMENTUM": {
         "REVERSAL_CANDLE_BODY_RATIO": 0.3,

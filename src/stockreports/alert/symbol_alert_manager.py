@@ -34,7 +34,47 @@ class SymbolAlertManager:
         timezone_str = self.settings.TRADING_HOURS[market_code]['timezone']
         self.timezone = pytz.timezone(timezone_str)
         
-        logging.basicConfig(level="INFO", format="%(asctime)s - %(levelname)s - %(message)s", stream=sys.stdout)
+        self._configure_logging()
+
+    def _configure_logging(self):
+        """
+        Configures logging.
+        - Always logs to stdout.
+        - If running in an interactive terminal, also logs to a file.
+        This prevents duplicate file logging when run via launchd, which handles redirection.
+        """
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+
+        # Prevent adding handlers multiple times
+        if logger.hasHandlers():
+            logger.handlers.clear()
+
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+        # 1. Always log to stdout.
+        # When run via launchd, this stream is redirected to the file specified in the .plist.
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+
+        # 2. If running in an interactive terminal, also log to a file.
+        # sys.stdout.isatty() is False when run by launchd or with output redirection.
+        if sys.stdout.isatty():
+            mode_name = self.settings.MODE.capitalize()
+            log_dir = os.path.join(self.settings.LOGS_DIR, mode_name)
+            log_file_name = 'alerter.log'
+
+            os.makedirs(log_dir, exist_ok=True)
+            log_file_path = os.path.join(log_dir, log_file_name)
+
+            file_handler = logging.FileHandler(log_file_path, mode='a')
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+            
+            logging.info(f"Interactive session detected. Logging to console and {log_file_path}")
+        else:
+            logging.info(f"Non-interactive session (e.g., launchd). Logging to stdout only.")
 
     def _execute_for_symbol(self, symbol: str):
         """

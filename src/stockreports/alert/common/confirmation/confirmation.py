@@ -92,7 +92,11 @@ def _calculate_adx(high: pd.Series, low: pd.Series, close: pd.Series, length: in
     dx = (abs(plus_di - minus_di) / abs(plus_di + minus_di)) * 100
     adx = dx.ewm(com=length, min_periods=length).mean()
     
-    return pd.DataFrame({f'ADX_{length}': adx})
+    return pd.DataFrame({
+        f'adx': adx,
+        f'dip': plus_di,
+        f'din': minus_di
+    })
 
 def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -102,6 +106,15 @@ def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['ma_short'] = df['close'].rolling(window=signal_settings.MA_SHORT_PERIOD).mean()
     df['ma_long'] = df['close'].rolling(window=signal_settings.MA_LONG_PERIOD).mean()
     df['ma_long_term'] = df['close'].rolling(window=signal_settings.MA_LONG_TERM_PERIOD).mean()
+
+    # --- Bollinger Bands ---
+    bb_period = getattr(signal_settings, 'BBANDS_PERIOD', 20)
+    bb_std = getattr(signal_settings, 'BBANDS_STDDEV', 2.0)
+    df['bb_middle'] = df['close'].rolling(window=bb_period).mean()
+    std_dev = df['close'].rolling(window=bb_period).std()
+    df['bb_upper'] = df['bb_middle'] + (std_dev * bb_std)
+    df['bb_lower'] = df['bb_middle'] - (std_dev * bb_std)
+    df['bb_width'] = df['bb_upper'] - df['bb_lower']
 
     # --- Ichimoku Cloud ---
     high_tenkan = df['high'].rolling(window=signal_settings.TENKAN_PERIOD).max()
@@ -133,9 +146,11 @@ def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- ADX (Manual) ---
     adx_period = getattr(signal_settings, 'ADX_PERIOD', 14)
-    adx = _calculate_adx(df['high'], df['low'], df['close'], length=adx_period)
-    if adx is not None and not adx.empty:
-        df['adx'] = adx[f'ADX_{adx_period}']
+    adx_df = _calculate_adx(df['high'], df['low'], df['close'], length=adx_period)
+    if adx_df is not None and not adx_df.empty:
+        df['adx'] = adx_df['adx']
+        df['dip'] = adx_df['dip']
+        df['din'] = adx_df['din']
 
     # --- Candle Properties ---
     df['body_size'] = abs(df['close'] - df['open'])
@@ -145,6 +160,14 @@ def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # --- Individual Confirmation Functions ---
+
+def _is_short_term_ma_confirmed(candle: pd.Series, signal: str) -> bool:
+    """Checks if the price is on the correct side of the short-term moving average."""
+    if signal == 'BUY':
+        return candle['close'] > candle['ma_short']
+    elif signal == 'SELL':
+        return candle['close'] < candle['ma_short']
+    return False
 
 def _is_ma_confirmed(candle: pd.Series, signal: str) -> bool:
     """Checks if the price is on the correct side of the long-term moving average."""
@@ -211,6 +234,9 @@ def is_signal_confirmed(confirmation_candle: pd.Series, signal: str, config: dic
     """
     # --- Confirmation checks (must all be true) ---
     checks = []
+    if config.get("USE_SHORT_TERM_MA_CONFIRMATION", False):
+        checks.append(_is_short_term_ma_confirmed(confirmation_candle, signal))
+
     if config.get("USE_MA_CONFIRMATION", False):
         checks.append(_is_ma_confirmed(confirmation_candle, signal))
     
