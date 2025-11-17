@@ -26,5 +26,13 @@ python3 -m src.tools.individual_trade_simulator \
 python3 src/tools/consolidate_reports.py --symbol 41I1FB000 --mode deployment --from-date 2025-11-11 --to-date 2025-11-11
 ```
 
+## Extract historical data
+```sh
+python3 src/tools/extract_period_data.py \
+    --input-file src/stockreports/data/VN30/vn30_response_251114.json \
+    --start-time "13:40" \
+    --end-time "13:58"
+```
+
 
   
