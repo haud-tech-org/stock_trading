@@ -11,65 +11,65 @@ import numpy as np
 from src.stockreports.config import loader
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode, Signal
-from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, is_signal_confirmed, can_apply_indicator_confirmation
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, is_signal_confirmed
+from src.stockreports.alert.common.data_utils import can_apply_analysis
 
 # --- Settings Loader ---
 settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
+logger = logging.getLogger(__name__)
+
+# --- Module-level constant for the approach name ---
+APPROACH_NAME = Approach.CONSOLIDATION_BREAKOUT
+CONFIG = signal_settings.APPROACH_CONFIG.get(
+    APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
+)
 
 # 1. MAIN ENTRY POINT
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
     Entry point for the CONSOLIDATION_BREAKOUT approach.
     """
-    approach_name = Approach.CONSOLIDATION_BREAKOUT
     try:
-        logging.info(f"Running '{approach_name}' approach...")
+        logger.info(f"Running '{APPROACH_NAME}' approach...")
         
-        config = signal_settings.APPROACH_CONFIG.get(
-            approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
-        )
-        
-        alerts_data = _find_consolidation_breakout_alerts(df, config, new_candle_count, approach_name)
-        logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
+        alerts_data = _find_consolidation_breakout_alerts(df, new_candle_count)
+        logger.info(f"'{APPROACH_NAME}' approach found {len(alerts_data)} alerts.")
 
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
 
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=alerts_df
         )
     except Exception as e:
-        logging.error(f"An error occurred during '{approach_name}' execution: {e}", exc_info=True)
+        logger.error(f"An error occurred during '{APPROACH_NAME}' execution: {e}", exc_info=True)
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=pd.DataFrame(),
             status="FAILED",
             message=str(e)
         )
 
 # 2. PRIMARY FINDER FUNCTION
-def _find_consolidation_breakout_alerts(df: pd.DataFrame, config: dict, new_candle_count: int, approach_name: str) -> list[AlertData]:
+def _find_consolidation_breakout_alerts(df: pd.DataFrame, new_candle_count: int) -> list[AlertData]:
     """
     Finds alerts by iterating through a range of lookback periods.
     """
     alerts = []
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
-    
-    df = prepare_indicators(df)
-    
-    can_run_indicator_confirmation = can_apply_indicator_confirmation(df)
 
-    lookback_values = config.get("CONSOLIDATION_LOOKBACK", [50])
+    lookback_values = CONFIG.get("CONSOLIDATION_LOOKBACK", [50])
     if not isinstance(lookback_values, list):
         lookback_values = [lookback_values]
 
     min_lookback, max_lookback = min(lookback_values), max(lookback_values)
-    
-    required_lookback = max_lookback + config.get("BREAKOUT_CONFIRMATION_CANDLES", 1)
-    
-    if len(df) < required_lookback:
-        logging.warning(f"{approach_name}: DataFrame has less than {required_lookback} rows for the max lookback.")
+    required_lookback = max_lookback + CONFIG.get("BREAKOUT_CONFIRMATION_CANDLES", 1)
+
+    # --- Pre-analysis validation ---
+    df = prepare_indicators(df)
+    can_run_analysis = can_apply_analysis(df, APPROACH_NAME, required_rows=required_lookback)
+    if not can_run_analysis:
         return alerts
 
     df_indexed = df.set_index('time')
@@ -84,14 +84,14 @@ def _find_consolidation_breakout_alerts(df: pd.DataFrame, config: dict, new_cand
             break
 
         for lookback in range(min_lookback, max_lookback + 1):
-            current_required_lookback = lookback + config.get("BREAKOUT_CONFIRMATION_CANDLES", 1)
+            current_required_lookback = lookback + CONFIG.get("BREAKOUT_CONFIRMATION_CANDLES", 1)
             if i < current_required_lookback - 1:
                 continue
 
             window = df_indexed.iloc[i - current_required_lookback + 1 : i + 1].copy()
             
             # Pass the specific lookback being tested to the analysis function
-            alert = _analyze_window(window, config, approach_name, lookback, can_run_indicator_confirmation)
+            alert = _analyze_window(window, lookback)
             
             if alert:
                 alerts.append(alert)
@@ -103,7 +103,7 @@ def _find_consolidation_breakout_alerts(df: pd.DataFrame, config: dict, new_cand
     return alerts[::-1]
 
 # 3. CORE ANALYSIS FUNCTION
-def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, lookback: int, can_run_indicator_confirmation: bool) -> Optional[AlertData]:
+def _analyze_window(window: pd.DataFrame, lookback: int) -> Optional[AlertData]:
     """
     Analyzes a single window of data to find a consolidation breakout pattern for a specific lookback.
     """
@@ -116,7 +116,7 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
     # A. Price Clustering Logic: The primary method for identifying consolidation.
     # It checks if a significant number of candles are tightly packed around a central price.
     center_price = consolidation_window['close'].median()
-    max_deviation = config.get("MAX_DEVIATION_FROM_CENTER")
+    max_deviation = CONFIG.get("MAX_DEVIATION_FROM_CENTER")
     is_clustered = (consolidation_window['close'] >= center_price - max_deviation) & \
                    (consolidation_window['close'] <= center_price + max_deviation)
     
@@ -127,13 +127,13 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
         
     # Condition 2: A minimum percentage of candles in the window must be clustered.
     # This confirms that the price has been stable and not just randomly touching the center.
-    min_ratio = config.get("MIN_CLUSTERED_CANDLE_RATIO")
+    min_ratio = CONFIG.get("MIN_CLUSTERED_CANDLE_RATIO")
     if is_clustered.mean() < min_ratio:
         return None
 
     # --- New: Channel Consistency Check (Corrected Logic) ---
     # This ensures the price respects the consolidation channel and is not too erratic.
-    if config.get("USE_CHANNEL_CONSISTENCY_CHECK", False):
+    if CONFIG.get("USE_CHANNEL_CONSISTENCY_CHECK", False):
         # Define the channel based on the HIGHS and LOWS of the CLUSTERED candles only.
         core_channel_df = consolidation_window[is_clustered]
         core_resistance = core_channel_df['high'].max()
@@ -143,16 +143,16 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
         outliers = (consolidation_window['close'] > core_resistance) | \
                    (consolidation_window['close'] < core_support)
         
-        max_outlier_ratio = config.get("MAX_CHANNEL_OUTLIER_RATIO", 0.1)
+        max_outlier_ratio = CONFIG.get("MAX_CHANNEL_OUTLIER_RATIO", 0.1)
         
         if outliers.sum() / lookback > max_outlier_ratio:
             return None
 
     # --- New: Balanced Sideways Movement Confirmation ---
-    if config.get("USE_BALANCED_SIDEWAYS_CHECK", False):
+    if CONFIG.get("USE_BALANCED_SIDEWAYS_CHECK", False):
         # Condition A: Ensure the overall trend of the window is flat using linear regression.
         # A slope near zero indicates a sideways trend.
-        max_slope = config.get("MAX_REGRESSION_SLOPE", 0.05)
+        max_slope = CONFIG.get("MAX_REGRESSION_SLOPE", 0.05)
         x = np.arange(len(consolidation_window))
         y = consolidation_window['close'].values
         slope, _ = np.polyfit(x, y, 1)
@@ -161,7 +161,7 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
 
         # Condition B: Ensure the price is balanced around the median.
         # This prevents identifying a slow, grinding trend as consolidation.
-        max_balance_deviation = config.get("MAX_TIME_BALANCE_DEVIATION_RATIO", 0.3)
+        max_balance_deviation = CONFIG.get("MAX_TIME_BALANCE_DEVIATION_RATIO", 0.3)
         candles_above = (consolidation_window['close'] > center_price).sum()
         candles_below = (consolidation_window['close'] < center_price).sum()
         balance_ratio = abs(candles_above - candles_below) / lookback
@@ -170,8 +170,8 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
 
     # --- New: Consecutive Trend Check ---
     # This prevents identifying a slow, drifting trend as a consolidation.
-    if config.get("USE_CONSECUTIVE_TREND_CHECK", False):
-        max_consecutive = config.get("MAX_CONSECUTIVE_TREND_CANDLES", 7)
+    if CONFIG.get("USE_CONSECUTIVE_TREND_CHECK", False):
+        max_consecutive = CONFIG.get("MAX_CONSECUTIVE_TREND_CANDLES", 7)
         
         # Determine direction: 1 for up, -1 for down, 0 for neutral
         direction = np.sign(consolidation_window['close'] - consolidation_window['open'])
@@ -192,9 +192,9 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
 
     # E. New Condition: Minimum Peaks and Troughs
     # This confirms volatility and sideways movement by finding local highs and lows.
-    min_peaks_troughs = config.get("MIN_PEAKS_TROUGHS", 0)
+    min_peaks_troughs = CONFIG.get("MIN_PEAKS_TROUGHS", 0)
     if min_peaks_troughs > 0:
-        prominence = config.get("PEAK_TROUGH_PROMINENCE", None)
+        prominence = CONFIG.get("PEAK_TROUGH_PROMINENCE", None)
         # Find peaks in the 'high' prices and troughs in the 'low' prices
         peak_indices, _ = find_peaks(consolidation_window['high'], prominence=prominence)
         trough_indices, _ = find_peaks(-consolidation_window['low'], prominence=prominence)
@@ -207,7 +207,7 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
             return None
 
         # --- New: Alternating Peaks and Troughs Check ---
-        if config.get("USE_ALTERNATING_PEAKS_TROUGHS_CHECK", False):
+        if CONFIG.get("USE_ALTERNATING_PEAKS_TROUGHS_CHECK", False):
             # Combine peaks and troughs with their types and sort by index (time)
             points = [(i, 'peak') for i in valid_peaks] + [(i, 'trough') for i in valid_troughs]
             points.sort(key=lambda x: x[0])
@@ -219,9 +219,9 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
                     return None
 
     # B. Optional ADX Filter: If enabled, ensures a minimum ratio of candles are non-trending.
-    if config.get("USE_ADX_FILTER", False):
-        adx_threshold = config.get("ADX_THRESHOLD")
-        min_non_trending_ratio = config.get("ADX_CONFIRMATION_RATIO", 0.8)
+    if CONFIG.get("USE_ADX_FILTER", False):
+        adx_threshold = CONFIG.get("ADX_THRESHOLD")
+        min_non_trending_ratio = CONFIG.get("ADX_CONFIRMATION_RATIO", 0.8)
         
         is_non_trending = consolidation_window['adx'] < adx_threshold
         
@@ -230,13 +230,13 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
 
     # C. Optional Bollinger Band Width Filter: If enabled, confirms low volatility.
     # A "squeeze" (narrow bands) often precedes a significant price move.
-    if config.get("USE_BB_WIDTH_FILTER", False):
-        bb_width_threshold = config.get("BB_WIDTH_THRESHOLD_PERCENT") / 100
+    if CONFIG.get("USE_BB_WIDTH_FILTER", False):
+        bb_width_threshold = CONFIG.get("BB_WIDTH_THRESHOLD_PERCENT") / 100
         bb_width_percent = consolidation_window['bb_width'] / consolidation_window['bb_middle']
         is_squeezed = bb_width_percent < bb_width_threshold
         
         # Check if the ratio of squeezed candles meets the minimum requirement
-        min_squeeze_ratio = config.get("BB_SQUEEZE_CONFIRMATION_RATIO", 0.8)
+        min_squeeze_ratio = CONFIG.get("BB_SQUEEZE_CONFIRMATION_RATIO", 0.8)
         if is_squeezed.mean() < min_squeeze_ratio:
             return None
 
@@ -274,9 +274,9 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
     # E. Volume Spike Confirmation:
     # This confirms significant market interest. The check passes if either the last
     # candle of the consolidation or the breakout candle itself has a volume spike.
-    if config.get("USE_VOLUME_SPIKE_CONFIRMATION", False):
+    if CONFIG.get("USE_VOLUME_SPIKE_CONFIRMATION", False):
         avg_consolidation_volume = consolidation_window['volume'].mean()
-        volume_multiplier = config.get("VOLUME_SPIKE_MULTIPLIER", 1.5)
+        volume_multiplier = CONFIG.get("VOLUME_SPIKE_MULTIPLIER", 1.5)
         
         breakout_volume_spike = breakout_candle['volume'] >= avg_consolidation_volume * volume_multiplier
         last_candle_volume_spike = last_consolidation_candle['volume'] >= avg_consolidation_volume * volume_multiplier
@@ -285,15 +285,15 @@ def _analyze_window(window: pd.DataFrame, config: dict, approach_name: str, look
             return None # Volume is not strong enough on either candle to confirm breakout
 
     # --- Indicator Confirmation (Moved to the end) ---
-    if config.get("USE_CONFIRMATION", False) and can_run_indicator_confirmation:
-        if not is_signal_confirmed(breakout_candle, signal, config):
+    if CONFIG.get("USE_CONFIRMATION", False):
+        if not is_signal_confirmed(breakout_candle, signal, CONFIG):
             return None
 
-    return _create_alert(window, signal, config, resistance, support, approach_name, lookback, is_clustered, breakout_candle)
+    return _create_alert(window, signal, resistance, support, lookback, is_clustered, breakout_candle)
 
 
 # 4. HELPER FUNCTION
-def _create_alert(window: pd.DataFrame, signal: Signal, config: dict, resistance: float, support: float, approach_name: str, lookback: int, is_clustered: pd.Series, breakout_candle: pd.Series) -> AlertData:
+def _create_alert(window: pd.DataFrame, signal: Signal, resistance: float, support: float, lookback: int, is_clustered: pd.Series, breakout_candle: pd.Series) -> AlertData:
     """
     Creates and returns a standardized AlertData object.
     """
@@ -312,7 +312,7 @@ def _create_alert(window: pd.DataFrame, signal: Signal, config: dict, resistance
     }
 
     return AlertData(
-        approach=approach_name,
+        approach=APPROACH_NAME,
         id=alert_id,
         signal=signal,
         alert_price=breakout_candle['close'],

@@ -2,6 +2,7 @@ import pandas as pd
 from scipy.signal import find_peaks
 import logging
 import json
+from typing import Optional
 
 # --- Settings Loader ---
 # Executors still need access to settings for their parameters.
@@ -10,56 +11,57 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
-from src.stockreports.alert.common.constants import Approach, Mode
+from src.stockreports.alert.common.constants import Approach, Mode, Signal
 from src.stockreports.alert.common.confirmation.confirmation import (
     prepare_indicators,
     _is_rsi_not_exhausted,
-    is_signal_confirmed,
-    can_apply_indicator_confirmation,
-    get_min_data_for_indicator_confirmation
+    is_signal_confirmed
 )
+from src.stockreports.alert.common.data_utils import can_apply_analysis
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.common.regime import has_divergence
 
+logger = logging.getLogger(__name__)
+
 # --- Constants ---
 # This constant is specific to the RCM approach.
 # PEAK_TROUGH_PROMINENCE = 5 # This is now configured in signal_settings.py
+
+# --- Module-level constant for the approach name ---
+APPROACH_NAME = Approach.RCM
+CONFIG = signal_settings.APPROACH_CONFIG.get(
+    APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
+)
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
     Entry point for the RCM approach. It takes a DataFrame and returns an AlertResult.
     """
-    approach_name = Approach.RCM
     try:
-        logging.info(f"Running '{approach_name}' approach...")
+        logger.info(f"Running '{APPROACH_NAME}' approach...")
         
-        # Get the config for this specific approach, falling back to default
-        config = signal_settings.APPROACH_CONFIG.get(
-            approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
-        )
-        
-        alerts_data = _find_rcm_alerts(df, config, new_candle_count)
-        logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
+        alerts_data = _find_rcm_alerts(df, new_candle_count)
+        logger.info(f"'{APPROACH_NAME}' approach found {len(alerts_data)} alerts.")
 
         # Convert list of AlertData objects to a DataFrame
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
 
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=alerts_df
         )
     except Exception as e:
-        logging.error(f"An error occurred during '{approach_name}' execution: {e}", exc_info=True)
+        logger.error(f"An error occurred during '{APPROACH_NAME}' execution: {e}", exc_info=True)
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=pd.DataFrame(),
             status="FAILED",
             message=str(e)
         )
 
-def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list[AlertData]:
+def _find_rcm_alerts(df: pd.DataFrame, new_candle_count=0) -> list[AlertData]:
     """
     Finds alerts using the Reversal-Confirmation-Magnitude (RCM) approach.
     This function uses a truly unified reverse loop for both deployment and development modes.
@@ -68,20 +70,17 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
     alerts = []
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
+    confirmation_window = CONFIG.get("CONFIRMATION_WINDOW", 3)
+    required_lookback = confirmation_window + 1
+
     # All indicators must be prepared first.
     df = prepare_indicators(df)
     
-    # This approach requires advanced confirmation.
-    can_run_indicator_confirmation = can_apply_indicator_confirmation(df)
-    if not can_run_indicator_confirmation:
-        min_data_required = get_min_data_for_indicator_confirmation()
-        logging.warning(
-            f"{Approach.RCM}: Insufficient data for indicator confirmation "
-            f"(have {len(df)}, need {min_data_required}). "
-            "Indicator confirmation will be skipped, and this approach may not generate alerts."
-        )
+    can_run_analysis = can_apply_analysis(df, APPROACH_NAME, required_rows=required_lookback)
+    if not can_run_analysis:
+        return alerts
 
-    peak_trough_prominence = config.get("PEAK_TROUGH_PROMINENCE", 5)
+    peak_trough_prominence = CONFIG.get("PEAK_TROUGH_PROMINENCE", 5)
     
     # Pre-compute all peaks and troughs once for efficiency
     peaks, _ = find_peaks(df['high'], prominence=peak_trough_prominence)
@@ -92,13 +91,11 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
         'trough': {idx: True for idx in troughs}
     }
 
-    confirmation_window = config.get("CONFIRMATION_WINDOW", 3)
-    min_consistency = config.get("CONFIRMATION_MIN_CONSISTENCY", 2)
-    lookback_period = config.get('PEAK_BOTTOM_LOOKBACK_PERIOD')
-    min_magnitude = config.get("MIN_ALERT_MAGNITUDE", 0)
+    min_consistency = CONFIG.get("CONFIRMATION_MIN_CONSISTENCY", 2)
+    lookback_period = CONFIG.get('PEAK_BOTTOM_LOOKBACK_PERIOD')
+    min_magnitude = CONFIG.get("MIN_ALERT_MAGNITUDE", 0)
 
     # The loop needs enough data for a reversal and confirmation window.
-    required_lookback = confirmation_window + 1
     if len(df) < required_lookback:
         return alerts
 
@@ -137,39 +134,38 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
             # --- Found a potential reversal, now check the confirmation window ---
             confirmation_df = df.iloc[reversal_idx + 1 : i + 1].copy()
             
-            signal = None
+            signal: Optional[Signal] = None
             if is_trough: # Look for BUY signal
                 if (confirmation_df['close'] > confirmation_df['open']).sum() >= min_consistency:
-                    signal = 'BUY'
+                    signal = Signal.BUY
             elif is_peak: # Look for SELL signal
                 if (confirmation_df['close'] < confirmation_df['open']).sum() >= min_consistency:
-                    signal = 'SELL'
+                    signal = Signal.SELL
 
             if not signal:
                 continue
 
             # --- Signal Confirmed, now check filters and magnitude ---
-            if can_run_indicator_confirmation:
-                # For RCM, we only validate the final confirmation candle.
-                # Checking the reversal candle for exhaustion is counter-intuitive,
-                # as a reversal trough often occurs in oversold territory.
-                
-                # Step 1: Check for RSI exhaustion on the current (trigger) candle.
-                if not _is_rsi_not_exhausted([current_candle], signal, config):
-                    continue
+            # For RCM, we only validate the final confirmation candle.
+            # Checking the reversal candle for exhaustion is counter-intuitive,
+            # as a reversal trough often occurs in oversold territory.
+            
+            # Step 1: Check for RSI exhaustion on the current (trigger) candle.
+            if not _is_rsi_not_exhausted([current_candle], signal, CONFIG):
+                continue
 
-                # Step 2: Check for confirmation on the current (trigger) candle.
-                if not is_signal_confirmed(current_candle, signal, config):
-                    continue
+            # Step 2: Check for confirmation on the current (trigger) candle.
+            if not is_signal_confirmed(current_candle, signal, CONFIG):
+                continue
 
             # Peak/Bottom Breakout Confirmation
             if lookback_period is not None:
                 lookback_start_idx = max(0, reversal_idx - lookback_period)
                 lookback_df = df_indexed.iloc[lookback_start_idx:reversal_idx]
                 if not lookback_df.empty:
-                    if signal == 'BUY' and current_candle['close'] <= lookback_df['high'].max():
+                    if signal == Signal.BUY and current_candle['close'] <= lookback_df['high'].max():
                         continue
-                    if signal == 'SELL' and current_candle['close'] >= lookback_df['low'].min():
+                    if signal == Signal.SELL and current_candle['close'] >= lookback_df['low'].min():
                         continue
             
             # Magnitude Check
@@ -182,9 +178,9 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
             # This is now handled by the new two-step validation logic above.
 
             # --- Volume Confirmation (Optional) ---
-            use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
-            use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-            use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+            use_volume_spike = CONFIG.get("USE_VOLUME_CONFIRMATION", False)
+            use_increasing_volume = CONFIG.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+            use_last_candle_max_volume = CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
             volume_spike_ok = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
             volume_increasing_ok = not use_increasing_volume or is_volume_increasing(confirmation_df)
@@ -200,7 +196,7 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
             alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
             alert_data = AlertData(
-                approach=Approach.RCM,
+                approach=APPROACH_NAME,
                 id=alert_id,
                 signal=signal,
                 alert_price=current_candle['close'],
@@ -211,7 +207,6 @@ def _find_rcm_alerts(df: pd.DataFrame, config: dict, new_candle_count=0) -> list
                 details=json.dumps({
                     "peak_trough_prominence": peak_trough_prominence,
                     "confirmation_window": confirmation_window,
-                    "used_indicator_confirmation": can_run_indicator_confirmation,
                     "peak_bottom_lookback_period": lookback_period
                 })
             )

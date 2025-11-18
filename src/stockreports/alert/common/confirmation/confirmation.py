@@ -6,41 +6,6 @@ from src.stockreports.config import loader
 
 signal_settings = loader.get_signal_settings()
 
-def get_min_data_for_indicator_confirmation() -> int:
-    """
-    Calculates and returns the minimum number of data points required for
-    all indicators used in the indicator confirmation logic.
-    
-    Returns:
-        int: The maximum lookback period required among all indicators.
-    """
-    # The Ichimoku spans are shifted forward, so their total lookback requirement
-    # is the span's calculation period plus the shift period.
-    kijun_period = getattr(signal_settings, 'KIJUN_PERIOD', 26)
-    senkou_b_period = getattr(signal_settings, 'ICHI_SENKOU_B_PERIOD', 52)
-    ichimoku_total_lookback = kijun_period + senkou_b_period
-
-    return max(
-        ichimoku_total_lookback,
-        getattr(signal_settings, 'MA_LONG_PERIOD', 50),
-        getattr(signal_settings, 'RSI_PERIOD', 14),
-        getattr(signal_settings, 'MACD_SLOW_PERIOD', 26),
-        getattr(signal_settings, 'ADX_PERIOD', 14) * 2 # ADX needs more data to stabilize, 2x period is a safe rule of thumb
-    )
-
-def can_apply_indicator_confirmation(df: pd.DataFrame) -> bool:
-    """
-    Checks if the DataFrame has enough data to apply indicator-based confirmation.
-    
-    Args:
-        df (pd.DataFrame): The input dataframe.
-        
-    Returns:
-        bool: True if indicator confirmation can be applied, False otherwise.
-    """
-    min_data_required = get_min_data_for_indicator_confirmation()
-    return len(df) >= min_data_required
-
 # --- Manual Indicator Implementations ---
 
 def _calculate_rsi(close: pd.Series, length: int) -> pd.Series:

@@ -68,7 +68,7 @@ class SymbolAlertManager:
             os.makedirs(log_dir, exist_ok=True)
             log_file_path = os.path.join(log_dir, log_file_name)
 
-            file_handler = logging.FileHandler(log_file_path, mode='a')
+            file_handler = logging.FileHandler(log_file_path, mode='w')
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
             
