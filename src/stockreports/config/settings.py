@@ -75,6 +75,12 @@ REPORTS_DIR = "reports"
 # Example: `LATEST_REPORT_PATTERN = "combined_analysis_report_*.md"`
 LATEST_REPORT_PATTERN = "combined_analysis_report_*.md"
 
+# Logs Directory
+# Meaning: The name of the top-level folder where all log files will be saved.
+# Guidance: You can change this to organize your logs differently. The path is relative to the project root.
+# Example: `LOGS_DIR = "logs"`
+LOGS_DIR = "logs"
+
 # Logging Level
 # Meaning: The minimum level of log messages to be recorded.
 # Guidance: "INFO" provides a good balance of detail. "DEBUG" is very verbose and useful for troubleshooting. "WARNING" will only show potential problems.
@@ -126,7 +132,8 @@ ALERT_APPROACHES = [
     "STRONG_CANDLE",
     #"SUPPORT_RESISTANCE_BREAK",
     "MOMENTUM_EXHAUSTION",
-    "CONSECUTIVE_POWER_CANDLES"
+    "CONSECUTIVE_POWER_CANDLES",
+    "CONSOLIDATION_BREAKOUT"
     # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 

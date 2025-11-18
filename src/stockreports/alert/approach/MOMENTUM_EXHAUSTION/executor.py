@@ -2,7 +2,7 @@ import pandas as pd
 import logging
 import json
 import numpy as np
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 # --- Settings Loader ---
 from src.stockreports.config import loader
@@ -11,56 +11,59 @@ signal_settings = loader.get_signal_settings()
 
 # --- Project Imports ---
 from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.common.constants import Approach, Mode
+from src.stockreports.alert.common.constants import Approach, Mode, Signal
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation
 from src.stockreports.alert.common.confirmation.confirmation import (
     prepare_indicators, 
     _is_rsi_not_exhausted,
     is_signal_confirmed
 )
+from src.stockreports.alert.common.data_utils import can_apply_analysis
+
+logger = logging.getLogger(__name__)
+
+# --- Module-level constant for the approach name ---
+APPROACH_NAME = Approach.MOMENTUM_EXHAUSTION
+CONFIG = signal_settings.APPROACH_CONFIG.get(
+    APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
+)
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
     Entry point for the MOMENTUM_EXHAUSTION approach. It takes a DataFrame and returns an AlertResult.
     """
-    approach_name = Approach.MOMENTUM_EXHAUSTION
     try:
-        logging.info(f"Running '{approach_name}' approach...")
+        logger.info(f"Running '{APPROACH_NAME}' approach...")
         
-        # Get the config for this specific approach, falling back to default
-        config = signal_settings.APPROACH_CONFIG.get(
-            approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
-        )
-        
-        alerts_data = _find_momentum_exhaustion_alerts(df, config, new_candle_count)
-        logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
+        alerts_data = _find_momentum_exhaustion_alerts(df, new_candle_count)
+        logger.info(f"'{APPROACH_NAME}' approach found {len(alerts_data)} alerts.")
 
         # Convert list of AlertData objects to a DataFrame
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
 
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=alerts_df
         )
     except Exception as e:
-        logging.error(f"An error occurred during '{approach_name}' execution: {e}", exc_info=True)
+        logger.error(f"An error occurred during '{APPROACH_NAME}' execution: {e}", exc_info=True)
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=pd.DataFrame(),
             status="FAILED",
             message=str(e)
         )
 
-def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict) -> Optional[AlertData]:
+def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame) -> Optional[AlertData]:
     """
     Analyzes a single window of data to find a momentum exhaustion alert.
     This function contains the core alert detection logic based on the visual pattern.
     Pattern: [Momentum Candles] -> [Exhaustion Candles] -> [Reversal Candle]
     """
     # --- 1. Get config and define pattern structure ---
-    momentum_count = config.get("MOMENTUM_CANDLE_COUNT", 2)
-    exhaustion_count = config.get("EXHAUSTION_CANDLE_COUNT", 2)
-    use_volume = config.get("USE_VOLUME_CONFIRMATION", True)
+    momentum_count = CONFIG.get("MOMENTUM_CANDLE_COUNT", 2)
+    exhaustion_count = CONFIG.get("EXHAUSTION_CANDLE_COUNT", 2)
+    use_volume = CONFIG.get("USE_VOLUME_CONFIRMATION", True)
     total_pattern_candles = momentum_count + exhaustion_count
 
     confirmation_candle = window.iloc[-1]
@@ -104,7 +107,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     slope = np.polyfit(x, y, 1)[0]
 
     # Define a threshold for what is considered a meaningful trend
-    slope_threshold = config.get("SMA_SLOPE_THRESHOLD", 0.05) 
+    slope_threshold = CONFIG.get("SMA_SLOPE_THRESHOLD", 0.05) 
 
     is_bullish_trend = slope > slope_threshold
     is_bearish_trend = slope < -slope_threshold
@@ -112,15 +115,15 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     if not (is_bullish_trend or is_bearish_trend):
         return None
 
-    signal = None
+    signal: Optional[Signal] = None
     if is_bullish_trend and reversal_candle['close'] < reversal_candle['open']:
         # After a bullish trend, we expect a bearish reversal and a bearish confirmation.
         if confirmation_candle['close'] < confirmation_candle['open']:
-            signal = 'SELL'
+            signal = Signal.SELL
     elif is_bearish_trend and reversal_candle['close'] > reversal_candle['open']:
         # After a bearish trend, we expect a bullish reversal and a bullish confirmation.
         if confirmation_candle['close'] > confirmation_candle['open']:
-            signal = 'BUY'
+            signal = Signal.BUY
     
     if not signal:
         return None
@@ -157,7 +160,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
             return None
 
     # --- 5. If all checks pass, create an AlertData object ---
-    logging.info(f"[{reversal_candle.name}] SUCCESS: Momentum Exhaustion Pattern Found! Signal: {signal}")
+    logger.info(f"[{reversal_candle.name}] SUCCESS: Momentum Exhaustion Pattern Found! Signal: {signal}")
     start_candle = momentum_candles.iloc[0]
     
     alert_time = confirmation_candle.name
@@ -172,7 +175,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     if isinstance(start_time, pd.Timestamp):
         start_time = start_time.isoformat()
     alert_data = AlertData(
-        approach=Approach.MOMENTUM_EXHAUSTION,
+        approach=APPROACH_NAME,
         id=alert_id,
         signal=signal,
         alert_price=current_price,
@@ -190,14 +193,14 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     return alert_data
 
 
-def _find_momentum_exhaustion_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
+def _find_momentum_exhaustion_alerts(df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
     """
     Finds alerts based on a momentum exhaustion pattern using a unified reverse loop.
     This function is optimized for both DEPLOYMENT (latest alert) and DEVELOPMENT (all alerts) modes.
     """
     alerts = []
-    momentum_count = config.get("MOMENTUM_CANDLE_COUNT", 2)
-    exhaustion_count = config.get("EXHAUSTION_CANDLE_COUNT", 2)
+    momentum_count = CONFIG.get("MOMENTUM_CANDLE_COUNT", 2)
+    exhaustion_count = CONFIG.get("EXHAUSTION_CANDLE_COUNT", 2)
     required_lookback = momentum_count + exhaustion_count + 2 # +1 for reversal, +1 for confirmation
     
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
@@ -205,8 +208,8 @@ def _find_momentum_exhaustion_alerts(df: pd.DataFrame, config: dict, new_candle_
     # All indicators must be prepared first.
     df = prepare_indicators(df)
     
-    if len(df) < required_lookback:
-        logging.warning(f"{Approach.MOMENTUM_EXHAUSTION}: DataFrame has less than {required_lookback} rows, cannot generate alerts.")
+    can_run_analysis = can_apply_analysis(df, APPROACH_NAME, required_rows=required_lookback)
+    if not can_run_analysis:
         return alerts
 
     df_indexed = df.set_index('time')
@@ -224,18 +227,18 @@ def _find_momentum_exhaustion_alerts(df: pd.DataFrame, config: dict, new_candle_
 
         window = df_indexed.iloc[i - required_lookback + 1 : i + 1].copy()
         
-        alert = _analyze_window(window, df_indexed, config)
+        alert = _analyze_window(window, df_indexed)
         
         if alert:
             confirmation_candle = df_indexed.iloc[i]
 
             # Step 1: Check for RSI exhaustion on the confirmation candle.
             candles_for_exhaustion_check = [confirmation_candle]
-            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, alert.signal, config):
+            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, alert.signal, CONFIG):
                 continue
 
             # Step 2: Check for confirmation on the confirmation candle.
-            if not is_signal_confirmed(confirmation_candle, alert.signal, config):
+            if not is_signal_confirmed(confirmation_candle, alert.signal, CONFIG):
                 continue
 
             alerts.append(alert)

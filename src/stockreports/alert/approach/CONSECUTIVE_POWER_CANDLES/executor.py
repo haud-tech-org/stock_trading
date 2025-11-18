@@ -12,46 +12,52 @@ from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, is_signal_confirmed, _is_rsi_not_exhausted
+from src.stockreports.alert.common.data_utils import can_apply_analysis
+from src.stockreports.alert.common.constants import Signal
+
+logger = logging.getLogger(__name__)
+
+# --- Module-level constant for the approach name ---
+APPROACH_NAME = Approach.CONSECUTIVE_POWER_CANDLES
+CONFIG = signal_settings.APPROACH_CONFIG.get(
+    APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
+)
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
     Entry point for the CONSECUTIVE_POWER_CANDLES approach.
     """
-    approach_name = Approach.CONSECUTIVE_POWER_CANDLES
     try:
-        logging.info(f"Running '{approach_name}' approach...")
-        config = signal_settings.APPROACH_CONFIG.get(
-            approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
-        )
+        logger.info(f"Running '{APPROACH_NAME}' approach...")
 
-        alerts_data = _find_power_candle_alerts(df, config, new_candle_count)
-        logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
+        alerts_data = _find_power_candle_alerts(df, new_candle_count)
+        logger.info(f"'{APPROACH_NAME}' approach found {len(alerts_data)} alerts.")
 
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
 
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=alerts_df
         )
     except Exception as e:
-        logging.error(f"An error occurred during '{approach_name}' execution: {e}", exc_info=True)
+        logger.error(f"An error occurred during '{APPROACH_NAME}' execution: {e}", exc_info=True)
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=pd.DataFrame(),
             status="FAILED",
             message=str(e)
         )
 
-def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict) -> Optional[AlertData]:
+def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame) -> Optional[AlertData]:
     """
     Analyzes a window for a configurable number of consecutive power candles.
     """
     # --- 1. Get config and validate pattern structure ---
-    candle_count = config.get("CANDLE_COUNT", 3)
-    min_body_ratio = config.get("MIN_BODY_TO_RANGE_RATIO", 0.7)
-    use_volume = config.get("USE_VOLUME_CONFIRMATION", False)
-    use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
-    min_pre_candle_body_sizes = config.get("MIN_PRE_CANDLE_BODY_SIZES", [])
+    candle_count = CONFIG.get("CANDLE_COUNT", 3)
+    min_body_ratio = CONFIG.get("MIN_BODY_TO_RANGE_RATIO", 0.7)
+    use_volume = CONFIG.get("USE_VOLUME_CONFIRMATION", False)
+    use_last_candle_max_volume = CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+    min_pre_candle_body_sizes = CONFIG.get("MIN_PRE_CANDLE_BODY_SIZES", [])
 
     if len(window) != candle_count:
         return None
@@ -63,7 +69,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     if not (is_all_bullish or is_all_bearish):
         return None
 
-    signal = 'BUY' if is_all_bullish else 'SELL'
+    signal = Signal.BUY if is_all_bullish else Signal.SELL
 
     # --- 3. Calculate body, range, and average body price for all candles ---
     window['body'] = abs(window['close'] - window['open'])
@@ -80,7 +86,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     
     # Config validation: Ensure the number of body size rules matches the number of pre-candles
     if len(min_pre_candle_body_sizes) != len(pre_candles):
-        logging.warning(f"Config mismatch: CANDLE_COUNT is {candle_count}, but MIN_PRE_CANDLE_BODY_SIZES has {len(min_pre_candle_body_sizes)} entries. Skipping.")
+        logger.warning(f"Config mismatch: CANDLE_COUNT is {candle_count}, but MIN_PRE_CANDLE_BODY_SIZES has {len(min_pre_candle_body_sizes)} entries. Skipping.")
         return None
 
     # Check minimum body sizes for all pre-candles
@@ -116,25 +122,25 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     first_candle_index = df_indexed.index.get_loc(window.iloc[0].name)
     setup_candle = df_indexed.iloc[first_candle_index - 1] if first_candle_index > 0 else None
     
-    if config.get("USE_RSI_EXHAUSTION_FILTER", False):
+    if CONFIG.get("USE_RSI_EXHAUSTION_FILTER", False):
         candles_for_exhaustion_check = [setup_candle] if setup_candle is not None else []
-        if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, config):
+        if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, CONFIG):
             return None
 
     # --- 9. Validation Step 2: Signal Confirmation ---
     # Use the "final candle" of the pattern for all standard confirmation checks (MA, MACD, etc.).
     final_candle = window.iloc[-1]
-    if not is_signal_confirmed(final_candle, signal, config):
+    if not is_signal_confirmed(final_candle, signal, CONFIG):
         return None
 
     # --- 10. If all checks pass, create an alert ---
-    logging.info(f"[{final_candle.name}] SUCCESS: Consecutive Power Candles Pattern Found! Signal: {signal}")
+    logger.info(f"[{final_candle.name}] SUCCESS: Consecutive Power Candles Pattern Found! Signal: {signal}")
 
     alert_id = str(int(final_candle.name.tz_convert('UTC').timestamp()))
     start_candle = window.iloc[0]
 
     alert_data = AlertData(
-        approach=Approach.CONSECUTIVE_POWER_CANDLES,
+        approach=APPROACH_NAME,
         id=alert_id,
         signal=signal,
         alert_price=final_candle['close'],
@@ -151,21 +157,21 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     return alert_data
 
 
-def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
+def _find_power_candle_alerts(df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
     """
     Finds alerts based on the consecutive power candles pattern.
     This function uses a truly unified reverse loop for both deployment and development modes.
     The loop's scan depth is naturally handled by the value of `new_candle_count`.
     """
     alerts = []
-    window_size = config.get("CANDLE_COUNT", 3)
+    window_size = CONFIG.get("CANDLE_COUNT", 3)
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
 
     # All indicators must be prepared first.
     df = prepare_indicators(df)
-    
-    if len(df) < window_size:
-        logging.warning(f"{Approach.CONSECUTIVE_POWER_CANDLES}: DataFrame has less than {window_size} rows, cannot generate alerts.")
+
+    can_run_analysis = can_apply_analysis(df, APPROACH_NAME, required_rows=window_size)
+    if not can_run_analysis:
         return alerts
 
     df_indexed = df.set_index('time')
@@ -186,7 +192,7 @@ def _find_power_candle_alerts(df: pd.DataFrame, config: dict, new_candle_count: 
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
         
         # No need to pre-check signal here, _analyze_window handles it all
-        alert = _analyze_window(window, df_indexed, config)
+        alert = _analyze_window(window, df_indexed)
         
         if alert:
             alerts.append(alert)

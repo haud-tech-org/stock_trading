@@ -15,10 +15,9 @@ from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.confirmation.confirmation import (
     prepare_indicators,
     is_signal_confirmed,
-    _is_rsi_not_exhausted,
-    can_apply_indicator_confirmation,
-    get_min_data_for_indicator_confirmation
+    _is_rsi_not_exhausted
 )
+from src.stockreports.alert.common.data_utils import can_apply_analysis
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.common.volume import (
     is_volume_spike_confirmed, 
@@ -27,43 +26,46 @@ from src.stockreports.alert.common.volume import (
     is_volume_increasing
 )
 from src.stockreports.alert.model.models import AlertResult, AlertData
+from src.stockreports.alert.common.constants import Signal
+
+logger = logging.getLogger(__name__)
+
+# --- Module-level constant for the approach name ---
+APPROACH_NAME = Approach.CONSISTENT_MOMENTUM
+CONFIG = signal_settings.APPROACH_CONFIG.get(
+    APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
+)
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
     Entry point for the CONSISTENT_MOMENTUM approach. It takes a DataFrame and returns an AlertResult.
     """
-    approach_name = Approach.CONSISTENT_MOMENTUM
     try:
-        logging.info(f"Running '{approach_name}' approach...")
+        logger.info(f"Running '{APPROACH_NAME}' approach...")
         
-        # Get the config for this specific approach, falling back to default
-        config = signal_settings.APPROACH_CONFIG.get(
-            approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
-        )
-
         # Prepare all indicators here, before calling the analysis function.
         df = prepare_indicators(df)
 
-        alerts_data = _find_consistent_momentum_alerts(df, config, new_candle_count)
-        logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
+        alerts_data = _find_consistent_momentum_alerts(df, new_candle_count)
+        logger.info(f"'{APPROACH_NAME}' approach found {len(alerts_data)} alerts.")
 
         # Convert list of AlertData objects to a DataFrame
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
 
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=alerts_df
         )
     except Exception as e:
-        logging.error(f"An error occurred during '{approach_name}' execution: {e}", exc_info=True)
+        logger.error(f"An error occurred during '{APPROACH_NAME}' execution: {e}", exc_info=True)
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=pd.DataFrame(),
             status="FAILED",
             message=str(e)
         )
 
-def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict, window_size: int, can_run_indicator_confirmation: bool) -> Optional[AlertData]:
+def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, window_size: int) -> Optional[AlertData]:
     """
     Analyzes a single window of data to find a consistent momentum alert.
     This function contains the core alert detection logic.
@@ -83,12 +85,12 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
         # Uptrend: Consistently increasing average price
         if (window['avg_price'].diff().dropna() >= 0).all():
             is_momentum_confirmed = True
-            signal = 'BUY'
+            signal = Signal.BUY
     elif is_all_bearish:
         # Downtrend: Consistently decreasing average price
         if (window['avg_price'].diff().dropna() <= 0).all():
             is_momentum_confirmed = True
-            signal = 'SELL'
+            signal = Signal.SELL
     
     if not is_momentum_confirmed:
         return None
@@ -100,17 +102,17 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
 
     strong_close_min, _ = signal_settings.STRONG_CLOSE_THRESHOLD_RANGE
     is_strong_close = False
-    if signal == 'BUY' and ((current_candle['close'] - current_candle['low']) / candle_range) >= strong_close_min:
+    if signal == Signal.BUY and ((current_candle['close'] - current_candle['low']) / candle_range) >= strong_close_min:
         is_strong_close = True
-    elif signal == 'SELL' and ((current_candle['high'] - current_candle['close']) / candle_range) >= strong_close_min:
+    elif signal == Signal.SELL and ((current_candle['high'] - current_candle['close']) / candle_range) >= strong_close_min:
         is_strong_close = True
 
     if not is_strong_close:
         return None
 
     # --- 5. New: Peak/Trough Breakout Confirmation ---
-    lookback_minutes = config.get("PEAK_BOTTOM_LOOKBACK_PERIOD")
-    prominence = config.get("PEAK_TROUGH_PROMINENCE", 1)
+    lookback_minutes = CONFIG.get("PEAK_BOTTOM_LOOKBACK_PERIOD")
+    prominence = CONFIG.get("PEAK_TROUGH_PROMINENCE", 1)
     momentum_start_time = window.index[0]
     
     if lookback_minutes is None:
@@ -123,7 +125,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
         return None
 
     is_breakout_confirmed = False
-    if signal == 'BUY':
+    if signal == Signal.BUY:
         # Find all peaks in the lookback period
         peaks, _ = find_peaks(lookback_df['high'], prominence=prominence)
         if peaks.size > 0:
@@ -132,7 +134,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
             last_peak_high = lookback_df['high'].iloc[last_peak_index]
             if current_candle['close'] > last_peak_high:
                 is_breakout_confirmed = True
-    elif signal == 'SELL':
+    elif signal == Signal.SELL:
         # Find all troughs (by inverting the price series)
         troughs, _ = find_peaks(-lookback_df['low'], prominence=prominence)
         if troughs.size > 0:
@@ -146,9 +148,9 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
         return None
 
     # --- Volume Confirmation ---
-    use_volume_spike = config.get("USE_VOLUME_CONFIRMATION", False)
-    use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-    use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+    use_volume_spike = CONFIG.get("USE_VOLUME_CONFIRMATION", False)
+    use_increasing_volume = CONFIG.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+    use_last_candle_max_volume = CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
     confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
     confirmation_df = df_indexed.iloc[confirmation_candle_index - window_size + 1 : confirmation_candle_index + 1]
@@ -162,7 +164,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
 
     # --- Create Alert ---
     # --- 7. Body-to-Range Ratio Confirmation on Alert Candle ---
-    body_to_range_min_ratio = config.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
+    body_to_range_min_ratio = CONFIG.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
     current_candle_body = abs(current_candle['close'] - current_candle['open'])
     current_candle_range = current_candle['high'] - current_candle['low']
 
@@ -187,19 +189,18 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
         return None
 
     # --- 9. Indicator Confirmation (optional) ---
-    if can_run_indicator_confirmation:
-        # Per the approved plan, check RSI on the start and end candles of the momentum window.
-        start_candle = window.iloc[0]
-        end_candle = window.iloc[-1]
-        candles_for_rsi_check = [start_candle, end_candle]
-        
-        # Step 1: Check for RSI exhaustion on the start and end candles.
-        if not _is_rsi_not_exhausted(candles_for_rsi_check, signal, config):
-            return None
+    # Per the approved plan, check RSI on the start and end candles of the momentum window.
+    start_candle = window.iloc[0]
+    end_candle = window.iloc[-1]
+    candles_for_rsi_check = [start_candle, end_candle]
+    
+    # Step 1: Check for RSI exhaustion on the start and end candles.
+    if not _is_rsi_not_exhausted(candles_for_rsi_check, signal, CONFIG):
+        return None
 
-        # Step 2: Check for confirmation on the final candle of the window.
-        if not is_signal_confirmed(end_candle, signal, config):
-            return None
+    # Step 2: Check for confirmation on the final candle of the window.
+    if not is_signal_confirmed(end_candle, signal, CONFIG):
+        return None
 
     # --- If all checks pass, create an AlertData object ---
     start_candle = window.iloc[0]
@@ -218,7 +219,7 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
     momentum_start_time_iso = to_iso8601_with_tz(momentum_start_time)
 
     alert_data = AlertData(
-        approach=Approach.CONSISTENT_MOMENTUM,
+        approach=APPROACH_NAME,
         id=alert_id,
         signal=signal,
         alert_price=current_price,
@@ -230,17 +231,16 @@ def _analyze_window(window: pd.DataFrame, df_indexed: pd.DataFrame, config: dict
             "reason": "Consistent Momentum with Breakout",
             "momentum_start_time": momentum_start_time_iso,
             "momentum_window_size": window_size,
-            "breakout_lookback_minutes": lookback_minutes,
-            "used_indicator_confirmation": can_run_indicator_confirmation
+            "breakout_lookback_minutes": lookback_minutes
         })
     )
     return alert_data
 
-def _is_immediate_reversal(candle: pd.Series, original_signal: str, config: dict) -> bool:
+def _is_immediate_reversal(candle: pd.Series, original_signal: Signal) -> bool:
     """
     Checks if the given candle is a strong reversal compared to the original signal.
     """
-    reversal_ratio = config.get("REVERSAL_CANDLE_BODY_RATIO", 0.6)
+    reversal_ratio = CONFIG.get("REVERSAL_CANDLE_BODY_RATIO", 0.6)
     
     candle_range = candle['high'] - candle['low']
     if candle_range == 0:
@@ -249,44 +249,36 @@ def _is_immediate_reversal(candle: pd.Series, original_signal: str, config: dict
     body_size = abs(candle['close'] - candle['open'])
     
     # Check for strong bearish reversal after a BUY signal
-    if original_signal == 'BUY' and candle['close'] < candle['open']:
+    if original_signal == Signal.BUY and candle['close'] < candle['open']:
         if (body_size / candle_range) >= reversal_ratio:
             return True
             
     # Check for strong bullish reversal after a SELL signal
-    elif original_signal == 'SELL' and candle['close'] > candle['open']:
+    elif original_signal == Signal.SELL and candle['close'] > candle['open']:
         if (body_size / candle_range) >= reversal_ratio:
             return True
 
     return False
 
-def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
+def _find_consistent_momentum_alerts(df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
     """
     Finds alerts based on a consistent momentum pattern using a unified reverse loop.
     This function is optimized for both DEPLOYMENT (latest alert) and DEVELOPMENT (all alerts) modes.
     """
     alerts = []
-    window_size = config.get("CONFIRMATION_WINDOW", 3)
+    window_size = CONFIG.get("CONFIRMATION_WINDOW", 3)
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
-    can_run_indicator_confirmation = can_apply_indicator_confirmation(df)
-    if not can_run_indicator_confirmation:
-        min_data_required = get_min_data_for_indicator_confirmation()
-        logging.warning(
-            f"{Approach.CONSISTENT_MOMENTUM}: Insufficient data for indicator confirmation "
-            f"(have {len(df)}, need {min_data_required}). "
-            "Indicator confirmation will be skipped."
-        )
-
     if window_size < 2:
-        logging.error(f"{Approach.CONSISTENT_MOMENTUM}: 'CONFIRMATION_WINDOW' must be at least 2. Aborting.")
+        logger.error(f"{APPROACH_NAME}: 'CONFIRMATION_WINDOW' must be at least 2. Aborting.")
         return alerts
 
     # The lookback for peak/trough analysis is handled within _analyze_window.
     # The required lookback for the loop is simply the window_size.
     required_lookback = window_size
-    if len(df) < required_lookback:
-        logging.warning(f"{Approach.CONSISTENT_MOMENTUM}: DataFrame has less than {required_lookback} rows, cannot generate alerts.")
+    
+    can_run_analysis = can_apply_analysis(df, APPROACH_NAME, required_rows=required_lookback)
+    if not can_run_analysis:
         return alerts
 
     df_indexed = df.set_index('time')
@@ -305,18 +297,18 @@ def _find_consistent_momentum_alerts(df: pd.DataFrame, config: dict, new_candle_
         window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
         
         # All logic, including indicator checks, is now self-contained in _analyze_window.
-        alert = _analyze_window(window, df_indexed, config, window_size, can_run_indicator_confirmation)
+        alert = _analyze_window(window, df_indexed, window_size)
         
         if alert:
             # Handle look-forward confirmation for reversal
-            if config.get("USE_REALTIME_REVERSAL_CONFIRMATION", False):
-                confirmation_window_size = config.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 1)
+            if CONFIG.get("USE_REALTIME_REVERSAL_CONFIRMATION", False):
+                confirmation_window_size = CONFIG.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 1)
                 # Ensure we don't look past the end of the dataframe
                 if i + confirmation_window_size < len(df_indexed):
                     confirmation_window = df_indexed.iloc[i + 1 : i + 1 + confirmation_window_size]
                     is_reversal = False
                     for _, candle in confirmation_window.iterrows():
-                        if _is_immediate_reversal(candle, alert.signal, config):
+                        if _is_immediate_reversal(candle, alert.signal):
                             is_reversal = True
                             break
                     if is_reversal:

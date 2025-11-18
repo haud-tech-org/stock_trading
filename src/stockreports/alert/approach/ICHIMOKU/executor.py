@@ -2,6 +2,7 @@
 import pandas as pd
 import logging
 import json
+from typing import Optional
 
 # --- Settings Loader ---
 from src.stockreports.config import loader
@@ -12,23 +13,28 @@ signal_settings = loader.get_signal_settings()
 from src.stockreports.alert.common.confirmation.confirmation import (
     prepare_indicators,
     _is_rsi_not_exhausted,
-    is_signal_confirmed,
-    can_apply_indicator_confirmation,
-    get_min_data_for_indicator_confirmation
+    is_signal_confirmed
 )
+from src.stockreports.alert.common.data_utils import can_apply_analysis
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.common.constants import Approach, Mode
+from src.stockreports.alert.common.constants import Approach, Mode, Signal
 from src.stockreports.alert.common.regime import has_divergence
 
 logger = logging.getLogger(__name__)
 
-def _calculate_ichimoku_indicators(df: pd.DataFrame, config: dict) -> pd.DataFrame:
+# --- Module-level constants ---
+APPROACH_NAME = Approach.ICHIMOKU
+CONFIG = signal_settings.APPROACH_CONFIG.get(
+    APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
+)
+
+def _calculate_ichimoku_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Calculates all necessary Ichimoku indicators."""
-    tenkan_period = config.get('TENKAN_PERIOD', 9)
-    kijun_period = config.get('KIJUN_PERIOD', 26)
-    senkou_b_period = config.get('SENKOU_B_PERIOD', 52)
-    chikou_lag = config.get('CHIKOU_LAG', 26)
+    tenkan_period = CONFIG.get('TENKAN_PERIOD', 9)
+    kijun_period = CONFIG.get('KIJUN_PERIOD', 26)
+    senkou_b_period = CONFIG.get('SENKOU_B_PERIOD', 52)
+    chikou_lag = CONFIG.get('CHIKOU_LAG', 26)
 
     # Tenkan-sen (Conversion Line)
     high_tenkan = df['high'].rolling(window=tenkan_period).max()
@@ -58,33 +64,28 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     Entry point for the Ichimoku approach. It identifies strong Ichimoku signals
     based on multiple conditions including Kumo, Chikou, and Kijun-sen distance.
     """
-    approach_name = Approach.ICHIMOKU
     try:
-        logging.info(f"Running '{approach_name}' approach...")
+        logger.info(f"Running '{APPROACH_NAME}' approach...")
         
-        config = signal_settings.APPROACH_CONFIG.get(
-            approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
-        )
-        
-        alerts_data = _find_ichimoku_alerts(df, config, new_candle_count)
-        logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
+        alerts_data = _find_ichimoku_alerts(df, new_candle_count)
+        logger.info(f"'{APPROACH_NAME}' approach found {len(alerts_data)} alerts.")
 
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
 
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=alerts_df
         )
     except Exception as e:
-        logging.error(f"An error occurred during '{approach_name}' execution: {e}", exc_info=True)
+        logger.error(f"An error occurred during '{APPROACH_NAME}' execution: {e}", exc_info=True)
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=pd.DataFrame(),
             status="FAILED",
             message=str(e)
         )
 
-def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int) -> list[AlertData]:
+def _find_ichimoku_alerts(df: pd.DataFrame, new_candle_count: int) -> list[AlertData]:
     """
     Internal function to find alerts based on Ichimoku signals.
     This function uses a truly unified reverse loop for both deployment and development modes.
@@ -92,11 +93,23 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
     """
     alerts = []
     
-    df = _calculate_ichimoku_indicators(df, config)
+    df = _calculate_ichimoku_indicators(df)
+
+    # Determine the minimum amount of data needed for one calculation
+    required_lookback = max(
+        CONFIG.get('TENKAN_PERIOD', 9),
+        CONFIG.get('KIJUN_PERIOD', 26),
+        CONFIG.get('SENKOU_B_PERIOD', 52),
+        CONFIG.get('CHIKOU_LAG', 26)
+    )
 
     # All indicators must be prepared first.
     df = prepare_indicators(df)
     
+    can_run_analysis = can_apply_analysis(df, APPROACH_NAME, required_rows=required_lookback)
+    if not can_run_analysis:
+        return alerts
+
     # Ensure index is set to 'time' and is timezone-aware
     if 'time' in df.columns:
         df = df.set_index('time')
@@ -112,19 +125,11 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
     
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
-    # Determine the minimum amount of data needed for one calculation
-    required_lookback = max(
-        config.get('TENKAN_PERIOD', 9),
-        config.get('KIJUN_PERIOD', 26),
-        config.get('SENKOU_B_PERIOD', 52),
-        config.get('CHIKOU_LAG', 26)
-    )
-    
     # Config for the loop
-    min_bars_between_alerts = config.get('MIN_BARS_BETWEEN_ALERTS', 5)
-    use_divergence_filter = config.get("USE_DIVERGENCE_FILTER", False)
-    use_confirmation_filter = config.get("USE_CONFIRMATION_CANDLE_FILTER", False)
-    confirmation_candles = config.get("CONFIRMATION_CANDLE_COUNT", 1)
+    min_bars_between_alerts = CONFIG.get('MIN_BARS_BETWEEN_ALERTS', 5)
+    use_divergence_filter = CONFIG.get("USE_DIVERGENCE_FILTER", False)
+    use_confirmation_filter = CONFIG.get("USE_CONFIRMATION_CANDLE_FILTER", False)
+    confirmation_candles = CONFIG.get("CONFIRMATION_CANDLE_COUNT", 1)
 
     # State tracking for signal and alert spacing
     last_alert_idx = float('inf')  # Use infinity for reverse loop
@@ -137,94 +142,87 @@ def _find_ichimoku_alerts(df: pd.DataFrame, config: dict, new_candle_count: int)
     # The loop's scan depth is naturally optimized by this calculation.
     active_region_start = len(df_indexed) - new_candle_count - required_lookback
 
-    can_run_indicator_confirmation = can_apply_indicator_confirmation(df)
-    if not can_run_indicator_confirmation:
-        min_data_required = get_min_data_for_indicator_confirmation()
-        logging.warning(
-            f"{Approach.ICHIMOKU}: Insufficient data for indicator confirmation "
-            f"(have {len(df)}, need {min_data_required}). "
-            "Indicator confirmation will be skipped, and this approach may not generate alerts."
-        )
-
-    for i in range(loop_end, loop_start, -1):
-        # Stop searching if we are past the active region for the current mode.
+    for i in range(loop_end, loop_start - 1, -1):
         if i < active_region_start:
-            break
+            break # Stop searching if we are past the active region for the current mode.
 
-        # Cooldown check: Ensure enough bars have passed since the last alert found
-        if i >= last_alert_idx - min_bars_between_alerts:
-            continue
-
-        candle = df_indexed.iloc[i]
-        prev_candle = df_indexed.iloc[i-1]
-        signal = None
-
-        # --- Bullish Signal Conditions ---
-        tenkan_cross_up_kijun = candle['tenkan_sen'] > candle['kijun_sen'] and prev_candle['tenkan_sen'] <= prev_candle['kijun_sen']
-        price_above_kumo = candle['close'] > candle['senkou_a'] and candle['close'] > candle['senkou_b']
-        chikou_above_price = candle['chikou'] > df_indexed['high'].iloc[i - config.get('CHIKOU_LAG', 26)]
-
-        if tenkan_cross_up_kijun and price_above_kumo and (chikou_above_price if not config.get("SKIP_CHIKOU_CONFIRMATION", False) else True):
-            signal = "BUY"
-
-        # --- Bearish Signal Conditions ---
-        else:
-            tenkan_cross_down_kijun = candle['tenkan_sen'] < candle['kijun_sen'] and prev_candle['tenkan_sen'] >= prev_candle['kijun_sen']
-            price_below_kumo = candle['close'] < candle['senkou_a'] and candle['close'] < candle['senkou_b']
-            chikou_below_price = candle['chikou'] < df_indexed['low'].iloc[i - config.get('CHIKOU_LAG', 26)]
-
-            if tenkan_cross_down_kijun and price_below_kumo and (chikou_below_price if not config.get("SKIP_CHIKOU_CONFIRMATION", False) else True):
-                signal = "SELL"
-
-        # --- Common Alert Creation Logic ---
-        if signal:
-            # --- Indicator Confirmation ---
-            if can_run_indicator_confirmation:
-                # Step 1: Check for RSI exhaustion on the signal candle.
-                # For Ichimoku, we only check the signal candle itself.
-                candles_for_exhaustion_check = [candle]
-                if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, config):
-                    continue
-
-                # Step 2: Check for confirmation on the signal candle.
-                if not is_signal_confirmed(candle, signal, config):
-                    continue
-
-            if use_divergence_filter and has_divergence(df, i, signal, config):
+        alert = _analyze_candle(df_indexed, i, use_divergence_filter, use_confirmation_filter, confirmation_candles)
+        
+        if alert:
+            # --- Volume Confirmation ---
+            volume_spike_is_confirmed = not CONFIG.get("USE_VOLUME_CONFIRMATION", False) or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), i))
+            
+            if not volume_spike_is_confirmed:
                 continue
 
-            # --- Look-forward Confirmation Candle Logic ---
-            if use_confirmation_filter:
-                is_confirmed = True
-                for j in range(1, confirmation_candles + 1):
-                    confirmation_candle = df_indexed.iloc[i + j]
-                    if (signal == 'BUY' and confirmation_candle['close'] <= candle['close']) or \
-                       (signal == 'SELL' and confirmation_candle['close'] >= candle['close']):
-                        is_confirmed = False
-                        break
-                if not is_confirmed:
-                    continue
-
-            # --- State 4: Volume Confirmation (Optional) ---
-            volume_window_df = df.iloc[max(0, i - config.get("VOLUME_CONFIRMATION_WINDOW", 3)) : i + 1]
-            volume_spike_is_confirmed = not config.get("USE_VOLUME_CONFIRMATION", False) or (can_apply_volume_confirmation(df) and is_volume_spike_confirmed(df, i))
-            volume_is_increasing = not config.get("USE_INCREASING_VOLUME_CONFIRMATION", False) or is_volume_increasing(volume_window_df)
-            last_candle_max_volume_confirmed = not config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False) or is_last_candle_volume_max(volume_window_df)
-
-            if volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed:
-                alert_data = _create_alert(df.iloc[i], df.iloc[i-1], signal, config, can_run_indicator_confirmation)
-                if alert_data:
-                    alerts.append(alert_data)
-                    last_alert_idx = i
-                    
-                    # In DEPLOYMENT mode, exit after finding the first valid alert.
-                    if not is_development_mode:
-                        return alerts
+            alerts.append(alert)
 
     # In DEVELOPMENT mode, return all found alerts in chronological order.
     return alerts[::-1]
 
-def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config: dict, was_indicator_confirmation_used: bool) -> AlertData:
+def _analyze_candle(df_indexed, i, use_divergence_filter, use_confirmation_filter, confirmation_candles):
+    candle = df_indexed.iloc[i]
+    prev_candle = df_indexed.iloc[i-1]
+    signal: Optional[Signal] = None
+
+    # --- Bullish Signal Conditions ---
+    tenkan_cross_up_kijun = candle['tenkan_sen'] > candle['kijun_sen'] and prev_candle['tenkan_sen'] <= prev_candle['kijun_sen']
+    price_above_kumo = candle['close'] > candle['senkou_a'] and candle['close'] > candle['senkou_b']
+    
+    # Ensure the index for chikou lookup is valid
+    chikou_lookup_idx = i - CONFIG.get('CHIKOU_LAG', 26)
+    if chikou_lookup_idx < 0:
+        return None
+    chikou_above_price = candle['chikou'] > df_indexed['high'].iloc[chikou_lookup_idx]
+
+    if tenkan_cross_up_kijun and price_above_kumo and (chikou_above_price if not CONFIG.get("SKIP_CHIKOU_CONFIRMATION", False) else True):
+        signal = Signal.BUY
+
+    # --- Bearish Signal Conditions ---
+    else:
+        tenkan_cross_down_kijun = candle['tenkan_sen'] < candle['kijun_sen'] and prev_candle['tenkan_sen'] >= prev_candle['kijun_sen']
+        price_below_kumo = candle['close'] < candle['senkou_a'] and candle['close'] < candle['senkou_b']
+        
+        # Ensure the index for chikou lookup is valid
+        chikou_lookup_idx = i - CONFIG.get('CHIKOU_LAG', 26)
+        if chikou_lookup_idx < 0:
+            return None
+        chikou_below_price = candle['chikou'] < df_indexed['low'].iloc[chikou_lookup_idx]
+
+        if tenkan_cross_down_kijun and price_below_kumo and (chikou_below_price if not CONFIG.get("SKIP_CHIKOU_CONFIRMATION", False) else True):
+            signal = Signal.SELL
+
+    # --- Common Alert Creation Logic ---
+    if signal:
+        # --- Indicator Confirmation ---
+        # Step 1: Check for RSI exhaustion on the signal candle.
+        # For Ichimoku, we only check the signal candle itself.
+        candles_for_exhaustion_check = [candle]
+        if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, CONFIG):
+            return None
+
+        # Step 2: Check for confirmation on the signal candle.
+        if not is_signal_confirmed(candle, signal, CONFIG):
+            return None
+
+        if use_divergence_filter and has_divergence(df_indexed, i, signal, CONFIG):
+            return None
+
+        # --- Look-forward Confirmation Candle Logic ---
+        if use_confirmation_filter:
+            is_confirmed = True
+            for j in range(1, confirmation_candles + 1):
+                confirmation_candle = df_indexed.iloc[i + j]
+                if (signal == Signal.BUY and confirmation_candle['close'] <= candle['close']) or \
+                   (signal == Signal.SELL and confirmation_candle['close'] >= candle['close']):
+                    is_confirmed = False
+                    break
+            if not is_confirmed:
+                return None
+
+        return _create_alert(candle, prev_candle, signal)
+
+def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: Signal) -> AlertData:
     """
     Creates an alert data instance. This function can be extended or modified
     to include more complex logic for alert creation.
@@ -263,13 +261,12 @@ def _create_alert(candle: pd.Series, prev_candle: pd.Series, signal: str, config
     details = {
         "tenkan_sen": round(candle['tenkan_sen'], 2),
         "kijun_sen": round(candle['kijun_sen'], 2),
-        "price_kumo_relation": "Above" if signal == "BUY" else "Below",
-        "chikou_confirmation": "Yes",
-        "used_indicator_confirmation": was_indicator_confirmation_used
+        "price_kumo_relation": "Above" if signal == Signal.BUY else "Below",
+        "chikou_confirmation": "Yes"
     }
 
     alert = AlertData(
-        approach=Approach.ICHIMOKU,
+        approach=APPROACH_NAME,
         id=alert_id,
         signal=signal,
         alert_price=candle['close'],

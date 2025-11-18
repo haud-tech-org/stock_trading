@@ -19,6 +19,14 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 )
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.volatility import is_bb_squeeze
+from src.stockreports.alert.common.data_utils import can_apply_analysis
+from src.stockreports.alert.common.constants import Signal
+
+# --- Module-level constant for the approach name ---
+APPROACH_NAME = Approach.SUPPORT_RESISTANCE_BREAK
+CONFIG = signal_settings.APPROACH_CONFIG.get(
+    APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
+)
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     """
@@ -27,30 +35,25 @@ def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
     1. "Support Shelf" and generates a SELL alert on a confirmed breakdown.
     2. "Resistance Ceiling" and generates a BUY alert on a confirmed breakout.
     """
-    approach_name = Approach.SUPPORT_RESISTANCE_BREAK
     try:
-        logging.info(f"Running '{approach_name}' approach...")
+        logging.info(f"Running '{APPROACH_NAME}' approach...")
         
-        config = signal_settings.APPROACH_CONFIG.get(
-            approach_name, signal_settings.APPROACH_CONFIG.get("default", {})
-        )
-        
-        alerts_data = _find_break_alerts(df, config, new_candle_count)
-        logging.info(f"'{approach_name}' approach found {len(alerts_data)} alerts.")
+        alerts_data = _find_break_alerts(df, new_candle_count)
+        logging.info(f"'{APPROACH_NAME}' approach found {len(alerts_data)} alerts.")
 
         if not alerts_data:
-            return AlertResult(approach_name=approach_name, alerts=pd.DataFrame())
+            return AlertResult(approach_name=APPROACH_NAME, alerts=pd.DataFrame())
 
         alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
 
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=alerts_df
         )
     except Exception as e:
-        logging.error(f"An error occurred during '{approach_name}' execution: {e}", exc_info=True)
+        logging.error(f"An error occurred during '{APPROACH_NAME}' execution: {e}", exc_info=True)
         return AlertResult(
-            approach_name=approach_name,
+            approach_name=APPROACH_NAME,
             alerts=pd.DataFrame(),
             status="FAILED",
             message=str(e)
@@ -66,29 +69,31 @@ def _is_breakout_candle(candle: pd.Series, resistance_level: float) -> bool:
     """Checks if a candle closes above the resistance level."""
     return candle['close'] > resistance_level
 
-def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0) -> list[AlertData]:
+def _find_break_alerts(df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
     """
     Orchestrates finding both support breakdown and resistance breakout alerts.
     This function uses a truly unified reverse loop for both deployment and development modes.
     The loop's scan depth is naturally handled by the value of `new_candle_count`.
     """
     alerts = []
-    lookback_period = config.get("LOOKBACK_PERIOD", 50)
-    confirmation_window_size = config.get("CONFIRMATION_WINDOW", 3)
-    consistency_threshold = config.get("CONSISTENCY_THRESHOLD", 2)
+    lookback_period = CONFIG.get("LOOKBACK_PERIOD", 50)
+    confirmation_window_size = CONFIG.get("CONFIRMATION_WINDOW", 3)
+    consistency_threshold = CONFIG.get("CONSISTENCY_THRESHOLD", 2)
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
     
     # BB Squeeze parameters
-    use_bb_squeeze = config.get("USE_BB_SQUEEZE_CONFIRMATION", False)
-    bb_squeeze_lookback = config.get("BB_SQUEEZE_LOOKBACK", 40)
-    bb_squeeze_threshold = config.get("BB_SQUEEZE_THRESHOLD_RATIO", 0.08)
-
-    # Standardized data preparation
-    df = prepare_indicators(df)
+    use_bb_squeeze = CONFIG.get("USE_BB_SQUEEZE_CONFIRMATION", False)
+    bb_squeeze_lookback = CONFIG.get("BB_SQUEEZE_LOOKBACK", 40)
+    bb_squeeze_threshold = CONFIG.get("BB_SQUEEZE_THRESHOLD_RATIO", 0.08)
 
     # The total lookback needed for one full check.
     required_lookback = lookback_period + 1 + confirmation_window_size
-    if len(df) < required_lookback:
+    
+    # Standardized data preparation
+    df = prepare_indicators(df)
+
+    can_run_analysis = can_apply_analysis(df, APPROACH_NAME, required_rows=required_lookback)
+    if not can_run_analysis:
         return alerts
 
     df_indexed = df.reset_index()
@@ -133,32 +138,32 @@ def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0
         
         level = -1
         level_type = ''
-        signal = ''
+        signal: Optional[Signal] = None
 
         # Check for Breakout (BUY)
         if _is_breakout_candle(break_candle, highest_peak):
             level = highest_peak
             level_type = 'resistance'
-            signal = 'BUY'
+            signal = Signal.BUY
         # Check for Breakdown (SELL)
         elif _is_breakdown_candle(break_candle, lowest_trough):
             level = lowest_trough
             level_type = 'support'
-            signal = 'SELL'
+            signal = Signal.SELL
         else:
             continue # No break occurred
 
         # --- 4. Filters on the Break Candle ---
         # Step 1: Check for RSI exhaustion on the break candle.
         candles_for_exhaustion_check = [break_candle]
-        if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, config):
+        if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, CONFIG):
             continue
 
         # Step 2: Check for confirmation on the break candle.
-        if not is_signal_confirmed(break_candle, signal, config):
+        if not is_signal_confirmed(break_candle, signal, CONFIG):
             continue
         
-        use_volume = config.get("USE_VOLUME_CONFIRMATION", False)
+        use_volume = CONFIG.get("USE_VOLUME_CONFIRMATION", False)
         if use_volume and not (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, break_candle_index)):
             continue
 
@@ -172,8 +177,8 @@ def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0
             elif level_type == 'support' and _is_breakdown_candle(conf_candle, level):
                 consistency_count += 1
         
-        use_increasing_volume = config.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-        use_last_candle_max_volume = config.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+        use_increasing_volume = CONFIG.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+        use_last_candle_max_volume = CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
         volume_increasing_confirmed = not use_increasing_volume or is_volume_increasing(confirmation_df.reset_index())
         last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(confirmation_df.reset_index())
@@ -196,7 +201,7 @@ def _find_break_alerts(df: pd.DataFrame, config: dict, new_candle_count: int = 0
     
     return alerts[::-1]
 
-def _create_alert(df_indexed, signal, confirmation_candle, break_candle, level, lookback_period):
+def _create_alert(df_indexed, signal: Signal, confirmation_candle, break_candle, level, lookback_period):
     """Helper function to create an AlertData object."""
     alert_time = confirmation_candle['time']
     alert_price = confirmation_candle['close']
@@ -208,14 +213,14 @@ def _create_alert(df_indexed, signal, confirmation_candle, break_candle, level, 
         start_time = start_time.isoformat()
     start_price = break_candle['close']
     
-    if signal == 'SELL':
+    if signal == Signal.SELL:
         magnitude = ((level - alert_price) / level) * 100 if level > 0 else 0
         level_type = "lowest_trough"
     else: # BUY
         magnitude = ((alert_price - level) / level) * 100 if level > 0 else 0
         level_type = "highest_peak"
 
-    alert_id = f"{signal}-{int(alert_time.tz_convert('UTC').timestamp())}"
+    alert_id = f"{signal.value}-{int(alert_time.tz_convert('UTC').timestamp())}"
 
     details = {
         level_type: round(level, 2),
@@ -225,7 +230,7 @@ def _create_alert(df_indexed, signal, confirmation_candle, break_candle, level, 
     }
 
     return AlertData(
-        approach=Approach.SUPPORT_RESISTANCE_BREAK,
+        approach=APPROACH_NAME,
         id=alert_id,
         signal=signal,
         alert_price=alert_price,
