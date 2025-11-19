@@ -241,6 +241,13 @@ APPROACH_CONFIG = {
         "USE_RSI_EXHAUSTION_FILTER": True,
         "RSI_OVERSOLD_THRESHOLD": 30,
         "RSI_OVERBOUGHT_THRESHOLD": 70
+    },
+    "COMPARISON": {
+        "41I1FB000": {
+            "REFERENCED_SYMBOL": "VN30",
+            "LOOKBACK_WINDOW": 10,
+            "MA_SHORT_PERIOD": 5
+        }
     }
 }
 

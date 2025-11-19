@@ -7,6 +7,7 @@ class Approach:
     MOMENTUM_EXHAUSTION = "MOMENTUM_EXHAUSTION"
     CONSECUTIVE_POWER_CANDLES = "CONSECUTIVE_POWER_CANDLES"
     CONSOLIDATION_BREAKOUT = "CONSOLIDATION_BREAKOUT"
+    COMPARISON = "COMPARISON"
 
 class Mode:
     DEVELOPMENT = "DEVELOPMENT"
@@ -15,3 +16,11 @@ class Mode:
 class Signal:
     BUY = "BUY"
     SELL = "SELL"
+
+class Trend:
+    UPTREND = "uptrend"
+    DOWNTREND = "downtrend"
+
+class AlertKeys:
+    TREND = "trend"
+    SIGNAL = "signal"
