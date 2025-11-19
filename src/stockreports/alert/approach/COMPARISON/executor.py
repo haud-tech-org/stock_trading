@@ -86,14 +86,20 @@ def _find_comparison_alerts(df: pd.DataFrame, new_candle_count: int) -> list[Ale
 
     # --- 4. Unified Reverse Loop ---
     confirmation_checker = ComparisonConfirmation(approach_settings)
+    last_alert_index = float('inf')  # Cooldown tracker
+    cooldown_period = approach_settings.lookback_window  # Use lookback_window for cooldown
     
     loop_end = len(final_main) - 1
-    loop_start = ma_period -1 
+    loop_start = ma_period - 1 
     active_region_start = len(final_main) - new_candle_count - ma_period
 
     for i in range(loop_end, loop_start - 1, -1):
         if not is_development_mode and i < active_region_start:
             break
+
+        # Cooldown check: Skip if inside the cooldown period of the last alert
+        if i >= last_alert_index - cooldown_period:
+            continue
 
         main_window = final_main.iloc[:i + 1]
         ref_window = final_ref.iloc[:i + 1]
@@ -118,6 +124,8 @@ def _find_comparison_alerts(df: pd.DataFrame, new_candle_count: int) -> list[Ale
                 settings=approach_settings
             )
             alerts.append(alert)
+            last_alert_index = i  # Start cooldown from the current index
+
             if not is_development_mode:
                 return alerts
 
