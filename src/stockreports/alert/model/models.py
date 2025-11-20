@@ -54,6 +54,15 @@ class AlertResult:
         return not self.alerts.empty
 
 @dataclass
+class ConfirmationResult:
+    """
+    Represents the outcome of a signal confirmation check.
+    """
+    trend: str
+    signal: str
+    reversal_time: Optional[pd.Timestamp] = None
+
+@dataclass
 class AlertNotification:
     """
     A clean data model for a single alert, designed for notification purposes.

@@ -34,6 +34,7 @@ from src.stockreports.utils.data_utils import (
     load_data_for_development, load_live_data
 )
 from src.stockreports.utils.time_utils import is_trading_hours, SESSIONS, TimeSimulator, TIMEZONE
+from src.stockreports.utils.historical_data_manager import update_historical_data
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
@@ -229,6 +230,10 @@ class SymbolAlerter:
                 new_candle_count = len(latest_df)
                 # Append new data and remove duplicates, keeping the last entry
                 master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
+                
+                # --- Update Central Cache ---
+                # Save the updated master_df to the central historical data manager
+                update_historical_data(self.symbol, master_df)
 
             if master_df.empty:
                 self.logger.warning("Master DataFrame is empty. Advancing to next interval.")
