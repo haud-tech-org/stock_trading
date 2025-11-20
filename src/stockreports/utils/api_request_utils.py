@@ -12,7 +12,7 @@ from src.stockreports.config import loader
 settings = loader.get_settings()
 
 
-def execute_api_request(symbol: str, from_timestamp: int, to_timestamp: int) -> Optional[Dict[str, Any]]:
+def execute_api_request(symbol: str, from_timestamp: int, to_timestamp: int, custom_params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """
     Executes a data request to the API with explicit parameters.
 
@@ -20,12 +20,15 @@ def execute_api_request(symbol: str, from_timestamp: int, to_timestamp: int) -> 
         symbol (str): The stock symbol to fetch.
         from_timestamp (int): The start of the time window as a Unix timestamp.
         to_timestamp (int): The end of the time window as a Unix timestamp.
+        custom_params (Optional[Dict[str, Any]]): Optional custom parameters to use for the request.
 
     Returns:
         A dictionary containing the API response data, or None if an error occurs.
     """
     try:
-        params = settings.API_PARAMS.copy()
+        # Use custom_params if provided, otherwise fall back to default settings
+        params = custom_params if custom_params is not None else settings.API_PARAMS.copy()
+        
         params.update({
             "symbol": symbol,
             "from": from_timestamp,
