@@ -34,7 +34,7 @@ if project_root not in sys.path:
 
 from src.stockreports.config import loader
 from src.stockreports.utils.data_utils import load_live_data
-from src.stockreports.alert.approach.COMPARISON import executor as comparison_executor
+from src.stockreports.alert.approach.COMPARISON.executor import ComparisonExecutor
 from src.stockreports.alert.approach.COMPARISON.settings import ComparisonSignalSettings
 import src.stockreports.alert.approach.COMPARISON.settings as signal_settings_module
 
@@ -102,7 +102,8 @@ def run_debug_analysis(symbol, start_time_str, end_time_str):
 
     # --- 3. Call the main executor ---
     print(f"\n--- Calling main executor with a dataframe of {len(df_for_analysis)} candles ---")
-    alert_result = comparison_executor.run_analysis(df=df_for_analysis.reset_index(), new_candle_count=new_candle_count)
+    executor = ComparisonExecutor(symbol=symbol)
+    alert_result = executor.run(df=df_for_analysis.reset_index(), new_candle_count=new_candle_count)
 
         # --- 4. Report results ---
     print("\n\n===== OVERALL RESULT =====")

@@ -88,7 +88,12 @@ class SymbolAlerter:
         try:
             module_path = f"src.stockreports.alert.approach.{approach_name.upper()}.executor"
             executor_module = importlib.import_module(module_path)
-            return getattr(executor_module, 'run_analysis')
+            # Convert approach_name (e.g., 'CONSECUTIVE_POWER_CANDLES') to a class name (e.g., 'ConsecutivePowerCandlesExecutor')
+            class_name_parts = [part.capitalize() for part in approach_name.split('_')]
+            executor_class_name = "".join(class_name_parts) + "Executor"
+            executor_class = getattr(executor_module, executor_class_name)
+            # Instantiate the executor with the symbol
+            return executor_class(self.symbol)
         except (ImportError, AttributeError) as e:
             self.logger.error(f"Could not load approach '{approach_name}'. Error: {e}")
             return None
@@ -285,8 +290,8 @@ class SymbolAlerter:
                 executor = self._get_approach_executor(approach_name)
                 if not executor: continue
                 
-                # Pass the full master_df to the executor.
-                result = executor(df=master_df.copy(), new_candle_count=new_candle_count)
+                # Pass the full master_df to the executor's run method.
+                result = executor.run(df=master_df.copy(), new_candle_count=new_candle_count)
                 if result.has_alerts:
                     # Send notification immediately for low latency.
                     self.notification_manager.process_and_notify(result, self.symbol, master_df)
@@ -339,7 +344,7 @@ class SymbolAlerter:
             if not executor: continue
             
             # Pass the full length of the daily dataframe as new_candle_count in development mode
-            result = executor(df=daily_df.copy(), new_candle_count=len(daily_df))
+            result = executor.run(df=daily_df.copy(), new_candle_count=len(daily_df))
             
             if result.has_alerts:
                 # Step 1: Send notifications (fire-and-forget)
