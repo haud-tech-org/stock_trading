@@ -35,7 +35,7 @@ VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity 
 # A signal is "Success" if its best_profit >= threshold AND abs(worst_loss) <= threshold.
 # Guidance: This helps evaluate signal quality independently of the final trade outcome.
 # Range: Float > 0.
-VALIDATION_PRICE_THRESHOLD = 4.0
+VALIDATION_PRICE_THRESHOLD = 5.0
 
 
 # --- Data Source Configuration ---
@@ -80,4 +80,4 @@ MIN_EXPECTED_PROFIT_LOSS = 2.0
 # This is typically used for indices or other symbols with a different price scale than individual stocks.
 # Guidance: Add any symbol (e.g., "VN30", "VNINDEX") that should be exempt from the standard price adjustment logic.
 # Example: `PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30"]`
-PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30","41I1FB000"]
+PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30","41I1FB000","VN30F2512"]

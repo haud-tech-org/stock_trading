@@ -162,29 +162,81 @@ def get_column_statistics_map() -> Dict[str, List[str]]:
     }
 
 
-def fetch_intraday_data(symbol: str, from_timestamp: int, to_timestamp: int) -> Optional[Dict[str, Any]]:
+def _fetch_intraday_data_with_resolution(symbol: str, from_timestamp: int, to_timestamp: int, resolution: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """
-    Fetches intraday trading data for a specific symbol and time window.
-
-    Args:
-        symbol (str): The stock symbol to fetch (e.g., "VN30").
-        from_timestamp (int): The start of the time window as a Unix timestamp.
-        to_timestamp (int): The end of the time window as a Unix timestamp.
-
-    Returns:
-        A dictionary containing the API response data, or None if an error occurs.
+    Internal function to fetch intraday data with an optional resolution override.
     """
     try:
         market_tz = pytz.timezone(TIMEZONE_STR)
         from_dt = datetime.fromtimestamp(from_timestamp, tz=market_tz)
         to_dt = datetime.fromtimestamp(to_timestamp, tz=market_tz)
 
-        logging.info(f"Requesting data for {symbol} from {from_dt} to {to_dt}")
-        return execute_api_request(symbol, from_timestamp, to_timestamp)
+        logging.info(f"Requesting data for {symbol} from {from_dt} to {to_dt} with resolution '{resolution or 'default'}'.")
+        
+        api_params = settings.API_PARAMS.copy()
+
+        if resolution is not None:
+            api_params["resolution"] = str(resolution)
+
+        response = execute_api_request(symbol, from_timestamp, to_timestamp, custom_params=api_params)
+        
+        return response
 
     except ValueError as e:
         logging.error(f"Error preparing request for {symbol}: {e}")
         return None
+
+
+def fetch_intraday_data(symbol: str, from_timestamp: int, to_timestamp: int) -> Optional[Dict[str, Any]]:
+    """
+    Fetches intraday trading data using the default resolution. This is a wrapper
+    for backward compatibility.
+    """
+    return _fetch_intraday_data_with_resolution(symbol, from_timestamp, to_timestamp, resolution=None)
+
+
+def _load_live_data_with_resolution(symbol: str, from_timestamp: int, to_timestamp: int, resolution: Optional[int] = None) -> pd.DataFrame:
+    """
+    Internal function to fetch and process live data with an optional resolution.
+    """
+    logger = logging.getLogger(__name__)
+    raw_data = _fetch_intraday_data_with_resolution(symbol, from_timestamp, to_timestamp, resolution=resolution)
+
+    if not raw_data or raw_data.get('s') != 'ok':
+        logger.error("Failed to fetch or process live data.")
+        return pd.DataFrame()
+
+    keys = ["t", "o", "h", "l", "c", "v"]
+    try:
+        min_len = min(len(raw_data.get(k, [])) for k in keys)
+    except TypeError:
+        logger.warning("Response format is not as expected (e.g., not a list).")
+        return pd.DataFrame()
+        
+    if min_len == 0:
+        logger.warning("No data points in the live response.")
+        return pd.DataFrame()
+
+    df = pd.DataFrame({
+        "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
+        "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
+        "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
+        "volume": raw_data["v"][:min_len],
+    })
+
+    # Adjust timezone and prices
+    df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(pytz.timezone(TIMEZONE_STR))
+    df = adjust_prices_by_symbol(df, symbol)
+
+    return df
+
+
+def load_live_data(symbol: str, from_timestamp: int, to_timestamp: int) -> pd.DataFrame:
+    """
+    Fetches live data for a symbol using the default resolution. This is a wrapper
+    for backward compatibility.
+    """
+    return _load_live_data_with_resolution(symbol, from_timestamp, to_timestamp, resolution=None)
 
 
 def load_data_for_development(symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
@@ -278,40 +330,4 @@ def load_data_for_development(symbol: str, start_date: Optional[str] = None, end
         df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(market_tz)
         df = adjust_prices_by_symbol(df, symbol)
         
-    return df
-
-
-def load_live_data(symbol: str, from_timestamp: int, to_timestamp: int) -> pd.DataFrame:
-    """
-    Fetches live data for a symbol in a specific time window and processes it.
-    """
-    logger = logging.getLogger(__name__)
-    raw_data = fetch_intraday_data(symbol, from_timestamp, to_timestamp)
-
-    if not raw_data or raw_data.get('s') != 'ok':
-        logger.error("Failed to fetch or process live data.")
-        return pd.DataFrame()
-
-    keys = ["t", "o", "h", "l", "c", "v"]
-    try:
-        min_len = min(len(raw_data.get(k, [])) for k in keys)
-    except TypeError:
-        logger.warning("Response format is not as expected (e.g., not a list).")
-        return pd.DataFrame()
-        
-    if min_len == 0:
-        logger.warning("No data points in the live response.")
-        return pd.DataFrame()
-
-    df = pd.DataFrame({
-        "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
-        "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
-        "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
-        "volume": raw_data["v"][:min_len],
-    })
-
-    # Adjust timezone and prices
-    df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(pytz.timezone(TIMEZONE_STR))
-    df = adjust_prices_by_symbol(df, symbol)
-
     return df
