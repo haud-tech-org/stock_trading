@@ -5,6 +5,7 @@ signal_settings = loader.get_signal_settings()
 class ComparisonSignalSettings:
     def __init__(self, symbol: str):
         self.symbol = symbol
+        self.primary_symbol = symbol
         self.approach_settings = signal_settings.APPROACH_CONFIG.get('COMPARISON', {}).get(symbol, {})
         self.lookback_window = self.approach_settings.get('LOOKBACK_WINDOW', 10)
         self.cooldown_period = self.approach_settings.get('COOLDOWN_PERIOD', 10)

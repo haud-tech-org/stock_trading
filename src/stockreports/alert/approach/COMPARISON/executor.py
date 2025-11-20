@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 
 class ComparisonExecutor(Executor):
     APPROACH_NAME = Approach.COMPARISON
+    LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
         self.settings = loader.get_settings()
         self.logger = logging.getLogger(__name__)
 
@@ -61,6 +61,10 @@ class ComparisonExecutor(Executor):
         # --- 1. Initial Setup & Config ---
         approach_settings = ComparisonSignalSettings(self.symbol)
         
+        if self.symbol != approach_settings.primary_symbol:
+            self.logger.warning(f"Executor symbol '{self.symbol}' does not match settings primary symbol '{approach_settings.primary_symbol}'. Skipping.")
+            return alerts
+
         if not approach_settings.referenced_symbol:
             return alerts
 
@@ -104,8 +108,8 @@ class ComparisonExecutor(Executor):
             current_candle_time = final_main.index[i]
 
             # Time-based cooldown check using the instance-level timestamp
-            if self.LATEST_ALERT_TIMESTAMP is not None:
-                time_since_last_alert = current_candle_time - self.LATEST_ALERT_TIMESTAMP
+            if ComparisonExecutor.LATEST_ALERT_TIMESTAMP is not None:
+                time_since_last_alert = current_candle_time - ComparisonExecutor.LATEST_ALERT_TIMESTAMP
                 if time_since_last_alert.total_seconds() / 60 < cooldown_period_minutes:
                     continue
 
@@ -133,7 +137,7 @@ class ComparisonExecutor(Executor):
                 alerts.append(alert)
                 
                 # Update the instance-level timestamp with the new alert's time
-                self.LATEST_ALERT_TIMESTAMP = alert.alert_time
+                ComparisonExecutor.LATEST_ALERT_TIMESTAMP = alert.alert_time
 
                 if not is_development_mode:
                     return alerts
