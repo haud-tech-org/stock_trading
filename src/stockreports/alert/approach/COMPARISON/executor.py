@@ -15,6 +15,7 @@ settings = loader.get_settings()
 logger = logging.getLogger(__name__)
 
 APPROACH_NAME = Approach.COMPARISON
+LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
 
 def run_analysis(df: pd.DataFrame, new_candle_count: int) -> AlertResult:
     """
@@ -46,6 +47,7 @@ def _find_comparison_alerts(df: pd.DataFrame, new_candle_count: int) -> list[Ale
     Finds alerts by comparing the main symbol against a reference symbol,
     using a unified reverse loop for both DEPLOYMENT and DEVELOPMENT modes.
     """
+    global LATEST_ALERT_TIMESTAMP
     alerts = []
     is_development_mode = settings.MODE == Mode.DEVELOPMENT
 
@@ -86,8 +88,7 @@ def _find_comparison_alerts(df: pd.DataFrame, new_candle_count: int) -> list[Ale
 
     # --- 4. Unified Reverse Loop ---
     confirmation_checker = ComparisonConfirmation(approach_settings)
-    last_alert_index = float('inf')  # Cooldown tracker
-    cooldown_period = approach_settings.lookback_window  # Use lookback_window for cooldown
+    cooldown_period_minutes = approach_settings.cooldown_period  # Use dedicated cooldown setting
     
     loop_end = len(final_main) - 1
     loop_start = ma_period - 1 
@@ -97,9 +98,13 @@ def _find_comparison_alerts(df: pd.DataFrame, new_candle_count: int) -> list[Ale
         if not is_development_mode and i < active_region_start:
             break
 
-        # Cooldown check: Skip if inside the cooldown period of the last alert
-        if i >= last_alert_index - cooldown_period:
-            continue
+        current_candle_time = final_main.index[i]
+
+        # Time-based cooldown check using the module-level timestamp
+        if LATEST_ALERT_TIMESTAMP is not None:
+            time_since_last_alert = current_candle_time - LATEST_ALERT_TIMESTAMP
+            if time_since_last_alert.total_seconds() / 60 < cooldown_period_minutes:
+                continue
 
         main_window = final_main.iloc[:i + 1]
         ref_window = final_ref.iloc[:i + 1]
@@ -124,7 +129,9 @@ def _find_comparison_alerts(df: pd.DataFrame, new_candle_count: int) -> list[Ale
                 settings=approach_settings
             )
             alerts.append(alert)
-            last_alert_index = i  # Start cooldown from the current index
+            
+            # Update the module-level timestamp with the new alert's time
+            LATEST_ALERT_TIMESTAMP = alert.alert_time
 
             if not is_development_mode:
                 return alerts
@@ -145,7 +152,8 @@ def _create_alert(candle: pd.Series, alert_info: ConfirmationResult, symbol: str
         "trend": alert_info.trend,
         "referenced_symbol": referenced_symbol,
         "ma_period": settings.ma_short_period,
-        "lookback_window": settings.lookback_window
+        "lookback_window": settings.lookback_window,
+        "cooldown_period": settings.cooldown_period
     }
 
     return AlertData(
