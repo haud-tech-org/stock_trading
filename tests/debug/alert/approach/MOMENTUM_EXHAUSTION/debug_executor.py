@@ -35,7 +35,7 @@ from src.stockreports.config import loader
 # Use load_data_for_development and historical_data_manager for DEVELOPMENT mode.
 from src.stockreports.utils.data_utils import load_live_data
 # IMPORTANT: Update the import path to your approach's executor
-from src.stockreports.alert.approach.MOMENTUM_EXHAUSTION import executor as momentum_exhaustion_executor
+from src.stockreports.alert.approach.MOMENTUM_EXHAUSTION.executor import MomentumExhaustionExecutor
 from src.stockreports.alert.common.constants import Approach
 
 # Setup basic logging to see output from the main application
@@ -91,7 +91,8 @@ def run_debug_analysis(symbol, start_time_str, end_time_str):
 
     print(f"\n--- Calling main executor with a dataframe of {len(df_for_analysis)} candles ---")
     # Call the run_analysis function from YOUR approach's executor
-    alert_result = momentum_exhaustion_executor.run_analysis(df=df_for_analysis.reset_index(), new_candle_count=new_candle_count)
+    executor = MomentumExhaustionExecutor(symbol=symbol)
+    alert_result = executor.run(df=df_for_analysis.reset_index(), new_candle_count=new_candle_count)
 
     # --- 4. Report Results ---
     print("\n\n===== OVERALL RESULT =====")
