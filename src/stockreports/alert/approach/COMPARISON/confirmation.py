@@ -38,7 +38,7 @@ class ComparisonConfirmation:
             Optional[ConfirmationResult]: A ConfirmationResult object if a signal is
                                           confirmed, otherwise None.
         """
-        main_symbol_data = data[self._settings.symbol]
+        main_symbol_data = data[self._settings.primary_symbol]
         ref_symbol_data = data[self._settings.referenced_symbol]
 
         # Check for a confirmed uptrend first.
