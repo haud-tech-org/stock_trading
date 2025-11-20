@@ -17,7 +17,7 @@ notifications, and market-specific details.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
-SYMBOLS = ["41I1FB000","VN30"]
+SYMBOLS = ["41I1FB000","VN30","VN30F2512"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -133,7 +133,8 @@ ALERT_APPROACHES = [
     #"SUPPORT_RESISTANCE_BREAK",
     "MOMENTUM_EXHAUSTION",
     "CONSECUTIVE_POWER_CANDLES",
-    "CONSOLIDATION_BREAKOUT"
+    "CONSOLIDATION_BREAKOUT",
+    "COMPARISON"
     # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 

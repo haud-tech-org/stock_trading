@@ -246,6 +246,7 @@ APPROACH_CONFIG = {
         "41I1FB000": {
             "REFERENCED_SYMBOL": "VN30",
             "LOOKBACK_WINDOW": 10,
+            "COOLDOWN_PERIOD": 3,
             "MA_SHORT_PERIOD": 5
         }
     }
