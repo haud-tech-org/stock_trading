@@ -104,6 +104,9 @@ class ComparisonConfirmation:
         Confirms a downtrend by checking for synchronized bearish conditions,
         including a "price-switch" crossover event between the two symbols.
         """
+        if self._settings.disable_sell_signal:
+            return False
+            
         last_main_candle = main_data.iloc[-1]
         last_ref_candle = ref_data.iloc[-1]
         logger.info(f"--- Checking Downtrend for timestamp {last_main_candle.name} ---")
