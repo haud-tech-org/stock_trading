@@ -6,7 +6,7 @@ The **Consistent Momentum** strategy is designed to identify periods of strong, 
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py` and uses the following parameters:
+This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `ConsistentMomentumSettings`, in `src/stockreports/alert/approach/CONSISTENT_MOMENTUM/settings.py` loads these parameters.
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
@@ -22,7 +22,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py` and 
 
 ## Step-by-Step Logic
 
-The core logic resides in the `_analyze_window` function in `src/stockreports/alert/approach/CONSISTENT_MOMENTUM/executor.py`. The algorithm analyzes a rolling window of `CONFIRMATION_WINDOW` candles. For a signal to be generated, **all** of the following checks must pass:
+The core logic resides in the `ConsistentMomentumExecutor` class in `src/stockreports/alert/approach/CONSISTENT_MOMENTUM/executor.py`. The algorithm analyzes a rolling window of `CONFIRMATION_WINDOW` candles. For a signal to be generated, **all** of the following checks must pass:
 
 1.  **Basic Momentum Check:**
     *   All candles within the window must be bullish (`close > open`) for a `BUY` signal.

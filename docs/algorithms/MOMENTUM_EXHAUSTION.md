@@ -6,7 +6,7 @@ The **Momentum Exhaustion** strategy is a reversal strategy that aims to identif
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py` and uses the following parameters:
+This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `MomentumExhaustionSettings`, in `src/stockreports/alert/approach/MOMENTUM_EXHAUSTION/settings.py` loads these parameters.
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
@@ -18,7 +18,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py` and 
 
 ## Step-by-Step Logic
 
-The core logic resides in the `_analyze_window` and `_find_momentum_exhaustion_alerts` functions in `src/stockreports/alert/approach/MOMENTUM_EXHAUSTION/executor.py`. The algorithm analyzes a rolling window of candles, looking for a specific four-part pattern to unfold.
+The core logic resides in the `MomentumExhaustionExecutor` class in `src/stockreports/alert/approach/MOMENTUM_EXHAUSTION/executor.py`. The algorithm analyzes a rolling window of candles, looking for a specific four-part pattern to unfold.
 
 The total window size is `MOMENTUM_CANDLE_COUNT` + `EXHAUSTION_CANDLE_COUNT` + 2 (for the reversal and confirmation candles).
 

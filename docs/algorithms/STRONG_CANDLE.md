@@ -8,7 +8,7 @@ The logic uses a **backward loop**, which is more performant for real-time analy
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py` and uses the following key parameters:
+This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `StrongCandleSettings`, in `src/stockreports/alert/approach/STRONG_CANDLE/settings.py` loads these parameters.
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
@@ -22,7 +22,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py` and 
 
 ## Step-by-Step Logic (Backward Loop)
 
-The core logic resides in the `_find_strong_candle_alerts` function in `src/stockreports/alert/approach/STRONG_CANDLE/executor.py`. The algorithm iterates backward from the most recent candle. For each candle `i`, it treats it as a potential "Momentum Candle" and works backward to find the preceding parts of the pattern.
+The core logic resides in the `StrongCandleExecutor` class in `src/stockreports/alert/approach/STRONG_CANDLE/executor.py`. The algorithm iterates backward from the most recent candle. For each candle `i`, it treats it as a potential "Momentum Candle" and works backward to find the preceding parts of the pattern.
 
 ### The Three-Part Pattern (Identified in Reverse)
 
