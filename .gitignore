@@ -197,3 +197,6 @@ env*/
 !docs/
 !docs/examples/
 
+# Ignored directories as requested
+src/tools/non-tracking/
+

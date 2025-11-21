@@ -214,7 +214,8 @@ This step remains the same. Add your approach's string name to the `ALERT_APPROA
 ### Step 7: Create Documentation and Debug Script
 
 These steps are still **MANDATORY**.
--   **Documentation**: Create a markdown file in `docs/algorithms/` explaining your strategy. You can reference the existing documentation for other algorithms in this directory for examples.
+-   **Algorithm Documentation**: Create a markdown file in `docs/algorithms/` explaining your strategy. You can reference the existing documentation for other algorithms in this directory for examples.
+-   **Window Analysis Documentation**: Update `docs/window/APPROACH_LOOKBACK_FORWARD_ANALYSIS.md` and `docs/window/APPROACH_ANALYSIS_SUMMARY.md` to include your new approach's lookback and pattern length analysis. This is critical for deployment logic.
 -   **Debug Script**: Follow the updated guide at `docs/prompts/DEBUG_SCRIPT_GENERATION_GUIDE.md` to create a script that instantiates and runs your new `Executor` class.
 
 ---
