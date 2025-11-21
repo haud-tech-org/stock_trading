@@ -1,74 +1,91 @@
-# Prompt Guide: Generating a New Trading Approach
+# Prompt Guide: Generating a New Trading Approach (Class-Based Executors)
 
 ## 1. Objective
 
-This document provides a comprehensive template and a step-by-step guide for creating a new trading approach within the existing framework. By following this pattern, developers can ensure that new strategies are consistent, maintainable, and integrate seamlessly with the existing alert generation, configuration, and analysis systems.
+This document provides a comprehensive template and a step-by-step guide for creating a new trading approach by inheriting from the base `Executor` class. By following this pattern, developers can ensure that new strategies are consistent, maintainable, and integrate seamlessly with the existing alert generation, configuration, and analysis systems.
 
 ## 2. Core Principles of an Approach Executor
 
-Every approach executor (`executor.py`) **MUST** adhere to the following set of core principles to ensure stability, consistency, and maintainability.
+Every approach executor (`executor.py`) **MUST** be a class that inherits from `src.stockreports.alert.executor.Executor` and adheres to the following principles:
 
--   **Configuration-Driven**: All key parameters (lookback periods, thresholds, feature flags) **MUST** be defined in `src/stockreports/config/signal_settings.py`. The configuration for the specific approach should be loaded **ONCE** as a **module-level constant** (`CONFIG`). Hard-coded "magic numbers" are **STRICTLY FORBIDDEN**.
--   **Stateless Analysis**: The analysis function must be pure. Given the same DataFrame and configuration, it **MUST** always produce the same `AlertResult`. It must not rely on any external state or variables modified in previous runs.
+-   **Configuration-Driven**: All key parameters (lookback periods, thresholds, feature flags) **MUST** be defined in `src/stockreports/config/signal_settings.py` and loaded via a dedicated settings class for the approach. Hard-coded "magic numbers" are **STRICTLY FORBIDDEN**.
+-   **Stateful but Pure Analysis**: The `Executor` instance holds state for a single symbol (like the last alert time), but the core analysis logic within the `run` method should be pure. Given the same DataFrame and configuration, it **MUST** always produce the same `AlertResult`.
 -   **Unified Reverse Loop**: The main loop for finding alerts **MUST** be a **reverse loop** (from the latest candle to the oldest). This single loop must efficiently handle both `DEVELOPMENT` mode (find all historical alerts) and `DEPLOYMENT` mode (find only the most recent alert and exit immediately).
--   **Modular Logic**: The code should be broken down into logical functions:
-    -   `run_analysis`: The main entry point.
-    -   `_find_*_alerts`: The function containing the main reverse loop and core logic.
-    -   `_create_alert`: A helper function to standardize alert object creation.
--   **Standardized Filtering**: Optional filters (Volume, RSI, standard indicators like MA/MACD) should be applied *after* the core pattern has been identified, using the common functions from `src/stockreports/alert/common/`.
--   **Module-Level Constants**: The `APPROACH_NAME` and `CONFIG` **MUST** be defined as module-level constants to ensure they are loaded only once and are used consistently throughout the file.
+-   **Clear Class Structure**: The logic must be encapsulated within the executor class:
+    -   `__init__`: Initializes the executor for a specific symbol and loads its settings.
+    -   `run`: The main public entry point that receives the DataFrame.
+    -   `_find_*_alerts`: A private method containing the main reverse loop and core logic.
+    -   `_create_alert`: A private helper function to standardize `AlertData` object creation.
+-   **Standardized Filtering**: Optional filters (Volume, RSI, etc.) should be applied *after* the core pattern has been identified, using common functions from `src/stockreports/alert/common/`.
+-   **Class-Level Constants**: The `APPROACH_NAME` **MUST** be defined as a class-level constant.
 
 ## 3. Step-by-Step Implementation Guide
 
 ### Step 1: Define the Approach Name
 
 1.  Open `src/stockreports/alert/common/constants.py`.
-2.  Add your new approach's name to the `Approach` enum. The name should be descriptive and in `UPPER_SNAKE_CASE` (e.g., `CONSOLIDATION_BREAKOUT`).
-
-    ```python
-    # src/stockreports/alert/common/constants.py
-    class Approach(Enum):
-        # ... existing approaches
-        CONSOLIDATION_BREAKOUT = "CONSOLIDATION_BREAKOUT"
-    ```
+2.  Add your new approach's name to the `Approach` enum (e.g., `CONSOLIDATION_BREAKOUT`).
 
 ### Step 2: Create the Executor File Structure
 
 1.  Navigate to `src/stockreports/alert/approach/`.
 2.  Create a new directory with the same name as your approach (e.g., `CONSOLIDATION_BREAKOUT/`).
-3.  Inside this new directory, create two files:
+3.  Inside this new directory, create three files:
     -   `__init__.py` (can be empty)
-    -   `executor.py`
+    -   `executor.py` (will contain your `Executor` subclass)
+    -   `settings.py` (will contain your dedicated settings class)
 
-### Step 3: Configure the Approach in `signal_settings.py`
+### Step 3: Create a Dedicated Settings Class
+
+Create a settings class to provide a structured way to access configuration from `signal_settings.py`.
+
+```python
+# src/stockreports/alert/approach/CONSOLIDATION_BREAKOUT/settings.py
+from src.stockreports.config import loader
+
+signal_settings = loader.get_signal_settings()
+
+class ConsolidationBreakoutSettings:
+    def __init__(self, symbol: str):
+        self.primary_symbol = symbol
+        # Load the specific config for this symbol, with a fallback to "default"
+        self.approach_settings = signal_settings.APPROACH_CONFIG.get('CONSOLIDATION_BREAKOUT', {}).get(symbol, 
+            signal_settings.APPROACH_CONFIG.get('CONSOLIDATION_BREAKOUT', {}).get('default', {})
+        )
+        
+        # --- Core Logic Parameters ---
+        self.lookback_period = self.approach_settings.get("LOOKBACK_PERIOD", 25)
+        self.min_clustered_candle_ratio = self.approach_settings.get("MIN_CLUSTERED_CANDLE_RATIO", 0.8)
+        
+        # --- Standard Optional Filter Flags ---
+        self.use_volume_confirmation = self.approach_settings.get("USE_VOLUME_CONFIRMATION", True)
+```
+
+### Step 4: Configure the Approach in `signal_settings.py`
 
 1.  Open `src/stockreports/config/signal_settings.py`.
-2.  Add a new configuration dictionary for your approach within the `APPROACH_CONFIG`.
+2.  Add a new configuration dictionary for your approach.
 
     ```python
     # src/stockreports/config/signal_settings.py
-
     APPROACH_CONFIG = {
-        # ... existing configs
+        # ...
         "CONSOLIDATION_BREAKOUT": {
-            # --- Core Logic Parameters ---
-            "LOOKBACK_PERIOD": 25,
-            "MIN_CLUSTERED_CANDLE_RATIO": 0.8,
-            "MAX_DEVIATION_FROM_CENTER": 0.01,
-            "BREAKOUT_CONFIRMATION_CANDLES": 3,
-            "BREAKOUT_STRENGTH_FACTOR": 1.5,
-
-            # --- Standard Optional Filter Flags ---
-            "USE_CONFIRMATION_CANDLE_FILTER": True,
-            "USE_VOLUME_CONFIRMATION": True,
-            "USE_INCREASING_VOLUME_CONFIRMATION": True,
+            "default": {
+                "LOOKBACK_PERIOD": 25,
+                "MIN_CLUSTERED_CANDLE_RATIO": 0.8,
+                "USE_VOLUME_CONFIRMATION": True,
+            },
+            "VN30": { # Symbol-specific override
+                "LOOKBACK_PERIOD": 30,
+            }
         },
     }
     ```
 
-### Step 4: Implement the `executor.py` Using the Template
+### Step 5: Implement the `executor.py` Using the Class-Based Template
 
-Copy and adapt the following template for your `executor.py`. The comments guide you on where to place your custom logic.
+Copy and adapt the following template for your `executor.py`.
 
 ```python
 # src/stockreports/alert/approach/CONSOLIDATION_BREAKOUT/executor.py
@@ -76,268 +93,151 @@ Copy and adapt the following template for your `executor.py`. The comments guide
 import pandas as pd
 import logging
 import json
+from typing import Optional
 
 # --- Standard Imports ---
-from src.stockreports.config import loader
+from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
 from src.stockreports.alert.common.data_utils import can_apply_analysis
-from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, is_signal_confirmed, _is_rsi_not_exhausted
-from src.stockreports.alert.common.volume import is_volume_spike_confirmed # Add other volume functions if needed
+from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
+# --- Custom Approach Imports ---
+from .settings import ConsolidationBreakoutSettings
 
-# --- Settings Loader ---
-settings = loader.get_settings()
-signal_settings = loader.get_signal_settings()
 logger = logging.getLogger(__name__)
 
-# --- Module-level constants ---
-APPROACH_NAME = Approach.CONSOLIDATION_BREAKOUT
-CONFIG = signal_settings.APPROACH_CONFIG.get(
-    APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
-)
+class ConsolidationBreakoutExecutor(Executor):
+    APPROACH_NAME = Approach.CONSOLIDATION_BREAKOUT
+    LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None # Use a class variable for global cooldown
 
-# 1. MAIN ENTRY POINT
-def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
-    """
-    Entry point for the CONSOLIDATION_BREAKOUT approach.
-    """
-    try:
-        # --- A. Preparation ---
-        # Standardize column names to lowercase to prevent KeyErrors due to inconsistent casing.
-        df.columns = [col.lower() for col in df.columns]
+    def __init__(self, symbol: str, debug: bool = False):
+        super().__init__(symbol)
+        self.settings = ConsolidationBreakoutSettings(symbol)
+        self.logger = logging.getLogger(__name__)
+        self.debug = debug # Enable verbose logging for debug scripts
 
-        logger.info(f"Running '{APPROACH_NAME}' approach...")
-        
-        # The main logic is delegated to the finder function.
-        # CONFIG is a module-level constant and does not need to be passed.
-        alerts_data = _find_consolidation_breakout_alerts(df, new_candle_count)
-        logger.info(f"'{APPROACH_NAME}' approach found {len(alerts_data)} alerts.")
-
-        # Convert the list of AlertData objects to a DataFrame for the final result
-        alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
-
-        return AlertResult(
-            approach_name=APPROACH_NAME,
-            alerts=alerts_df
-        )
-    except Exception as e:
-        logger.error(f"An error occurred during '{APPROACH_NAME}' execution: {e}", exc_info=True)
-        return AlertResult(
-            approach_name=APPROACH_NAME,
-            alerts=pd.DataFrame(),
-            status="FAILED",
-            message=str(e)
-        )
-
-# 2. PRIMARY FINDER FUNCTION (WITH UNIFIED REVERSE LOOP)
-def _find_consolidation_breakout_alerts(df: pd.DataFrame, new_candle_count: int) -> list[AlertData]:
-    """
-    Finds alerts using a unified reverse loop, optimized for both DEPLOYMENT and DEVELOPMENT modes.
-    """
-    alerts = []
-    is_development_mode = settings.MODE == Mode.DEVELOPMENT
-    
-    # --- A. Preparation ---
-    # Prepare all indicators (like RSI, MACD, MAs) once for efficiency.
-    df = prepare_indicators(df)
-    
-    # Determine the minimum amount of data needed for one calculation
-    required_lookback = CONFIG.get("LOOKBACK_PERIOD", 25) + CONFIG.get("BREAKOUT_CONFIRMATION_CANDLES", 3)
-    
-    # Use the centralized data check
-    if not can_apply_analysis(df, required_rows=required_lookback):
-        logger.warning(f"{APPROACH_NAME}: DataFrame has less than {required_lookback} rows, cannot generate alerts.")
-        return alerts
-
-    df_indexed = df.set_index('time') # Use a time-indexed DataFrame for analysis
-
-    # --- B. Unified Reverse Loop ---
-    loop_end = len(df_indexed) - 1
-    loop_start = required_lookback - 1
-    
-    # This calculation naturally handles the scan depth for both modes.
-    active_region_start = len(df_indexed) - new_candle_count - required_lookback
-
-    for i in range(loop_end, loop_start - 1, -1):
-        if i < active_region_start:
-            break # Stop searching if we are past the active region.
-
-        # Define the window of data to be analyzed for the pattern.
-        window = df_indexed.iloc[i - required_lookback + 1 : i + 1].copy()
-        
-        # --- C. Core Logic ---
-        # This is where the unique logic of your new approach goes.
-        # Check for your specific candle patterns, indicator values, or price action here.
-        
-        # --- D. Final Filtering & Alert Creation ---
-        # If a pattern is found, create the alert object
-        alert = _create_alert(window, signal)
-        alerts.append(alert)
-    
-    # In DEVELOPMENT mode, the loop completes. Return all found alerts in chronological order.
-    return alerts[::-1]
-
-# 3. ALERT CREATION HELPER
-def _create_alert(window: pd.DataFrame, signal: str) -> AlertData:
-    """
-    Creates and returns a standardized AlertData object.
-    """
-    start_candle = window.iloc[0]
-    end_candle = window.iloc[-1]
-    
-    alert_time = end_candle.name
-    alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-
-    details = {
-        "reason": "A consolidation breakout pattern was detected.",
-        "lookback_period": CONFIG.get("LOOKBACK_PERIOD"),
-        "breakout_candle_close": end_candle['close']
-    }
-
-    return AlertData(
-        approach=APPROACH_NAME, # Use module-level constant
-        id=alert_id,
-        signal=signal,
-        alert_price=end_candle['close'],
-        alert_time=alert_time,
-        start_price=start_candle['open'],
-        start_time=start_candle.name,
-        magnitude=round(abs(end_candle['close'] - start_candle['open']), 2),
-        details=json.dumps(details)
-    )
-```
-
-### Step 5: Enable the Approach in `settings.py`
-
-To activate your new approach so that it runs during analysis, you must add its name to the `ALERT_APPROACHES` list in the main settings file.
-
-1.  Open `src/stockreports/config/settings.py`.
-2.  Add the name of your approach (the string value from the `Approach` enum) to the `ALERT_APPROACHES` list.
-
-    ```python
-    # src/stockreports/config/settings.py
-    ALERT_APPROACHES = [
-        "RCM",
-        "CONSISTENT_MOMENTUM",
-        # ... other existing approaches
-        "CONSOLIDATION_BREAKOUT"
-    ]
-    ```
-
-### Step 6: Create Documentation
-
-Finally, create a new markdown file in `docs/algorithms/` named `CONSOLIDATION_BREAKOUT.md`. Document the objective of your strategy, list all the parameters from `signal_settings.py` in a table, and provide a clear, step-by-step explanation of the logic. Include a Mermaid flow diagram to visually represent the process.
-
-**New Case Studies Added (Nov 18, 2025):**
-*   `docs/algorithms/MOMENTUM_EXHAUSTION.md`
-*   `docs/algorithms/ICHIMOKU.md`
-
-### Step 7: Create a Debug Script
-
-**This step is MANDATORY.**
-
-After implementing the core logic and documentation, you **MUST** create a debug script to validate your new approach. This script is essential for isolating and testing your logic against specific data scenarios by calling your main executor directly.
-
-1.  **Follow the Updated Guide**: A detailed guide and template for creating this script is available at `docs/prompts/DEBUG_SCRIPT_GENERATION_GUIDE.md`. This guide has been recently updated with the latest best practices and includes case studies for common debugging challenges.
-2.  **Purpose**: Use this script to verify your executor's behavior in `DEVELOPMENT` or `DEPLOYMENT` mode, test specific time windows, and ensure it behaves as expected before integration.
-
----
-
-## Non-Negotiable Rules for Implementation (Derived from Case Studies)
-
-Based on lessons learned from debugging multiple approaches, the following rules are **non-negotiable**. They are designed to prevent common, high-impact errors and build robust, predictable, and easy-to-debug approaches. **Failure to follow these rules will result in code rejection.**
-
-### 1. Column Name Consistency
-
-**Case Study**: The `COMPARISON` approach repeatedly failed with a `KeyError: 'close'`. Debugging revealed that the input DataFrame contained a 'Close' column (uppercase 'C'), but the code was trying to access `df['close']`. This happened because the upstream data source provided inconsistently cased column names.
-
--   **Rule: Standardize Column Names to Lowercase Immediately.** To prevent unpredictable `KeyError` exceptions, all DataFrame column names **MUST** be converted to lowercase as the very first step inside the `try` block of the `run_analysis` function. This creates a predictable and consistent data structure for all downstream logic.
-
--   **Implementation Pattern**:
-
-    ```python
-    # In the main entry point, right at the beginning
-    def run_analysis(df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
+    # 1. MAIN ENTRY POINT
+    def run(self, df: pd.DataFrame, new_candle_count: int) -> AlertResult:
         """
-        Entry point for the approach.
+        Entry point for the CONSOLIDATION_BREAKOUT approach.
         """
         try:
             # MANDATORY: Standardize column names immediately.
             df.columns = [col.lower() for col in df.columns]
+            self.logger.info(f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...")
+
+            alerts_data = self._find_consolidation_breakout_alerts(df, new_candle_count)
+            self.logger.info(f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts_data)} alerts.")
+
+            alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
+
+            return AlertResult(
+                approach_name=self.APPROACH_NAME,
+                alerts=alerts_df
+            )
+        except Exception as e:
+            self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
+            return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame(), status="FAILED", message=str(e))
+
+    # 2. PRIMARY FINDER FUNCTION (WITH UNIFIED REVERSE LOOP)
+    def _find_consolidation_breakout_alerts(self, df: pd.DataFrame, new_candle_count: int) -> list[AlertData]:
+        alerts = []
+        is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
+        
+        df = prepare_indicators(df)
+        
+        required_lookback = self.settings.lookback_period
+        if not can_apply_analysis(df, required_rows=required_lookback):
+            self.logger.warning(f"{self.APPROACH_NAME}: Insufficient data. Required: {required_lookback}, have: {len(df)}.")
+            return alerts
+
+        df_indexed = df.set_index('time')
+
+        loop_end = len(df_indexed) - 1
+        loop_start = required_lookback - 1
+        active_region_start = len(df_indexed) - new_candle_count - required_lookback
+
+        for i in range(loop_end, loop_start - 1, -1):
+            if not is_development_mode and i < active_region_start:
+                break
+
+            # --- Cooldown Check ---
+            current_candle_time = df_indexed.index[i]
+            if ConsolidationBreakoutExecutor.LATEST_ALERT_TIMESTAMP is not None:
+                time_since_last = (current_candle_time - ConsolidationBreakoutExecutor.LATEST_ALERT_TIMESTAMP).total_seconds() / 60
+                if time_since_last < self.settings.cooldown_period:
+                    continue
+
+            window = df_indexed.iloc[i - required_lookback + 1 : i + 1].copy()
             
-            logger.info(f"Running '{APPROACH_NAME}' approach...")
-            # ... proceed with analysis ...
-    ```
+            # --- Core Logic ---
+            # Your unique pattern detection logic goes here.
+            # Example: is_breakout = self._check_pattern(window)
+            is_breakout, signal = True, "BUY" # Placeholder
+            
+            if is_breakout:
+                alert = self._create_alert(window, signal)
+                alerts.append(alert)
+                ConsolidationBreakoutExecutor.LATEST_ALERT_TIMESTAMP = alert.alert_time
+                if not is_development_mode:
+                    return alerts # Exit after first alert in deployment
+        
+        return alerts[::-1]
+
+    # 3. ALERT CREATION HELPER
+    def _create_alert(self, window: pd.DataFrame, signal: str) -> AlertData:
+        start_candle = window.iloc[0]
+        end_candle = window.iloc[-1]
+        alert_time = end_candle.name
+        alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+
+        details = { "lookback_period": self.settings.lookback_period }
+
+        return AlertData(
+            approach=self.APPROACH_NAME,
+            id=alert_id,
+            symbol=self.symbol,
+            signal=signal,
+            alert_price=end_candle['close'],
+            alert_time=alert_time,
+            start_price=start_candle['open'],
+            start_time=start_candle.name,
+            magnitude=round(abs(end_candle['close'] - start_candle['open']), 2),
+            details=json.dumps(details)
+        )
+```
+
+### Step 6: Enable the Approach in `settings.py`
+
+This step remains the same. Add your approach's string name to the `ALERT_APPROACHES` list in `src/stockreports/config/settings.py`.
+
+### Step 7: Create Documentation and Debug Script
+
+These steps are still **MANDATORY**.
+-   **Documentation**: Create a markdown file in `docs/algorithms/` explaining your strategy.
+-   **Debug Script**: Follow the updated guide at `docs/prompts/DEBUG_SCRIPT_GENERATION_GUIDE.md` to create a script that instantiates and runs your new `Executor` class.
+
+---
+
+## Non-Negotiable Rules for Implementation (Class-Based)
+
+These rules are adapted for the new class-based architecture.
+
+### 1. Column Name Consistency
+-   **Rule**: Standardize column names to lowercase as the very first step inside the `try` block of the public `run` method.
+-   **Implementation**: `df.columns = [col.lower() for col in df.columns]`
 
 ### 2. Data Handling and Validation
-
-**Case Study**: The `CONSOLIDATION_BREAKOUT` alert failed silently because the main application had insufficient data for the *confirmation* step, even though it had enough for the *pattern detection* step. The `ICHIMOKU` approach crashed with a `KeyError` because it assumed a 'time' column existed when it was already the index.
-
--   **Rule 1: Use the Centralized Data Check.** At the beginning of your `_find_*_alerts` function, you **MUST** use `can_apply_analysis` to validate the DataFrame. This function handles both general data integrity and minimum row count checks.
-
--   **Implementation Pattern**:
-
-    ```python
-    # In the primary finder function (e.g., _find_consolidation_breakout_alerts)
-    def _find_consolidation_breakout_alerts(df: pd.DataFrame, new_candle_count: int) -> list[AlertData]:
-        # ...
-        required_lookback = CONFIG.get("LOOKBACK_PERIOD", 25)
-        
-        # MANDATORY: Use the single, centralized check.
-        if not can_apply_analysis(df, required_rows=required_lookback):
-            logger.warning(f"{APPROACH_NAME}: Insufficient data for analysis. Required: {required_lookback}, have: {len(df)}.")
-            return [] # Return an empty list immediately.
-        
-        # ... proceed with analysis ...
-    ```
-
--   **Rule 2: Trust the DataFrame Index.** Assume the input DataFrame `df` to `run_analysis` has a valid `DatetimeIndex`. **DO NOT** manually set the index (`df.set_index('time')`) or perform timezone localization within the executor. This is the responsibility of the upstream data loader. Your logic should use `candle.name` to get the timestamp.
+-   **Rule 1**: Use the centralized `can_apply_analysis` check at the beginning of your private `_find_*_alerts` function before any looping.
+-   **Rule 2**: Trust the DataFrame Index. The `run` method receives a DataFrame with a valid `DatetimeIndex`. Do not manually set the index or perform timezone localization within the executor.
 
 ### 3. Data Flow Integrity
-
-**Case Study**: The application crashed with a `TypeError: object of type 'NoneType' has no len()` because the `prepare_indicators` function was modified and was not returning the DataFrame it had processed.
-
--   **Rule: Ensure Functions Always Return DataFrames.** Any function that receives a DataFrame, modifies it, or adds columns to it (like `prepare_indicators`) **MUST** return the modified DataFrame. The calling function **MUST** then use the returned object.
-
--   **Implementation Pattern**:
-
-    ```python
-    # WRONG (forgets to use the returned df)
-    prepare_indicators(df) 
-    # df might not have the new indicator columns here
-
-    # CORRECT
-    df = prepare_indicators(df)
-    # df is now guaranteed to have the indicator columns
-    ```
+-   **Rule**: Any helper function that modifies a DataFrame (e.g., `prepare_indicators`) **MUST** return it, and the caller **MUST** use the returned object. `df = prepare_indicators(df)`.
 
 ### 4. Error Handling and Type Safety
-
-**Case Study**: The application crashed with an `AttributeError` because a function expected an enum object but received a string.
-
--   **Rule 1: Use `try...except` for the Main Entry Point.** The `run_analysis` function **MUST** be wrapped in a `try...except Exception as e` block. This is the global safety net for the entire approach, preventing one failure from crashing the whole system. **DO NOT** add extra `try...except` blocks inside the core logic unless absolutely necessary for a specific, recoverable error.
-
--   **Rule 2: Maintain Type Consistency.** When working with Enums (like `Signal.BUY`), pass the enum object directly to functions unless the function explicitly requires a primitive type (like its string value).
+-   **Rule 1**: The public `run` method **MUST** be wrapped in a `try...except Exception as e` block. This is the global safety net for the entire approach. Do not add extra `try...except` blocks inside the core logic.
+-   **Rule 2**: Maintain type consistency, especially with Enums (`Signal.BUY`, `Trend.UPTREND`, etc.).
 
 ### 5. Configuration and Code Structure
-
--   **Rule 1: Centralize Configuration as Module-Level Constants.** All magic numbers **MUST** be in `signal_settings.py`. In your `executor.py`, load the configuration for your approach **ONCE** into a module-level `CONFIG` constant. The `APPROACH_NAME` **MUST** also be a module-level constant.
-
--   **Implementation Pattern**:
-    ```python
-    # At the top of executor.py
-    settings = loader.get_settings()
-    signal_settings = loader.get_signal_settings()
-    logger = logging.getLogger(__name__)
-
-    # CORRECT: Define as module-level constants
-    APPROACH_NAME = Approach.MY_NEW_APPROACH
-    CONFIG = signal_settings.APPROACH_CONFIG.get(
-        APPROACH_NAME, signal_settings.APPROACH_CONFIG.get("default", {})
-    )
-
-    def run_analysis(df, new_candle_count):
-        # Use the constants, do not reload them
-        alerts_data = _find_my_alerts(df, new_candle_count)
-        # ...
-    ```
+-   **Rule 1**: Create a dedicated settings class for your approach (e.g., `MyApproachSettings`) to load all parameters from `signal_settings.py`. Instantiate this class in your executor's `__init__` method.
+-   **Rule 2**: The `APPROACH_NAME` **MUST** be a class-level constant in your executor. For global state like a cooldown, use a class-level variable (e.g., `LATEST_ALERT_TIMESTAMP`).

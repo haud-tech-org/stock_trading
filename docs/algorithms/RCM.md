@@ -8,7 +8,7 @@ The logic operates with a **backward loop**, starting from the most recent candl
 
 ## Key Parameters
 
-The behavior of the RCM is controlled by several key parameters found in `src/stockreports/config/signal_settings.py`:
+This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `RCMSettings`, in `src/stockreports/alert/approach/RCM/settings.py` loads these parameters.
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
@@ -24,7 +24,7 @@ The behavior of the RCM is controlled by several key parameters found in `src/st
 
 ## Step-by-Step Logic (Backward Loop)
 
-The core logic is implemented in `_find_rcm_alerts` within `src/stockreports/alert/approach/RCM/executor.py`. The algorithm first identifies all significant peaks and troughs in the dataset and then iterates backward through the candles.
+The core logic is implemented in the `RCMExecutor` class in `src/stockreports/alert/approach/RCM/executor.py`. The algorithm first identifies all significant peaks and troughs in the dataset and then iterates backward through the candles.
 
 ### Step 1: Identify All Potential Reversal Points
 

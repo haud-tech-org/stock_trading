@@ -9,7 +9,7 @@ The **Support/Resistance Break** strategy is designed to identify significant pr
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py` and uses the following parameters:
+This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `SupportResistanceBreakSettings`, in `src/stockreports/alert/approach/SUPPORT_RESISTANCE_BREAK/settings.py` loads these parameters.
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
@@ -27,7 +27,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py` and 
 
 ## Step-by-Step Logic (Backward Loop)
 
-The core logic resides in the `_find_break_alerts` function in `src/stockreports/alert/approach/SUPPORT_RESISTANCE_BREAK/executor.py`. It uses a backward loop, starting from the most recent candle and working backward to find a completed break-and-confirmation pattern.
+The core logic resides in the `SupportResistanceBreakExecutor` class in `src/stockreports/alert/approach/SUPPORT_RESISTANCE_BREAK/executor.py`. It uses a backward loop, starting from the most recent candle and working backward to find a completed break-and-confirmation pattern.
 
 ### The Three-Part Pattern (Identified in Reverse)
 

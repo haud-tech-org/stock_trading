@@ -6,7 +6,7 @@ The **Consecutive Power Candles** strategy is a strong momentum-following patter
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py` and uses the following parameters:
+This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `ConsecutivePowerCandlesSettings`, in `src/stockreports/alert/approach/CONSECUTIVE_POWER_CANDLES/settings.py` loads these parameters.
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
@@ -20,7 +20,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py` and 
 
 ## Step-by-Step Logic
 
-The core logic resides in the `_analyze_window` function in `src/stockreports/alert/approach/CONSECUTIVE_POWER_CANDLES/executor.py`. The algorithm analyzes a rolling window of `CANDLE_COUNT` candles. For a signal to be generated, all of the following checks must pass.
+The core logic resides in the `ConsecutivePowerCandlesExecutor` class in `src/stockreports/alert/approach/CONSECUTIVE_POWER_CANDLES/executor.py`. The algorithm analyzes a rolling window of `CANDLE_COUNT` candles. For a signal to be generated, all of the following checks must pass.
 
 1.  **Consistent Direction:**
     *   All candles in the window must be bullish (`close > open`) for a `BUY` signal.

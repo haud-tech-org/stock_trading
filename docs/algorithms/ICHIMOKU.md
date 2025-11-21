@@ -6,7 +6,7 @@ The **Ichimoku Cloud** strategy is a comprehensive, all-in-one indicator that pr
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py` and uses the following parameters:
+This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `IchimokuSettings`, in `src/stockreports/alert/approach/ICHIMOKU/settings.py` loads these parameters.
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
@@ -26,7 +26,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py` and 
 
 ## Step-by-Step Logic
 
-The core logic resides in the `_find_ichimoku_alerts` function in `src/stockreports/alert/approach/ICHIMOKU/executor.py`. For a signal to be generated, a series of strict conditions must be met simultaneously on the current candle ("signal candle").
+The core logic resides in the `IchimokuExecutor` class in `src/stockreports/alert/approach/ICHIMOKU/executor.py`. For a signal to be generated, a series of strict conditions must be met simultaneously on the current candle ("signal candle").
 
 ### Indicator Calculation
 
