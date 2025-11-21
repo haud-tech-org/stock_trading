@@ -10,11 +10,6 @@ PRICE_ALERTS = {
         "fixed_levels": [1804.57, 1877.78, 1896.05, 1905.4],
         "absolute_interval": 9.0,
     },
-    "41I1FB000": {
-        "reference_price": 1898.4,
-        "fixed_levels": [1851.7, 1878.58, 1896.67, 1910.2],
-        "absolute_interval": 9.0,
-    },
     "VN30F2512": {
         "reference_price": 1888.0,
         "fixed_levels": [1847.27, 1877.45, 1894.25],

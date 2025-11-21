@@ -17,7 +17,7 @@ notifications, and market-specific details.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
-SYMBOLS = ["41I1FB000","VN30","VN30F2512"]
+SYMBOLS = ["VN30", "VN30F2512", "VIC", "HPG"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -51,7 +51,7 @@ API_HEADERS = {
 # Guidance: A shorter interval (e.g., 5-10 seconds) provides more real-time data but increases API usage. A longer interval (e.g., 60 seconds) is less resource-intensive. Do not set this lower than the data resolution (e.g., don't check every 5 seconds for 1-minute data).
 # Range: Integer > 0.
 # Example: `MONITORING_INTERVAL_SECONDS = 5`
-MONITORING_INTERVAL_SECONDS = 15
+MONITORING_INTERVAL_SECONDS = 5
 
 
 # --- General Alerting & Reporting ---
@@ -180,8 +180,8 @@ TRADING_HOURS = {
 #   - TRADE_EXECUTION_SYMBOL: The one symbol on which all trades will be simulated. This symbol's price data will be used to calculate profit/loss.
 CONSOLIDATED_PROFITABILITY = {
     "ENABLED": True,
-    "ALERT_SOURCE_SYMBOLS": ["VN30", "41I1FB000"],
-    "TRADE_EXECUTION_SYMBOL": "41I1FB000"
+    "ALERT_SOURCE_SYMBOLS": ["VN30", "VN30F2512"],
+    "TRADE_EXECUTION_SYMBOL": "VN30F2512"
 }
 
 # --- Debug Replay Configuration ---
