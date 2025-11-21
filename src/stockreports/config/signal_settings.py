@@ -48,7 +48,7 @@ BBANDS_STDDEV = 2.0
 # If set to an integer, it's a fixed lookback period of that many candles.
 SUPPORT_BREAKDOWN_VOLUME_AVG_PERIOD = None
 # Breakdown candle volume must be at least 1.5x the average volume.
-SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.5
+SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.2
 
 
 # --- Approach-Specific Configurations ---
@@ -243,11 +243,12 @@ APPROACH_CONFIG = {
         "RSI_OVERBOUGHT_THRESHOLD": 70
     },
     "COMPARISON": {
-        "41I1FB000": {
+        "VN30F2512": {
             "REFERENCED_SYMBOL": "VN30",
             "LOOKBACK_WINDOW": 10,
             "COOLDOWN_PERIOD": 3,
-            "MA_SHORT_PERIOD": 5
+            "MA_SHORT_PERIOD": 5,
+            "DISABLE_SELL_SIGNAL": True
         }
     }
 }
