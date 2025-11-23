@@ -134,7 +134,8 @@ ALERT_APPROACHES = [
     "MOMENTUM_EXHAUSTION",
     "CONSECUTIVE_POWER_CANDLES",
     "CONSOLIDATION_BREAKOUT",
-    "COMPARISON"
+    "COMPARISON",
+    "VOLUME_SPIKE_CONFIRMATION"
     # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 
@@ -155,8 +156,8 @@ TRADING_HOURS = {
         "name": "Vietnam",
         "timezone": "Asia/Ho_Chi_Minh",
         "sessions": {
-            "morning": {"start": "08:45", "end": "11:30"},
-            "afternoon": {"start": "13:00", "end": "14:45"},
+            "morning": {"start": "08:55", "end": "11:30"},
+            "afternoon": {"start": "13:00", "end": "14:35"},
         }
     },
     # Example for another market:
