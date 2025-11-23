@@ -22,14 +22,14 @@ def get_min_data_for_indicator_confirmation(approach_name: str) -> int:
     required_periods = [1]  # Default to 1 to avoid errors with max() on an empty list
 
     # --- Ichimoku Cloud ---
-    # Ichimoku has a unique lookback calculation due to its forward-shifting spans.
-    # It's often a component of other strategies, so we calculate its requirement.
-    kijun_period = getattr(signal_settings, 'KIJUN_PERIOD', 26)
-    senkou_b_period = getattr(signal_settings, 'ICHI_SENKOU_B_PERIOD', 52)
-    # The total lookback is the calculation period of the longest span (Senkou B)
-    # plus the amount it's shifted forward (Kijun period).
-    ichimoku_total_lookback = senkou_b_period + kijun_period
-    required_periods.append(ichimoku_total_lookback)
+    # Only calculate Ichimoku requirements if the approach explicitly uses it.
+    if config.get("USE_ICHIMOKU_CONFIRMATION", False) or approach_name == Approach.ICHIMOKU:
+        kijun_period = getattr(signal_settings, 'KIJUN_PERIOD', 26)
+        senkou_b_period = getattr(signal_settings, 'ICHI_SENKOU_B_PERIOD', 52)
+        # The total lookback is the calculation period of the longest span (Senkou B)
+        # plus the amount it's shifted forward (Kijun period).
+        ichimoku_total_lookback = senkou_b_period + kijun_period
+        required_periods.append(ichimoku_total_lookback)
 
     # --- Standard Indicator Checks ---
     if config.get("USE_SHORT_TERM_MA_CONFIRMATION", False):

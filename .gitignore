@@ -200,3 +200,6 @@ env*/
 # Ignored directories as requested
 src/tools/non-tracking/
 
+# Debug data
+tests/debug/data/
+

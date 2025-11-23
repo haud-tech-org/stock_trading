@@ -22,6 +22,7 @@ The following table details the maximum lookback and the length of the pattern f
 | **`ICHIMOKU`**             | 52 periods (`SENKOU_B_PERIOD`)      | **1 candle** (Optional: + `CONFIRMATION_CANDLE_COUNT`) | The alert is nearly immediate. It triggers on the candle of the cross event. An optional look-forward can add a small delay. |
 | **`CONSECUTIVE_POWER_CANDLES`** | 3 periods (`CANDLE_COUNT`)          | **3 candles** (Full pattern length) | The alert triggers on the 3rd consecutive power candle. |
 | **`COMPARISON`**           | 10 periods (`LOOKBACK_WINDOW`)      | **1 candle**                    | The alert triggers on the single candle where the divergence condition is met. |
+| **`VOLUME_SPIKE_CONFIRMATION`** | 2 periods (`SIGNAL_LOOKBACK_PERIOD`) | **3 candles** (`SIGNAL_LOOKBACK_PERIOD` + 1) | A signal candle is found in a 2-candle lookback, and the alert triggers on the next confirmation candle. |
 
 ## Conclusion for Deployment Logic
 
