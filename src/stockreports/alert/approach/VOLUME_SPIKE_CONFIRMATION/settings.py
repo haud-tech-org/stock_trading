@@ -1,9 +1,11 @@
 from src.stockreports.config import loader
 
+settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
 class VolumeSpikeConfirmationSettings:
     def __init__(self, symbol: str):
+        self.MODE = settings.MODE
         self.primary_symbol = symbol
         self.approach_settings = signal_settings.APPROACH_CONFIG.get('VOLUME_SPIKE_CONFIRMATION', {}).get(symbol, 
             signal_settings.APPROACH_CONFIG.get('VOLUME_SPIKE_CONFIRMATION', {}).get('default', {})

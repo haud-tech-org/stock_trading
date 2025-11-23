@@ -43,7 +43,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         
         required_lookback = 1 + self.settings.signal_lookback_period
-        if not can_apply_analysis(df, required_rows=required_lookback):
+        if not can_apply_analysis(df, required_rows=required_lookback, approach_name=self.APPROACH_NAME):
             self.logger.warning(f"{self.APPROACH_NAME}: Insufficient data. Required: {required_lookback}, have: {len(df)}.")
             return alerts
 

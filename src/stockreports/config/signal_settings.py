@@ -253,8 +253,8 @@ APPROACH_CONFIG = {
     },
     "VOLUME_SPIKE_CONFIRMATION": {
         "default": {
-            "VOLUME_SPIKE_MULTIPLIER": 2.5,
-            "MIN_CONFIRMATION_BODY_SIZE": 1.0,
+            "VOLUME_SPIKE_MULTIPLIER": 2.0,
+            "MIN_CONFIRMATION_BODY_SIZE": 0.5,
             "MIN_CONFIRMATION_BODY_RATIO": 0.6,
             "SIGNAL_LOOKBACK_PERIOD": 2
         }
