@@ -43,13 +43,19 @@ class VolumeSpikeConfirmationExecutor(Executor):
         alerts = []
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         
+        # --- 1. Initial Data Sufficiency Checks ---
+        if len(df) < self.settings.min_lookback_data:
+            self.logger.warning(f"{self.APPROACH_NAME}: Insufficient data for reliable volume average. Required: {self.settings.min_lookback_data}, have: {len(df)}.")
+            return alerts
+
         required_lookback = 1 + self.settings.signal_lookback_period
         if not can_apply_analysis(df, required_rows=required_lookback, approach_name=self.APPROACH_NAME):
-            self.logger.warning(f"{self.APPROACH_NAME}: Insufficient data. Required: {required_lookback}, have: {len(df)}.")
+            self.logger.warning(f"{self.APPROACH_NAME}: Insufficient data for pattern analysis. Required: {required_lookback}, have: {len(df)}.")
             return alerts
 
         df_indexed = df.set_index('time')
 
+        # --- 2. Setup Reverse Loop ---
         loop_end = len(df_indexed) - 1
         loop_start = required_lookback - 1
         active_region_start = len(df_indexed) - new_candle_count
@@ -58,9 +64,9 @@ class VolumeSpikeConfirmationExecutor(Executor):
             if not is_development_mode and i < active_region_start:
                 break
 
+            # --- 3. Identify Signal and Confirmation Candles ---
             confirmation_candle = df_indexed.iloc[i]
             
-            # Find the signal candle within the lookback period
             lookback_start_index = i - self.settings.signal_lookback_period
             lookback_end_index = i
             signal_candle_window = df_indexed.iloc[lookback_start_index:lookback_end_index]
@@ -69,17 +75,27 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 continue
 
             signal_candle = signal_candle_window.loc[signal_candle_window['volume'].idxmax()]
+            
+            # --- 4. Volume Spike Condition ---
             signal_candle_index = df_indexed.index.get_loc(signal_candle.name)
-
             intraday_df = df_indexed.iloc[:signal_candle_index]
             if intraday_df.empty:
                 continue
-
             avg_volume = intraday_df['volume'].mean()
             
             if signal_candle['volume'] < avg_volume * self.settings.volume_spike_multiplier:
                 continue
 
+            # --- 5. Intermediate Trend Consistency ---
+            # This window includes the signal candle and all candles up to (but not including) the confirmation candle.
+            intermediate_candles = df_indexed.iloc[signal_candle_index : i]
+            if not intermediate_candles.empty:
+                is_all_green = (intermediate_candles['close'] > intermediate_candles['open']).all()
+                is_all_red = (intermediate_candles['close'] < intermediate_candles['open']).all()
+                if not (is_all_green or is_all_red):
+                    continue # Fails if intermediate candles are mixed
+
+            # --- 6. Confirmation Candle Shape Condition ---
             confirmation_body = abs(confirmation_candle['close'] - confirmation_candle['open'])
             confirmation_range = confirmation_candle['high'] - confirmation_candle['low']
             
@@ -93,6 +109,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
             elif self.settings.min_confirmation_body_ratio > 0:
                 continue
 
+            # --- 7. Signal Direction Condition ---
             signal = None
             if confirmation_candle['close'] > confirmation_candle['open'] and confirmation_candle['close'] > signal_candle['close']:
                 signal = Signal.BUY
@@ -100,18 +117,18 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 signal = Signal.SELL
             
             if signal:
-                # Cooldown check: only apply if the signal is the same as the last one
+                # --- 8. Cooldown Condition ---
                 if VolumeSpikeConfirmationExecutor.LATEST_ALERT_CONTEXT is not None:
                     last_alert_time, last_signal = VolumeSpikeConfirmationExecutor.LATEST_ALERT_CONTEXT
                     if signal == last_signal:
                         time_since_last_alert = confirmation_candle.name - last_alert_time
                         if time_since_last_alert.total_seconds() / 60 < self.settings.cooldown_period:
-                            continue # Skip if same signal within cooldown
+                            continue
 
+                # --- 9. Generate Alert ---
                 alert = self._create_alert(confirmation_candle, signal_candle, signal)
                 alerts.append(alert)
                 
-                # Update the class-level context with the new alert's time and signal
                 VolumeSpikeConfirmationExecutor.LATEST_ALERT_CONTEXT = (alert.alert_time, alert.signal)
                 
                 if not is_development_mode:
