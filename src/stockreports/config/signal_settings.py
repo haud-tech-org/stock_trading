@@ -252,13 +252,12 @@ APPROACH_CONFIG = {
         }
     },
     "VOLUME_SPIKE_CONFIRMATION": {
-        "default": {
-            "VOLUME_SPIKE_MULTIPLIER": 2.0,
-            "MIN_CONFIRMATION_BODY_SIZE": 0.5,
-            "MIN_CONFIRMATION_BODY_RATIO": 0.6,
-            "SIGNAL_LOOKBACK_PERIOD": 2,
-            "COOLDOWN_PERIOD": 2
-        }
+        "VOLUME_SPIKE_MULTIPLIER": 3.0,
+        "MIN_CONFIRMATION_BODY_SIZE": 0.5,
+        "MIN_CONFIRMATION_BODY_RATIO": 0.6,
+        "SIGNAL_LOOKBACK_PERIOD": 2,
+        "COOLDOWN_PERIOD": 2,
+        "MIN_LOOKBACK_DATA": 30
     }
 }
 
