@@ -15,6 +15,7 @@ This document details which alerting approaches require looking at past data (lo
 | `RCM`                        |      **Yes**      |          No           |
 | `STRONG_CANDLE`              |      **Yes**      |          No           |
 | `SUPPORT_RESISTANCE_BREAK`   |      **Yes**      |          No           |
+| `VOLUME_SPIKE_CONFIRMATION`  |      **Yes**      |          No           |
 
 ---
 
@@ -84,3 +85,11 @@ This document details which alerting approaches require looking at past data (lo
     *   The total lookback is `LOOKBACK_PERIOD + 1 (break) + CONFIRMATION_WINDOW`.
 *   **Lookforward**:
     *   None. The confirmation window is part of the historical pattern being identified, not a forward-looking check.
+
+### `VOLUME_SPIKE_CONFIRMATION`
+
+*   **Lookback**:
+    *   The pattern is identified in reverse. From a confirmation candle at index `i`, the logic looks back `SIGNAL_LOOKBACK_PERIOD` candles to find the signal candle with the highest volume.
+    *   The total lookback is `1 (confirmation) + SIGNAL_LOOKBACK_PERIOD`.
+*   **Lookforward**:
+    *   None.
