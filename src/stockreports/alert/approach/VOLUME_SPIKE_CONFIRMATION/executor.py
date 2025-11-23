@@ -1,7 +1,7 @@
 import pandas as pd
 import logging
 import json
-from typing import Optional
+from typing import Optional, Tuple
 
 from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.model.models import AlertResult, AlertData
@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class VolumeSpikeConfirmationExecutor(Executor):
     APPROACH_NAME = Approach.VOLUME_SPIKE_CONFIRMATION
+    LATEST_ALERT_CONTEXT: Optional[Tuple[pd.Timestamp, str]] = None
 
     def __init__(self, symbol: str, debug: bool = False):
         super().__init__(symbol)
@@ -99,8 +100,20 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 signal = Signal.SELL
             
             if signal:
+                # Cooldown check: only apply if the signal is the same as the last one
+                if VolumeSpikeConfirmationExecutor.LATEST_ALERT_CONTEXT is not None:
+                    last_alert_time, last_signal = VolumeSpikeConfirmationExecutor.LATEST_ALERT_CONTEXT
+                    if signal == last_signal:
+                        time_since_last_alert = confirmation_candle.name - last_alert_time
+                        if time_since_last_alert.total_seconds() / 60 < self.settings.cooldown_period:
+                            continue # Skip if same signal within cooldown
+
                 alert = self._create_alert(confirmation_candle, signal_candle, signal)
                 alerts.append(alert)
+                
+                # Update the class-level context with the new alert's time and signal
+                VolumeSpikeConfirmationExecutor.LATEST_ALERT_CONTEXT = (alert.alert_time, alert.signal)
+                
                 if not is_development_mode:
                     return alerts
         

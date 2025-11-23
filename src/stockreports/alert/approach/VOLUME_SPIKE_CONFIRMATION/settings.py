@@ -15,3 +15,4 @@ class VolumeSpikeConfirmationSettings:
         self.min_confirmation_body_size = self.approach_settings.get("MIN_CONFIRMATION_BODY_SIZE", 1.0)
         self.min_confirmation_body_ratio = self.approach_settings.get("MIN_CONFIRMATION_BODY_RATIO", 0.6)
         self.signal_lookback_period = self.approach_settings.get("SIGNAL_LOOKBACK_PERIOD", 3)
+        self.cooldown_period = self.approach_settings.get("COOLDOWN_PERIOD", 2)
