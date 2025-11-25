@@ -1,10 +1,12 @@
 import pandas as pd
+import logging
 # import pandas_ta as ta # No longer needed, will implement indicators manually
 
 # --- Project Imports ---
 from src.stockreports.config import loader
 
 signal_settings = loader.get_signal_settings()
+logger = logging.getLogger(__name__)
 
 # --- Manual Indicator Implementations ---
 
@@ -199,25 +201,47 @@ def is_signal_confirmed(confirmation_candle: pd.Series, signal: str, config: dic
     """
     # --- Confirmation checks (must all be true) ---
     checks = []
+    reasons = []
+
     if config.get("USE_SHORT_TERM_MA_CONFIRMATION", False):
-        checks.append(_is_short_term_ma_confirmed(confirmation_candle, signal))
+        result = _is_short_term_ma_confirmed(confirmation_candle, signal)
+        checks.append(result)
+        if not result:
+            reasons.append(f"Short-term MA check failed (Price: {confirmation_candle['close']:.2f}, MA: {confirmation_candle['ma_short']:.2f})")
 
     if config.get("USE_MA_CONFIRMATION", False):
-        checks.append(_is_ma_confirmed(confirmation_candle, signal))
+        result = _is_ma_confirmed(confirmation_candle, signal)
+        checks.append(result)
+        if not result:
+            reasons.append(f"Long-term MA check failed (Price: {confirmation_candle['close']:.2f}, MA: {confirmation_candle['ma_long']:.2f})")
     
     if config.get("USE_LONG_TERM_MA_FILTER", False):
-        checks.append(_is_long_term_ma_confirmed(confirmation_candle, signal))
+        result = _is_long_term_ma_confirmed(confirmation_candle, signal)
+        checks.append(result)
+        if not result:
+            reasons.append(f"Primary trend MA filter failed (Price: {confirmation_candle['close']:.2f}, MA: {confirmation_candle['ma_long_term']:.2f})")
         
     if config.get("USE_RSI_CONFIRMATION", False):
-        checks.append(_is_rsi_confirmed(confirmation_candle, signal))
+        result = _is_rsi_confirmed(confirmation_candle, signal)
+        checks.append(result)
+        if not result:
+            reasons.append(f"RSI check failed (RSI: {confirmation_candle['rsi']:.2f})")
 
     if config.get("USE_MACD_CONFIRMATION", False):
-        checks.append(_is_macd_confirmed(confirmation_candle, signal))
+        result = _is_macd_confirmed(confirmation_candle, signal)
+        checks.append(result)
+        if not result:
+            reasons.append("MACD check failed (MACD line not on correct side of signal line)")
     
     # ADX is direction-agnostic, so it's checked for both signals.
     if config.get("USE_ADX_CONFIRMATION", False):
-        checks.append(_is_adx_confirmed(confirmation_candle))
+        result = _is_adx_confirmed(confirmation_candle)
+        checks.append(result)
+        if not result:
+            reasons.append(f"ADX trend strength check failed (ADX: {confirmation_candle['adx']:.2f}, Threshold: {signal_settings.ADX_CONFIRMATION_THRESHOLD})")
     
-    # If 'checks' is empty, it means no confirmations were configured,
-    # so the check implicitly passes because all([]) returns True.
-    return all(checks)
+    is_confirmed = all(checks)
+    if not is_confirmed:
+        logger.debug(f"Signal confirmation failed for {signal} at {confirmation_candle.name}: {'; '.join(reasons)}")
+
+    return is_confirmed
