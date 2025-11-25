@@ -242,3 +242,18 @@ These rules are adapted for the new class-based architecture.
 ### 5. Configuration and Code Structure
 -   **Rule 1**: Create a dedicated settings class for your approach (e.g., `MyApproachSettings`) to load all parameters from `signal_settings.py`. Instantiate this class in your executor's `__init__` method.
 -   **Rule 2**: The `APPROACH_NAME` **MUST** be a class-level constant in your executor. For global state like a cooldown, use a class-level variable (e.g., `LATEST_ALERT_TIMESTAMP`).
+
+### 6. Verbose Debug Logging for Validation
+-   **Rule**: Every validation check that can cause a window to be rejected **MUST** be accompanied by a `self.logger.debug()` message explaining the exact reason for the failure. This is critical for debugging and fine-tuning the approach.
+-   **Implementation**:
+    -   The log message **MUST** start with the window identifier: `f"Window ending {window.index[-1]}: ..."`
+    -   It **MUST** clearly state the name of the failed check (ideally matching the config key): `... Failed {CHECK_NAME}. ...`
+    -   It **MUST** provide the actual and expected values for comparison: `... Got {actual_value}, required {expected_value}."`
+-   **Example**:
+    ```python
+    min_ratio = self.CONFIG.get("MIN_CLUSTERED_CANDLE_RATIO")
+    if is_clustered.mean() < min_ratio:
+        self.logger.debug(f"Window ending {window.index[-1]}: Failed MIN_CLUSTERED_CANDLE_RATIO. "
+                        f"Got {is_clustered.mean():.2f}, need {min_ratio}.")
+        return None # Stop processing this window
+    ```
