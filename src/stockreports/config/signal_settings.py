@@ -82,10 +82,10 @@ APPROACH_CONFIG = {
         "CONSOLIDATION_LOOKBACK": [15, 30],
         # The maximum distance (in price points) a candle's close can be from the median
         # price of the window to be considered part of the "cluster".
-        "MAX_DEVIATION_FROM_CENTER": 1.0,
+        "MAX_DEVIATION_FROM_CENTER": 0.5,
         # The minimum percentage of candles within the window that must be inside the cluster
         # for the consolidation to be considered valid. (e.g., 0.7 = 70%).
-        "MIN_CLUSTERED_CANDLE_RATIO": 0.8,
+        "MIN_CLUSTERED_CANDLE_RATIO": 0.7,
 
         # --- Oscillation & Sideways Movement Confirmation ---
         # The minimum number of valid peaks (highs) and troughs (lows) required in the window.
@@ -96,14 +96,14 @@ APPROACH_CONFIG = {
         "USE_ALTERNATING_PEAKS_TROUGHS_CHECK": True,
         # How much a peak/trough must stand out from its surroundings to be considered valid.
         # Higher values reduce sensitivity to minor fluctuations.
-        "PEAK_TROUGH_PROMINENCE": 1.5,
+        "PEAK_TROUGH_PROMINENCE": 1.0,
 
         # --- Balanced Sideways Movement Confirmation ---
         # Master switch to enable/disable the balanced sideways checks.
         "USE_BALANCED_SIDEWAYS_CHECK": True,
         # The maximum absolute slope of a linear regression line through the closing prices.
         # A value near 0 enforces a flat, horizontal trend.
-        "MAX_REGRESSION_SLOPE": 0.05,
+        "MAX_REGRESSION_SLOPE": 0.1,
         # The maximum allowed deviation in time spent above vs. below the median price.
         # (e.g., 0.3 means the number of candles above vs. below cannot differ by more than 30% of the lookback).
         "MAX_TIME_BALANCE_DEVIATION_RATIO": 0.15,
@@ -113,7 +113,7 @@ APPROACH_CONFIG = {
         "USE_CHANNEL_CONSISTENCY_CHECK": True,
         # The maximum allowed ratio of "outlier" candles (candles that close outside the
         # core channel defined by the clustered candles). Prevents erratic price action.
-        "MAX_CHANNEL_OUTLIER_RATIO": 0.1,
+        "MAX_CHANNEL_OUTLIER_RATIO": 0.2,
 
         # --- Consecutive Trend Confirmation ---
         # Master switch to enable/disable the consecutive trend check.
@@ -128,7 +128,7 @@ APPROACH_CONFIG = {
         # The ADX value below which the market is considered non-trending.
         "ADX_THRESHOLD": 25,
         # The minimum ratio of candles in the window that must be "non-trending" (below ADX_THRESHOLD).
-        "ADX_CONFIRMATION_RATIO": 0.8,
+        "ADX_CONFIRMATION_RATIO": 0.7,
 
         # Master switch to enable/disable the Bollinger Band Width filter (squeeze).
         "USE_BB_WIDTH_FILTER": True,
@@ -254,10 +254,11 @@ APPROACH_CONFIG = {
     "VOLUME_SPIKE_CONFIRMATION": {
         "VOLUME_SPIKE_MULTIPLIER": 3.0,
         "MIN_CONFIRMATION_BODY_SIZE": 0.5,
-        "MIN_CONFIRMATION_BODY_RATIO": 0.6,
-        "SIGNAL_LOOKBACK_PERIOD": 2,
-        "COOLDOWN_PERIOD": 2,
-        "MIN_LOOKBACK_DATA": 30
+        "MIN_CONFIRMATION_BODY_RATIO": 0.3,
+        "SIGNAL_LOOKBACK_PERIOD": 5,
+        "COOLDOWN_PERIOD": 10,
+        "MIN_LOOKBACK_DATA": 30,
+        "PEAK_TROUGH_PROMINENCE": 1.0,
     }
 }
 

@@ -15,3 +15,4 @@ class VolumeSpikeConfirmationSettings:
         self.signal_lookback_period = self.approach_settings.get("SIGNAL_LOOKBACK_PERIOD", 3)
         self.cooldown_period = self.approach_settings.get("COOLDOWN_PERIOD", 2)
         self.min_lookback_data = self.approach_settings.get("MIN_LOOKBACK_DATA", 30)
+        self.peak_trough_prominence = self.approach_settings.get("PEAK_TROUGH_PROMINENCE", 0.5)
