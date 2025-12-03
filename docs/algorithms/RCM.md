@@ -12,7 +12,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
-| `PEAK_TROUGH_PROMINENCE` | 5 | **(Crucial)** The minimum price change required to classify a price swing as a significant peak or trough. A higher value filters out minor fluctuations. |
+| `PEAK_TROUGH_PROMINENCE` | 5 | **(Crucial)** The prominence of a peak/trough. This value determines how much a peak/trough must stand out from the surrounding data to be considered significant. A higher value filters out minor fluctuations. |
 | `CONFIRMATION_WINDOW` | 3 | The number of candles *after* a peak or trough during which the algorithm will look for a confirmation signal. |
 | `CONFIRMATION_MIN_CONSISTENCY` | 2 | The minimum number of candles that must move in the signal's direction within the confirmation window. |
 | `PEAK_BOTTOM_LOOKBACK_PERIOD` | `None` | If set, requires the confirmation candle to break out of the price range established in this many candles *before* the reversal point. |

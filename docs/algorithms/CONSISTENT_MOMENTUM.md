@@ -10,13 +10,13 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
-| `CONFIRMATION_WINDOW` | 3 | The number of consecutive candles that must all show consistent directional momentum. |
+| `WINDOW_SIZE` | 3 | The number of consecutive candles that must all show consistent directional momentum. |
 | `PEAK_BOTTOM_LOOKBACK_PERIOD` | `None` | The number of minutes to look back from the start of the momentum window to find a recent peak/trough. If `None`, it looks back through all available history. |
-| `PEAK_TROUGH_PROMINENCE` | 1 | The prominence value used to detect peaks and troughs. A higher value requires a peak/trough to be more significant relative to its neighbors. |
+| `PEAK_TROUGH_PROMINENCE` | 5 | The prominence value used to detect peaks and troughs. A higher value requires a peak/trough to be more significant relative to its neighbors. |
 | `BODY_TO_RANGE_MIN_RATIO` | 0.5 | The minimum ratio of the **final candle's** body to its total range. This ensures the breakout candle is decisive. |
-| `STRONG_CLOSE_THRESHOLD_RANGE` | `(0.7, 0.3)` | The final candle must close in the top 70% of its range for a BUY, or bottom 30% for a SELL. |
+| `STRONG_CLOSE_THRESHOLD_RANGE` | `(0.7, 0.3)` | The final candle must close in the top 70% of its range for a BUY, or bottom 30% for a SELL. The implementation uses the first value (0.7) as the minimum threshold for both BUY and SELL checks. |
 | `USE_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle in the window to have a volume spike. |
-| `USE_INCREASING_VOLUME_CONFIRMATION` | `False` | If `True`, requires the volume to be generally increasing across the confirmation window. |
+| `USE_VOLUME_INCREASING_CONFIRMATION` | `False` | If `True`, requires the volume to be generally increasing across the confirmation window. |
 | `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle's volume to be the highest within the window. |
 | `USE_REALTIME_REVERSAL_CONFIRMATION` | `False` | If `True`, looks at the next candle(s) to ensure no immediate strong reversal occurs, invalidating the signal. |
 
@@ -34,7 +34,9 @@ The core logic resides in the `ConsistentMomentumExecutor` class in `src/stockre
     *   For a `SELL` signal, it must be consistently decreasing or flat.
 
 3.  **Strong Close Check:**
-    *   The final candle in the window must close "strongly," as defined by `STRONG_CLOSE_THRESHOLD_RANGE`. For a `BUY`, it must close in the upper portion of its range. For a `SELL`, it must close in the lower portion.
+    *   The final candle in the window must close "strongly."
+    *   For a `BUY` signal, the ratio `(close - low) / (high - low)` must be greater than or equal to the `strong_close_min` threshold (e.g., 0.7).
+    *   For a `SELL` signal, the ratio `(high - close) / (high - low)` must be greater than or equal to the `strong_close_min` threshold.
 
 4.  **Peak/Trough Breakout Confirmation (Key Logic):**
     *   This is a critical check to ensure the momentum is breaking out of a recent price structure.
@@ -46,7 +48,7 @@ The core logic resides in the `ConsistentMomentumExecutor` class in `src/stockre
 5.  **Volume Confirmation (Optional):**
     *   The logic checks up to three volume conditions on the momentum window if their respective flags are `True`:
         *   `USE_VOLUME_CONFIRMATION`: The final candle must have a volume spike.
-        *   `USE_INCREASING_VOLUME_CONFIRMATION`: Volume must be trending upwards across the window.
+        *   `USE_VOLUME_INCREASING_CONFIRMATION`: Volume must be trending upwards across the window.
         *   `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION`: The final candle must have the highest volume in the window.
 
 6.  **Final Candle Quality (Body-to-Range Ratio):**
@@ -97,7 +99,7 @@ graph TD
 
 ### Diagram Explanation
 
-1.  **Analyze Rolling Window**: The algorithm processes data in rolling windows of `CONFIRMATION_WINDOW` size.
+1.  **Analyze Rolling Window**: The algorithm processes data in rolling windows of `WINDOW_SIZE` size.
 2.  **Basic Momentum?**: Checks if all candles in the window share the same direction (all bullish or all bearish).
 3.  **Consistent Trend (Avg Price)?**: Ensures the average price of the candles is consistently increasing (for a BUY) or decreasing (for a SELL).
 4.  **Strong Close?**: Validates that the final candle closes in the upper (BUY) or lower (SELL) portion of its range.

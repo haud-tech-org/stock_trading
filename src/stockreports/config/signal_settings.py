@@ -50,8 +50,14 @@ SUPPORT_BREAKDOWN_VOLUME_AVG_PERIOD = None
 # Breakdown candle volume must be at least 1.5x the average volume.
 SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.2
 
+# --- Close Position Scheduler ---
+# The number of minutes to wait after a signal is sent before sending a "Close Position" notification.
+# Set to None to disable.
+CLOSE_POSITION_DELAY_MINUTES = 5
+
 
 # --- Approach-Specific Configurations ---
+# This dictionary holds the detailed parameters for each alert approach.
 # Fine-tunes parameters for each alerting strategy.
 # The "default" block applies to any approach not explicitly defined.
 APPROACH_CONFIG = {

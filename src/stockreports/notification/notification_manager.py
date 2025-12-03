@@ -9,6 +9,8 @@ from src.stockreports.utils.notification.email_utils import send_email, format_e
 from src.stockreports.utils.notification.sms_utils import send_sms, format_sms_body
 from src.stockreports.utils.notification.ntfy_utils import send_ntfy_notification
 from src.stockreports.utils.alert_utils import calculate_suggested_price
+from src.stockreports.notification.close_position_scheduler import update_latest_signal
+from src.stockreports.alert.common.constants import Approach
 
 class NotificationManager:
     """
@@ -53,11 +55,14 @@ class NotificationManager:
             market_data=market_data
         )
 
+        # Ensure alert_time is a datetime object before creating the notification
+        alert_time_obj = pd.to_datetime(latest_alert_row['alert_time'])
+
         notification = AlertNotification(
             symbol=symbol,
             signal=latest_alert_row['signal'],
             alert_price=latest_alert_row['alert_price'],
-            alert_time=latest_alert_row['alert_time'],
+            alert_time=alert_time_obj,
             approach=latest_alert_row['approach'],
             details=details_dict,
             suggested_price=suggested_price
@@ -75,6 +80,13 @@ class NotificationManager:
         Args:
             notification (AlertNotification): The alert notification object to send.
         """
+        # --- Update the close position scheduler ---
+        # This will store the latest signal and reset the timer if a new one comes in.
+        # We check if the notification's approach is one of the valid trading strategies.
+        valid_approaches = [value for key, value in vars(Approach).items() if not key.startswith('__')]
+        if notification.approach in valid_approaches:
+            update_latest_signal(notification)
+
         # --- Send Ntfy Notification ---
         if self.notification_settings.NTFY_ENABLED:
             try:

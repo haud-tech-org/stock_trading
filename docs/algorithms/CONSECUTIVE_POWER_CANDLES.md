@@ -30,7 +30,8 @@ The core logic resides in the `ConsecutivePowerCandlesExecutor` class in `src/st
     *   Each candle in the window must be a "power candle," meaning its body must make up at least `MIN_BODY_TO_RANGE_RATIO` of its total range. This filters out indecisive candles with long wicks.
 
 3.  **Minimum Pre-Candle Body Size:**
-    *   The algorithm iterates through the `MIN_PRE_CANDLE_BODY_SIZES` array.
+    *   The algorithm first validates that the number of entries in the `MIN_PRE_CANDLE_BODY_SIZES` array matches the number of pre-candles (`CANDLE_COUNT - 1`). If they do not match, this check is skipped, and a warning is logged.
+    *   If the configuration is valid, it iterates through the `MIN_PRE_CANDLE_BODY_SIZES` array.
     *   For each pre-candle (from the first to the second-to-last), it checks if its body size meets the corresponding minimum value specified in the array. This ensures the initial move has sufficient force.
 
 4.  **Progressive Momentum (Key Logic):**

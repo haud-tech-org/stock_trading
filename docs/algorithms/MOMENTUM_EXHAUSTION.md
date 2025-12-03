@@ -41,16 +41,19 @@ For an alert to be generated, all of the following checks must pass in sequence:
     *   After a **bullish** trend, the algorithm requires the **Reversal Candle** to be bearish (`close < open`) and the final **Confirmation Candle** to also be bearish. This sequence confirms the reversal and triggers a `SELL` signal.
     *   After a **bearish** trend, it requires the **Reversal Candle** to be bullish (`close > open`) and the **Confirmation Candle** to also be bullish, triggering a `BUY` signal.
 
-3.  **Check for Shrinking Bodies (Exhaustion):**
-    *   The algorithm then verifies that the trend was indeed "exhausting" itself. It does this by examining the body sizes of the candles in the **Exhaustion Phase**.
-    *   Each candle in this phase must have a smaller body than the one preceding it. This pattern of progressively shrinking candle bodies is the key indicator of momentum loss.
+3.  **Check for Trend Exhaustion (Average Body Size):**
+    *   The algorithm verifies that the trend was "exhausting" by comparing the average candle body size between the two phases.
+    *   The **average body size** of all candles in the **Exhaustion Phase** must be **smaller** than the **average body size** of all candles in the **Momentum Phase**. This indicates that the conviction behind the original trend was fading.
 
-4.  **Volume Confirmation (Optional):**
+4.  **Confirm Reversal Strength:**
+    *   To ensure the reversal has conviction, the body of the **Reversal Candle** must be **larger** than the average body size of the candles in the **Exhaustion Phase**. This signals a decisive shift in momentum.
+
+5.  **Volume Confirmation (Optional):**
     *   If `USE_VOLUME_CONFIRMATION` is `True`, two volume checks are performed:
         *   **Fading Volume:** The average volume during the **Exhaustion Phase** must be lower than the average volume during the **Momentum Phase**, indicating waning interest in the original trend.
         *   **Reversal Spike:** The **Reversal Candle** must be accompanied by a significant volume spike, indicating strong conviction behind the new, opposing move.
 
-5.  **Final Indicator Confirmation (Optional):**
+6.  **Final Indicator Confirmation (Optional):**
     *   If any standard confirmation flags (`USE_MA_CONFIRMATION`, etc.) are enabled, the algorithm performs a final check on the **Confirmation Candle**.
     *   **RSI Exhaustion:** It first ensures the new move is not *already* exhausted (e.g., not overbought for a `BUY` signal).
     *   **Standard Indicators:** It then checks if indicators like MA, MACD, etc., align with the new signal direction.
@@ -66,15 +69,17 @@ graph TD
     C -- No --> X[Discard Window];
     C -- Yes --> D{2. Reversal & Confirmation Candles Identified?};
     D -- No --> X;
-    D -- Yes --> E{3. Exhaustion Bodies Shrinking?};
+    D -- Yes --> E{3. Exhaustion Confirmed (Avg Body)?};
     E -- No --> X;
-    E -- Yes --> F{"Optional Filters Enabled?"};
-    F -- No --> Z[Generate Alert];
-    F -- Yes --> G{4. Volume Profile Confirmed?};
-    G -- No --> X;
-    G -- Yes --> H{5. Final Indicators Confirmed?};
+    E -- Yes --> F{4. Reversal Strength Confirmed?};
+    F -- No --> X;
+    F -- Yes --> G{"Optional Filters Enabled?"};
+    G -- No --> Z[Generate Alert];
+    G -- Yes --> H{5. Volume Profile Confirmed?};
     H -- No --> X;
-    H -- Yes --> Z;
+    H -- Yes --> I{6. Final Indicators Confirmed?};
+    I -- No --> X;
+    I -- Yes --> Z;
     X --> B;
 ```
 
@@ -83,9 +88,10 @@ graph TD
 1.  **Analyze Rolling Window**: The algorithm processes data in a rolling window large enough to contain the full Momentum -> Exhaustion -> Reversal -> Confirmation pattern.
 2.  **Initial Trend Confirmed?**: Uses the slope of an SMA during the "Momentum Phase" to establish a clear initial trend direction.
 3.  **Reversal & Confirmation Candles Identified?**: Checks if the candles following the trend and exhaustion phases show the correct reversal pattern (e.g., a bearish candle after a bullish trend).
-4.  **Exhaustion Bodies Shrinking?**: The key logic step. Confirms that the candle bodies were progressively shrinking during the "Exhaustion Phase," indicating momentum loss.
-5.  **Optional Filters**: If the core pattern is valid, the algorithm proceeds to optional validation filters.
-6.  **Volume Profile Confirmed?**: Checks for the "fading volume" during exhaustion and the "volume spike" on the reversal candle.
-7.  **Final Indicators Confirmed?**: Validates the new trend direction on the final confirmation candle using standard indicators like RSI, MA, and MACD.
-8.  **Generate Alert**: If all mandatory and enabled optional checks pass, an alert is generated.
-9.  **Discard Window**: If any check fails, the current window is discarded.
+4.  **Exhaustion Confirmed (Avg Body)?**: The key logic step. Confirms that the average candle body during the "Exhaustion Phase" was smaller than during the "Momentum Phase".
+5.  **Reversal Strength Confirmed?**: Ensures the body of the reversal candle is larger than the average exhaustion body, signaling conviction.
+6.  **Optional Filters**: If the core pattern is valid, the algorithm proceeds to optional validation filters.
+7.  **Volume Profile Confirmed?**: Checks for the "fading volume" during exhaustion and the "volume spike" on the reversal candle.
+8.  **Final Indicators Confirmed?**: Validates the new trend direction on the final confirmation candle using standard indicators like RSI, MA, and MACD.
+9.  **Generate Alert**: If all mandatory and enabled optional checks pass, an alert is generated.
+10. **Discard Window**: If any check fails, the current window is discarded.

@@ -22,17 +22,14 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 
 The core logic resides in the `VolumeSpikeConfirmationExecutor` class. It uses a reverse loop for real-time efficiency. For each candle `i`, it treats it as a potential "confirmation candle" and analyzes a window of preceding candles.
 
-The process begins with a data sufficiency check:
-- **Minimum Data Check:** Before any analysis, the executor verifies that it has at least `MIN_LOOKBACK_DATA` candles. If not, it logs a warning and exits.
-
-The pattern analysis involves a window defined by `SIGNAL_LOOKBACK_PERIOD`. Let's denote the window ending at the confirmation candle `i` as the "Analysis Window".
+The total analysis window size is `SIGNAL_LOOKBACK_PERIOD`.
 
 ### Signal Generation Conditions
 
 1.  **Identify Signal Candle:**
-    *   The algorithm looks at the window excluding the confirmation candle (indices `i-lookback` to `i-1`).
-    *   It identifies the candle with the highest volume in this sub-window as the `signal_candle`.
-    *   **Position Constraint:** The `signal_candle` must **not** be the very first candle of the sub-window, nor the last one (immediately preceding the confirmation candle). It must be "sandwiched" within the lookback period.
+    *   The algorithm looks at the window of `SIGNAL_LOOKBACK_PERIOD` candles ending at the confirmation candle `i`.
+    *   It identifies the candle with the highest volume in this window (excluding the confirmation candle itself) as the `signal_candle`.
+    *   **Position Constraint:** The `signal_candle` must **not** be the very first candle of the lookback window, nor the last one (immediately preceding the confirmation candle). It must be "sandwiched" within the lookback period.
 
 2.  **Check for Volume Spike:**
     *   The algorithm calculates the average volume of all candles in the dataset *prior* to the `signal_candle`.
@@ -49,10 +46,10 @@ The pattern analysis involves a window defined by `SIGNAL_LOOKBACK_PERIOD`. Let'
         *   **Red Confirmation** -> Potential **SELL**.
     
     *   **Reversal Validation (Peak/Trough):**
-        *   It uses a peak-finding algorithm (`scipy.signal.find_peaks`) on the closing prices within the Analysis Window.
-        *   **For BUY:** It looks for a **Trough** (local minimum) in the closing prices.
-        *   **For SELL:** It looks for a **Peak** (local maximum) in the closing prices.
-        *   The identified Peak or Trough must **not** be at the very start or end of the Analysis Window.
+        *   It uses a peak-finding algorithm (`scipy.signal.find_peaks`) on the closing prices within the entire analysis window (including the confirmation candle).
+        *   **For BUY:** It looks for a **Trough** (local minimum) in the closing prices. The most significant trough (lowest price) is chosen.
+        *   **For SELL:** It looks for a **Peak** (local maximum) in the closing prices. The most significant peak (highest price) is chosen.
+        *   The identified Peak or Trough must **not** be at the very start or end of the analysis window.
 
 5.  **Validate Pre-Spike Trend:**
     *   The algorithm examines the candles in the window *strictly before* the `signal_candle`.
