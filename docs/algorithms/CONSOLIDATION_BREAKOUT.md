@@ -8,15 +8,15 @@ This approach is highly configurable and uses a combination of price action, vol
 
 ## 2. Core Logic
 
-The executor analyzes the data using a rolling window approach. For each candle, it looks back over a specified `CONSOLIDATION_LOOKBACK` period to determine if a consolidation pattern exists. If it does, it then checks the subsequent candle(s) for a breakout.
+The executor analyzes the data by iterating backwards. For each potential breakout candle, it checks a range of historical lookback periods for a consolidation pattern.
 
 ### 2.1. Identifying the Consolidation Zone
 
-A time window is identified as a "consolidation zone" if it meets several configurable criteria designed to filter out trending or overly volatile periods.
+A time window is identified as a "consolidation zone" if it meets several configurable criteria. The executor iterates through every lookback length from the minimum to the maximum value specified in `CONSOLIDATION_LOOKBACK`.
 
 1.  **Price Clustering (Core Requirement)**:
     *   A `center_price` is calculated as the median of the `close` prices within the lookback period.
-    *   The algorithm checks how many candles have their `close` price within a `MAX_DEVIATION_FROM_CENTER` from this median price.
+    *   The algorithm checks how many candles have their `close` price within an absolute `MAX_DEVIATION_FROM_CENTER` value from this median price.
     *   To qualify as consolidation, the ratio of these "clustered" candles must exceed `MIN_CLUSTERED_CANDLE_RATIO`. This ensures the price is truly trading sideways around a central point.
 
 2.  **Channel Consistency Check (Optional)**:
@@ -36,9 +36,10 @@ A time window is identified as a "consolidation zone" if it meets several config
     *   If this run exceeds `MAX_CONSECUTIVE_TREND_CANDLES`, the period is invalidated, as it suggests underlying directional pressure rather than true consolidation.
 
 5.  **Peak & Trough Analysis (Optional)**:
-    *   If `MIN_PEAKS_TROUGHS` is greater than zero, the algorithm identifies significant local highs (peaks) and lows (troughs) within the window.
-    *   It requires a minimum number of these turning points to be present, ensuring the price is oscillating.
-    *   An additional `USE_ALTERNATING_PEAKS_TROUGHS_CHECK` can enforce that these peaks and troughs alternate, which is a classic characteristic of a sideways channel.
+    *   If `MIN_PEAKS_TROUGHS` is greater than zero, the algorithm identifies significant local highs (peaks) and lows (troughs).
+    *   Crucially, it only counts **peaks that are above the `center_price`** and **troughs that are below the `center_price`**. This ensures it is capturing true oscillations around the median, not just minor bumps in a trend.
+    *   It requires a minimum number of these valid turning points to be present.
+    *   An additional `USE_ALTERNATING_PEAKS_TROUGHS_CHECK` can enforce that these valid peaks and troughs alternate.
 
 ### 2.2. Indicator-Based Filters (Optional)
 
@@ -63,13 +64,11 @@ A breakout occurs if the candle immediately following the consolidation window c
 
 Several final checks are performed to validate the breakout's strength and reduce false signals.
 
-1.  **Pre-Breakout Candle Direction**: The candle immediately *before* the breakout candle must show intent. For a BUY signal, the last candle in the consolidation window must be bullish (`close >= open`). For a SELL signal, it must be bearish (`close <= open`).
-
-2.  **Volume Spike Confirmation (Optional)**:
+1.  **Volume Spike Confirmation (Optional)**:
     *   If `USE_VOLUME_SPIKE_CONFIRMATION` is enabled, the breakout must be supported by a surge in volume.
-    *   It checks if the volume of the breakout candle OR the pre-breakout candle is significantly higher (by a `VOLUME_SPIKE_MULTIPLIER`) than the average volume during the consolidation period.
+    *   It checks if the volume of **either the breakout candle OR the pre-breakout candle** is significantly higher (by a `VOLUME_SPIKE_MULTIPLIER`) than the average volume during the consolidation period.
 
-3.  **Standard Confirmation (Optional)**:
+2.  **Standard Confirmation (Optional)**:
     *   If `USE_CONFIRMATION` is enabled, it calls the shared `is_signal_confirmed` function, which can be configured to check indicators like RSI, MACD, or Stochastics on the breakout candle to ensure they align with the breakout direction.
 
 ## 3. Alert Generation
@@ -86,8 +85,8 @@ All parameters are configured in `signal_settings.py` under the `APPROACH_CONFIG
 
 ### Key Configuration Parameters:
 
--   `CONSOLIDATION_LOOKBACK`: A list of lookback periods to check for consolidation.
--   `MAX_DEVIATION_FROM_CENTER`: The percentage deviation allowed from the median price for a candle to be "clustered".
+-   `CONSOLIDATION_LOOKBACK`: A list defining the min and max lookback periods (e.g., `[50, 100]`) to check for consolidation. The algorithm will test every integer lookback value within this range.
+-   `MAX_DEVIATION_FROM_CENTER`: The absolute price deviation allowed from the median price for a candle to be "clustered".
 -   `MIN_CLUSTERED_CANDLE_RATIO`: The minimum ratio of clustered candles required to define a consolidation zone.
 -   `USE_*_CHECK` / `USE_*_FILTER`: Boolean flags to enable or disable the various optional checks described above.
 -   Thresholds and multipliers for each of the optional checks (e.g., `ADX_THRESHOLD`, `VOLUME_SPIKE_MULTIPLIER`).

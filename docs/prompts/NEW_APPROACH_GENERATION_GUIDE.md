@@ -161,25 +161,41 @@ class ConsolidationBreakoutExecutor(Executor):
             if not is_development_mode and i < active_region_start:
                 break
 
-            # --- Cooldown Check ---
             current_candle_time = df_indexed.index[i]
-            if ConsolidationBreakoutExecutor.LATEST_ALERT_TIMESTAMP is not None:
-                time_since_last = (current_candle_time - ConsolidationBreakoutExecutor.LATEST_ALERT_TIMESTAMP).total_seconds() / 60
+            
+            # --- Cooldown Check (Example) ---
+            if self.settings.cooldown_period > 0 and self.LATEST_ALERT_TIMESTAMP is not None:
+                time_since_last = (current_candle_time - self.LATEST_ALERT_TIMESTAMP).total_seconds() / 60
                 if time_since_last < self.settings.cooldown_period:
+                    if self.debug:
+                        self.logger.debug(f"Window ending {current_candle_time}: Skipped due to active cooldown. "
+                                        f"Last alert was {time_since_last:.2f} mins ago, "
+                                        f"cooldown is {self.settings.cooldown_period} mins.")
                     continue
 
             window = df_indexed.iloc[i - required_lookback + 1 : i + 1].copy()
             
             # --- Core Logic ---
             # Your unique pattern detection logic goes here.
-            # Example: is_breakout = self._check_pattern(window)
-            is_breakout, signal = True, "BUY" # Placeholder
+            # It should return a signal ("BUY" or "SELL") or None.
+            # Make sure to include detailed debug logging for each failed check.
+            # Example: signal = self._check_pattern(window)
+            signal = "BUY" # Placeholder
             
-            if is_breakout:
+            if signal:
+                # --- Optional Final Filters ---
+                # Apply standard filters like volume, RSI, etc. after finding a core pattern.
+                # if not self._is_breakout_confirmed(window):
+                #     continue
+
                 alert = self._create_alert(window, signal)
                 alerts.append(alert)
+                
+                # Update class-level timestamp for cooldown
                 ConsolidationBreakoutExecutor.LATEST_ALERT_TIMESTAMP = alert.alert_time
+                
                 if not is_development_mode:
+                    self.logger.info(f"Alert found in DEPLOYMENT mode. Exiting loop.")
                     return alerts # Exit after first alert in deployment
         
         return alerts[::-1]

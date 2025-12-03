@@ -20,25 +20,38 @@ This approach is configured in `src/stockreports/config/signal_settings.py` unde
 | `LOOKBACK_WINDOW` | 10 | The number of candles used for the trend confirmation logic. |
 | `COOLDOWN_PERIOD` | 10 | The minimum time in **minutes** that must pass after an alert is fired before a new one can be generated for this approach. |
 | `MA_SHORT_PERIOD` | 5 | The lookback period for the short-term Moving Average, used to gauge immediate momentum for both symbols. |
-| `DISABLE_SELL_SIGNAL` | `False` | A boolean flag to enable (`False`) or disable (`True`) the generation of `SELL` signals. Defaults to `True`. |
+| `DISABLE_SELL_SIGNAL` | `True` | A boolean flag to enable (`False`) or disable (`True`) the generation of `SELL` signals. Defaults to `True`. |
 
 ## Step-by-Step Logic
 
-The core logic resides in the `ComparisonExecutor` class in `src/stockreports/alert/approach/comparison/executor.py`. The analysis is performed in a backward loop, starting from the most recent data.
+The core logic resides in the `ComparisonExecutor` class (`executor.py`) and the `ComparisonConfirmation` class (`confirmation.py`).
 
-1.  **Initialization**: The `ComparisonExecutor` is instantiated for a specific symbol. It loads its configuration via the `ComparisonSignalSettings` class and validates that the executor's symbol matches the primary symbol in the settings.
+1.  **Initialization**: The `ComparisonExecutor` is created for a specific symbol and loads its settings.
 
-2.  **Data Preparation**: The `run` method loads historical data for both the primary symbol and the `REFERENCED_SYMBOL`. The two datasets are aligned by their timestamps to ensure a direct, candle-by-candle comparison.
+2.  **Data Preparation**: The `run` method loads and aligns historical data for both the primary and reference symbols by their timestamps.
 
-3.  **Indicator Calculation**: A short-term Moving Average (MA) is calculated for the `close` price of both the primary and reference symbols. This MA helps smooth out price action and identify the immediate trend.
+3.  **Indicator Calculation**: A short-term Moving Average (MA) is calculated for the `close` price of both symbols to identify the immediate trend.
 
-4.  **Reverse Loop Analysis**: The algorithm iterates backward through the aligned data. For each candle, it performs the following checks using the `ComparisonConfirmation` helper:
+4.  **Reverse Loop Analysis**: The algorithm iterates backward through the aligned data. For each candle, it performs the following checks:
 
-    *   **Cooldown Check**: Before any analysis, the algorithm checks a **class-level** (static) variable, `LATEST_ALERT_TIMESTAMP`, which stores when the last alert for this approach was fired across all symbols. If the time elapsed is less than the configured `COOLDOWN_PERIOD`, the candle is skipped.
-    *   **Trend Confirmation**: It checks if both symbols are in a consistent trend. For a `SELL` signal, it first checks if `DISABLE_SELL_SIGNAL` is `True`. If so, the check is skipped. Otherwise, it confirms synchronized trend conditions (e.g., for a `BUY` signal, both symbols must be in an uptrend).
-    *   **Re-alignment Check**: It looks for a "price-switch" crossover event where the primary symbol's price crosses the reference symbol's price, indicating a re-alignment with the broader market trend.
+    *   **Cooldown Check**: It checks a class-level timestamp to ensure the `COOLDOWN_PERIOD` has passed since the last alert for this approach, preventing rapid-fire alerts.
+    *   **Signal Confirmation**: It calls the `ComparisonConfirmation` helper to check for either a `BUY` or `SELL` signal.
 
-5.  **Alert Generation**: If all conditions are met and the cooldown is not active, an `AlertData` object is created. The `LATEST_ALERT_TIMESTAMP` is then updated with the new alert's time. In `DEPLOYMENT` mode, the function returns immediately with the first alert found.
+5.  **Confirmation Logic (`ComparisonConfirmation`)**:
+    *   **Find Price-Switch Reversal**: The first step is to scan backwards within the `LOOKBACK_WINDOW` to find a "price-switch" event.
+        *   For a `BUY` signal, this is where the primary symbol's close price crosses *above* the reference symbol's close price.
+        *   For a `SELL` signal, it's where the primary symbol's close price crosses *below* the reference's.
+    *   **Confirm Trend Post-Switch**: If a price-switch is found, the algorithm then confirms if the trend is valid *at the current candle*:
+        *   **For an Uptrend (BUY):**
+            1.  Both symbols must be on a **green (bullish)** candle.
+            2.  The closing price of both symbols must be **above** their short-term MA.
+            3.  The current closing price of both symbols must be **higher** than their respective prices at the time of the price-switch, confirming sustained momentum.
+        *   **For a Downtrend (SELL):** (This check is skipped if `DISABLE_SELL_SIGNAL` is `True`)
+            1.  Both symbols must be on a **red (bearish)** candle.
+            2.  The closing price of both symbols must be **below** their short-term MA.
+            3.  The current closing price of both symbols must be **lower** than their respective prices at the time of the price-switch.
+
+6.  **Alert Generation**: If all conditions are met, an `AlertData` object is created, and the global cooldown timestamp is updated. In `DEPLOYMENT` mode, the loop exits immediately after finding the first alert.
 
 ## Flow Diagram
 
@@ -58,11 +71,12 @@ graph TD
     end
 
     subgraph "Confirmation Checker Logic"
-        C --> C0{Is SELL signal disabled?};
-        C0 -- Yes, for SELL check --> D;
-        C0 -- No --> C1{Are both symbols in a consistent trend?};
-        C1 --> C2{Is there a price-switch crossover?};
-        C2 --> D;
+        C --> C1{Find Price-Switch Crossover?};
+        C1 -- No --> D;
+        C1 -- Yes --> C2{Confirm Trend Conditions?};
+        C2 -- No --> D;
+        C2 -- Yes --> C3[Signal Confirmed];
+        C3 --> D;
     end
 ```
 

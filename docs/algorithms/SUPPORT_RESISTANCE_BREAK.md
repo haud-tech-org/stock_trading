@@ -22,7 +22,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 | `USE_VOLUME_CONFIRMATION` | `False` | If `True`, requires the initial **break candle** to have a significant volume spike. |
 | `USE_INCREASING_VOLUME_CONFIRMATION` | `False` | If `True`, requires volume to be generally increasing during the `CONFIRMATION_WINDOW`. |
 | `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final confirmation candle to have the highest volume in its window. |
-| `ADX_CONFIRMATION_THRESHOLD` | 20 | The minimum ADX value required on the **final confirmation candle**, ensuring the trend has sufficient strength. |
+| `ADX_CONFIRMATION_THRESHOLD` | 20 | The minimum ADX value required on the **final confirmation candle**, ensuring the trend has sufficient strength. This value is sourced from the global `signal_settings`. |
 | `USE_RSI_EXHAUSTION_FILTER`, `USE_MA_CONFIRMATION`, etc. | `False` | Standard confirmation flags. These are checked on the **break candle** to validate the initial move. |
 
 ## Step-by-Step Logic (Backward Loop)
@@ -37,11 +37,11 @@ The core logic resides in the `SupportResistanceBreakExecutor` class in `src/sto
 
 ### Signal Generation Conditions
 
-1.  **Define Windows and Levels:** For each potential final candle `i`, the algorithm defines the three windows. It then finds the `highest_peak` (resistance) and `lowest_trough` (support) within the **Lookback Window**.
+1.  **Define Windows and Levels:** For each potential final candle `i`, the algorithm defines the three windows. It then finds the `highest_high` (resistance) and `lowest_low` (support) within the **Lookback Window**. These are determined by taking the absolute maximum high and minimum low in that period, not by using a peak-finding algorithm.
 
 2.  **Check for Pre-Break Squeeze (Optional):** If `USE_BB_SQUEEZE_CONFIRMATION` is `True`, it first checks if the **Lookback Window** was in a low-volatility state (a Bollinger Band Squeeze). If not, it ignores any break, assuming the market is too choppy.
 
-3.  **Identify the Initial Break:** The algorithm checks if the **Break Candle** closed above the `highest_peak` (for a `BUY`) or below the `lowest_trough` (for a `SELL`). If no break occurred, the pattern is invalid.
+3.  **Identify the Initial Break:** The algorithm checks if the **Break Candle** closed above the `highest_high` (for a `BUY`) or below the `lowest_low` (for a `SELL`). If no break occurred, the pattern is invalid.
 
 4.  **Validate the Break Candle:** If a break is found, the **Break Candle** is immediately subjected to several filters:
     *   **Indicator Confirmation (Optional):** It is checked against standard indicators (`is_signal_confirmed`) like MA, MACD, etc., if enabled.
@@ -55,7 +55,7 @@ The core logic resides in the `SupportResistanceBreakExecutor` class in `src/sto
 
 ### Signal Generation
 
-If all parts of the pattern are identified and all configured validation checks pass, an `AlertData` object is created, and a signal is generated. The algorithm then enters a cooldown period to avoid generating duplicate alerts from the same breakout event.
+If all parts of the pattern are identified and all configured validation checks pass, an `AlertData` object is created, and a signal is generated. The algorithm tracks the index of the last break candle to prevent generating multiple, overlapping alerts for the same event.
 
 ## Flow Diagram
 
