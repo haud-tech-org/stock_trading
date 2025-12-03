@@ -17,6 +17,7 @@ from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.regime import has_divergence
+from .settings import StrongCandleSettings
 
 
 class StrongCandleExecutor(Executor):
@@ -24,13 +25,9 @@ class StrongCandleExecutor(Executor):
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
+        self.settings = StrongCandleSettings(symbol)
         self.validation_settings = loader.get_validation_settings()
         self.logger = logging.getLogger(__name__)
-        self.CONFIG = self.signal_settings.APPROACH_CONFIG.get(
-            self.APPROACH_NAME, self.signal_settings.APPROACH_CONFIG.get("default", {})
-        )
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -66,7 +63,7 @@ class StrongCandleExecutor(Executor):
         alerts = []
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         
-        confirmation_window = self.CONFIG.get("CONFIRMATION_WINDOW", 4)
+        confirmation_window = self.settings.confirmation_window
         required_lookback = confirmation_window + 2
 
         df = prepare_indicators(df)
@@ -95,7 +92,43 @@ class StrongCandleExecutor(Executor):
             
             potential_signal = Signal.BUY if is_bullish_momentum else Signal.SELL
 
-            if not is_signal_confirmed(confirmation_candle, potential_signal, self.CONFIG):
+            if not is_signal_confirmed(confirmation_candle, potential_signal, self.settings.approach_settings):
+                continue
+
+            # --- 4. Volume Confirmation (Optional) ---
+            if self.settings.use_volume_confirmation:
+                if not can_apply_volume_confirmation(df_indexed):
+                    continue
+                if not is_volume_spike_confirmed(df_indexed, i):
+                    continue
+            
+            if self.settings.use_last_candle_max_volume_confirmation:
+                if not can_apply_volume_confirmation(df_indexed):
+                    continue
+                # Create a window ending at i to check if the last candle (at i) has max volume
+                # The window size isn't strictly defined here, but typically we check against recent history.
+                # Let's use the confirmation window + 2 (same as required_lookback logic)
+                window_start = max(0, i - self.settings.confirmation_window - 1)
+                volume_window = df_indexed.iloc[window_start : i + 1]
+                if not is_last_candle_volume_max(volume_window):
+                    continue
+
+            if self.settings.use_volume_increasing_confirmation:
+                if not can_apply_volume_confirmation(df_indexed):
+                    continue
+                # Similarly, define a window for increasing volume check
+                window_start = max(0, i - self.settings.confirmation_window - 1)
+                volume_window = df_indexed.iloc[window_start : i + 1]
+                if not is_volume_increasing(volume_window):
+                    continue
+
+            if self.settings.use_divergence_confirmation:
+                if not has_divergence(df_indexed, i, potential_signal):
+                    continue
+
+            # --- 5. Magnitude Check ---
+            is_sufficient, magnitude = check_magnitude(momentum_candle['close'], confirmation_candle['close'], self.settings.min_alert_magnitude)
+            if not is_sufficient:
                 continue
 
             strong_candle_found = False
@@ -112,13 +145,13 @@ class StrongCandleExecutor(Executor):
                     potential_signal == Signal.BUY and
                     candidate_strong_candle['close'] > candidate_strong_candle['open'] and
                     candidate_strong_candle['body_size'] > self.validation_settings.MIN_EXPECTED_PROFIT_LOSS and
-                    candidate_strong_candle['upper_wick'] < candidate_strong_candle['body_size'] * self.signal_settings.TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
+                    candidate_strong_candle['upper_wick'] < candidate_strong_candle['body_size'] * self.settings.trend_strength_strong_close_tail_ratio
                 )
                 is_strong_bearish = (
                     potential_signal == Signal.SELL and
                     candidate_strong_candle['close'] < candidate_strong_candle['open'] and
                     candidate_strong_candle['body_size'] > self.validation_settings.MIN_EXPECTED_PROFIT_LOSS and
-                    candidate_strong_candle['lower_wick'] < candidate_strong_candle['body_size'] * self.signal_settings.TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
+                    candidate_strong_candle['lower_wick'] < candidate_strong_candle['body_size'] * self.settings.trend_strength_strong_close_tail_ratio
                 )
 
                 if is_strong_bullish or is_strong_bearish:
@@ -130,7 +163,7 @@ class StrongCandleExecutor(Executor):
                 continue
 
             start_price = strong_candle['low'] if potential_signal == Signal.BUY else strong_candle['high']
-            is_sufficient, magnitude = check_magnitude(momentum_candle['close'], start_price, self.CONFIG.get("MIN_ALERT_MAGNITUDE", 0))
+            is_sufficient, magnitude = check_magnitude(momentum_candle['close'], start_price, self.settings.min_alert_magnitude)
             if not is_sufficient:
                 continue
 
@@ -139,13 +172,13 @@ class StrongCandleExecutor(Executor):
                 candle_before_strong = df_indexed.iloc[strong_candle_index - 1]
                 candles_for_exhaustion_check = [candle_before_strong]
                 
-                if not _is_rsi_not_exhausted(candles_for_exhaustion_check, potential_signal, self.CONFIG):
+                if not _is_rsi_not_exhausted(candles_for_exhaustion_check, potential_signal, self.settings.approach_settings):
                     continue
 
             volume_window_df = df_indexed.iloc[strong_candle.name : i + 1]
-            use_volume_spike = self.CONFIG.get("USE_VOLUME_CONFIRMATION", False)
-            use_increasing_volume = self.CONFIG.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-            use_last_candle_max_volume = self.CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+            use_volume_spike = self.settings.use_volume_confirmation
+            use_increasing_volume = self.settings.use_volume_increasing_confirmation
+            use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
 
             volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
             volume_is_increasing = not use_increasing_volume or is_volume_increasing(volume_window_df)

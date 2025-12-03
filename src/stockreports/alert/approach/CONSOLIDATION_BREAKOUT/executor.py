@@ -14,6 +14,7 @@ from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode, Signal
 from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, is_signal_confirmed
 from src.stockreports.alert.common.data_utils import can_apply_analysis
+from .settings import ConsolidationBreakoutSettings
 
 
 class ConsolidationBreakoutExecutor(Executor):
@@ -21,12 +22,8 @@ class ConsolidationBreakoutExecutor(Executor):
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
+        self.settings = ConsolidationBreakoutSettings(symbol)
         self.logger = logging.getLogger(__name__)
-        self.CONFIG = self.signal_settings.APPROACH_CONFIG.get(
-            self.APPROACH_NAME, self.signal_settings.APPROACH_CONFIG.get("default", {})
-        )
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -60,12 +57,9 @@ class ConsolidationBreakoutExecutor(Executor):
         alerts = []
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
 
-        lookback_values = self.CONFIG.get("CONSOLIDATION_LOOKBACK", [50])
-        if not isinstance(lookback_values, list):
-            lookback_values = [lookback_values]
-
+        lookback_values = self.settings.consolidation_lookback
         min_lookback, max_lookback = min(lookback_values), max(lookback_values)
-        required_lookback = max_lookback + self.CONFIG.get("BREAKOUT_CONFIRMATION_CANDLES", 1)
+        required_lookback = max_lookback + self.settings.breakout_confirmation_candles
 
         df = prepare_indicators(df)
         if not can_apply_analysis(df, self.APPROACH_NAME, required_rows=required_lookback):
@@ -83,7 +77,7 @@ class ConsolidationBreakoutExecutor(Executor):
                 break
 
             for lookback in range(min_lookback, max_lookback + 1):
-                current_required_lookback = lookback + self.CONFIG.get("BREAKOUT_CONFIRMATION_CANDLES", 1)
+                current_required_lookback = lookback + self.settings.breakout_confirmation_candles
                 if i < current_required_lookback - 1:
                     continue
 
@@ -107,17 +101,17 @@ class ConsolidationBreakoutExecutor(Executor):
         breakout_window = window.iloc[lookback:]
 
         center_price = consolidation_window['close'].median()
-        max_deviation = self.CONFIG.get("MAX_DEVIATION_FROM_CENTER")
+        max_deviation = self.settings.max_deviation_from_center
         is_clustered = (consolidation_window['close'] >= center_price - max_deviation) & \
                        (consolidation_window['close'] <= center_price + max_deviation)
         
-        min_ratio = self.CONFIG.get("MIN_CLUSTERED_CANDLE_RATIO")
+        min_ratio = self.settings.min_clustered_candle_ratio
         if is_clustered.mean() < min_ratio:
             self.logger.debug(f"Window ending {window.index[-1]}: Failed MIN_CLUSTERED_CANDLE_RATIO. "
                             f"Got {is_clustered.mean():.2f}, need {min_ratio}.")
             return None
 
-        if self.CONFIG.get("USE_CHANNEL_CONSISTENCY_CHECK", False):
+        if self.settings.use_channel_consistency_check:
             core_channel_df = consolidation_window[is_clustered]
             core_resistance = core_channel_df['high'].max()
             core_support = core_channel_df['low'].min()
@@ -125,15 +119,15 @@ class ConsolidationBreakoutExecutor(Executor):
             outliers = (consolidation_window['close'] > core_resistance) | \
                        (consolidation_window['close'] < core_support)
             
-            max_outlier_ratio = self.CONFIG.get("MAX_CHANNEL_OUTLIER_RATIO", 0.1)
+            max_outlier_ratio = self.settings.max_channel_outlier_ratio
             
             if outliers.sum() / lookback > max_outlier_ratio:
                 self.logger.debug(f"Window ending {window.index[-1]}: Failed MAX_CHANNEL_OUTLIER_RATIO. "
                                 f"Got {outliers.sum() / lookback:.2f}, max {max_outlier_ratio}.")
                 return None
 
-        if self.CONFIG.get("USE_BALANCED_SIDEWAYS_CHECK", False):
-            max_slope = self.CONFIG.get("MAX_REGRESSION_SLOPE", 0.05)
+        if self.settings.use_balanced_sideways_check:
+            max_slope = self.settings.max_regression_slope
             x = np.arange(len(consolidation_window))
             y = consolidation_window['close'].values
             slope, _ = np.polyfit(x, y, 1)
@@ -142,7 +136,7 @@ class ConsolidationBreakoutExecutor(Executor):
                                 f"Got {abs(slope):.4f}, max {max_slope}.")
                 return None
 
-            max_balance_deviation = self.CONFIG.get("MAX_TIME_BALANCE_DEVIATION_RATIO", 0.3)
+            max_balance_deviation = self.settings.max_time_balance_deviation_ratio
             candles_above = (consolidation_window['close'] > center_price).sum()
             candles_below = (consolidation_window['close'] < center_price).sum()
             balance_ratio = abs(candles_above - candles_below) / lookback
@@ -151,8 +145,8 @@ class ConsolidationBreakoutExecutor(Executor):
                                 f"Got {balance_ratio:.2f}, max {max_balance_deviation}.")
                 return None
 
-        if self.CONFIG.get("USE_CONSECUTIVE_TREND_CHECK", False):
-            max_consecutive = self.CONFIG.get("MAX_CONSECUTIVE_TREND_CANDLES", 7)
+        if self.settings.use_consecutive_trend_check:
+            max_consecutive = self.settings.max_consecutive_trend_candles
             
             direction = np.sign(consolidation_window['close'] - consolidation_window['open'])
             
@@ -171,9 +165,9 @@ class ConsolidationBreakoutExecutor(Executor):
                                 f"Got {longest_run}, max {max_consecutive}.")
                 return None
 
-        min_peaks_troughs = self.CONFIG.get("MIN_PEAKS_TROUGHS", 0)
+        min_peaks_troughs = self.settings.min_peaks_troughs
         if min_peaks_troughs > 0:
-            prominence = self.CONFIG.get("PEAK_TROUGH_PROMINENCE", None)
+            prominence = self.settings.peak_trough_prominence
             peak_indices, _ = find_peaks(consolidation_window['high'], prominence=prominence)
             trough_indices, _ = find_peaks(-consolidation_window['low'], prominence=prominence)
 
@@ -185,7 +179,7 @@ class ConsolidationBreakoutExecutor(Executor):
                                 f"Got {len(valid_peaks) + len(valid_troughs)}, min {min_peaks_troughs}.")
                 return None
 
-            if self.CONFIG.get("USE_ALTERNATING_PEAKS_TROUGHS_CHECK", False):
+            if self.settings.use_alternating_peaks_troughs_check:
                 points = [(i, 'peak') for i in valid_peaks] + [(i, 'trough') for i in valid_troughs]
                 points.sort(key=lambda x: x[0])
 
@@ -195,9 +189,9 @@ class ConsolidationBreakoutExecutor(Executor):
                         self.logger.debug(f"Window ending {window.index[-1]}: Failed USE_ALTERNATING_PEAKS_TROUGHS_CHECK.")
                         return None
 
-        if self.CONFIG.get("USE_ADX_FILTER", False):
-            adx_threshold = self.CONFIG.get("ADX_THRESHOLD")
-            min_non_trending_ratio = self.CONFIG.get("ADX_CONFIRMATION_RATIO", 0.8)
+        if self.settings.use_adx_filter:
+            adx_threshold = self.settings.adx_threshold
+            min_non_trending_ratio = self.settings.adx_confirmation_ratio
             
             is_non_trending = consolidation_window['adx'] < adx_threshold
             
@@ -206,12 +200,12 @@ class ConsolidationBreakoutExecutor(Executor):
                                 f"Got {is_non_trending.mean():.2f}, min {min_non_trending_ratio}.")
                 return None
 
-        if self.CONFIG.get("USE_BB_WIDTH_FILTER", False):
-            bb_width_threshold = self.CONFIG.get("BB_WIDTH_THRESHOLD_PERCENT") / 100
+        if self.settings.use_bb_width_filter:
+            bb_width_threshold = self.settings.bb_width_threshold_percent / 100
             bb_width_percent = consolidation_window['bb_width'] / consolidation_window['bb_middle']
             is_squeezed = bb_width_percent < bb_width_threshold
             
-            min_squeeze_ratio = self.CONFIG.get("BB_SQUEEZE_CONFIRMATION_RATIO", 0.8)
+            min_squeeze_ratio = self.settings.bb_squeeze_confirmation_ratio
             if is_squeezed.mean() < min_squeeze_ratio:
                 self.logger.debug(f"Window ending {window.index[-1]}: Failed BB_SQUEEZE_CONFIRMATION_RATIO. "
                                 f"Got {is_squeezed.mean():.2f}, min {min_squeeze_ratio}.")
@@ -244,56 +238,48 @@ class ConsolidationBreakoutExecutor(Executor):
             self.logger.debug(f"Window ending {window.index[-1]}: Failed pre-breakout candle check for SELL. Last candle was bullish.")
             return None
 
-        if self.CONFIG.get("USE_VOLUME_SPIKE_CONFIRMATION", False):
+        if self.settings.use_volume_spike_confirmation:
             avg_consolidation_volume = consolidation_window['volume'].mean()
-            volume_multiplier = self.CONFIG.get("VOLUME_SPIKE_MULTIPLIER", 1.5)
+            volume_multiplier = self.settings.volume_spike_multiplier
+            is_volume_spike = consolidation_window['volume'] > avg_consolidation_volume * volume_multiplier
             
-            breakout_volume_spike = breakout_candle['volume'] >= avg_consolidation_volume * volume_multiplier
-            last_candle_volume_spike = last_consolidation_candle['volume'] >= avg_consolidation_volume * volume_multiplier
-            
-            if not (breakout_volume_spike or last_candle_volume_spike):
-                self.logger.debug(f"Window ending {window.index[-1]}: Failed USE_VOLUME_SPIKE_CONFIRMATION. "
-                                f"Breakout volume: {breakout_candle['volume']:.0f}, "
-                                f"Last candle volume: {last_consolidation_candle['volume']:.0f}, "
-                                f"Avg volume: {avg_consolidation_volume:.0f}, "
-                                f"Multiplier: {volume_multiplier}.")
+            min_volume_spike_ratio = self.settings.min_volume_spike_confirmation_ratio
+            if is_volume_spike.mean() < min_volume_spike_ratio:
+                self.logger.debug(f"Window ending {window.index[-1]}: Failed VOLUME_SPIKE_CONFIRMATION_RATIO. "
+                                f"Got {is_volume_spike.mean():.2f}, min {min_volume_spike_ratio}.")
                 return None
 
-        if self.CONFIG.get("USE_CONFIRMATION", False):
-            if not is_signal_confirmed(breakout_candle, signal, self.CONFIG):
-                self.logger.debug(f"Window ending {window.index[-1]}: Failed final signal confirmation (is_signal_confirmed).")
-                return None
-
-        self.logger.debug(f"Window ending {window.index[-1]}: All checks passed. Generating alert.")
-        return self._create_alert(window, signal, resistance, support, lookback, is_clustered, breakout_candle)
-
-    def _create_alert(self, window: pd.DataFrame, signal: Signal, resistance: float, support: float, lookback: int, is_clustered: pd.Series, breakout_candle: pd.Series) -> AlertData:
-        """
-        Creates and returns a standardized AlertData object.
-        """
-        start_candle = window.iloc[0]
+        alert_time = window.index[-1]
+        start_time = consolidation_window.index[0]
+        if isinstance(start_time, pd.Timestamp):
+            start_time = start_time.isoformat()
         
-        alert_time = breakout_candle.name
         alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
 
-        details = {
-            "reason": f"Price broke out of a {lookback}-candle consolidation channel.",
-            "consolidation_resistance": resistance,
-            "consolidation_support": support,
-            "breakout_candle_close": breakout_candle['close'],
-            "breakout_candle_volume": breakout_candle['volume'],
-            "clustered_ratio": round(is_clustered.mean(), 2)
-        }
-
-        return AlertData(
+        alert = AlertData(
+            symbol=self.symbol,
             approach=self.APPROACH_NAME,
             id=alert_id,
-            symbol=self.symbol,
             signal=signal,
             alert_price=breakout_candle['close'],
             alert_time=alert_time,
-            start_price=start_candle['open'],
-            start_time=start_candle.name,
-            magnitude=round(abs(breakout_candle['close'] - start_candle['open']), 2),
-            details=json.dumps(details)
+            start_price=center_price,
+            start_time=start_time,
+            magnitude=abs(breakout_candle['close'] - center_price),
+            details=json.dumps({
+                "lookback": lookback,
+                "support": support,
+                "resistance": resistance,
+                "center_price": center_price,
+                "max_deviation": max_deviation,
+                "is_clustered": is_clustered.tolist(),
+                "breakout_candle": {**breakout_candle[['open', 'high', 'low', 'close', 'volume']].to_dict(), 'time': breakout_candle.name},
+                "consolidation_window": consolidation_window.reset_index()[['time', 'open', 'high', 'low', 'close', 'volume']].to_dict(orient='records'),
+                "breakout_window": breakout_window.reset_index()[['time', 'open', 'high', 'low', 'close', 'volume']].to_dict(orient='records'),
+            }, default=str)
         )
+
+        self.logger.info(f"Window ending {window.index[-1]}: {signal} breakout detected. "
+                        f"Support: {support}, Resistance: {resistance}.")
+        
+        return alert

@@ -17,6 +17,7 @@ from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_v
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Approach, Mode, Signal
 from src.stockreports.alert.common.regime import has_divergence
+from .settings import IchimokuSettings
 
 
 class IchimokuExecutor(Executor):
@@ -24,19 +25,15 @@ class IchimokuExecutor(Executor):
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
+        self.settings = IchimokuSettings(symbol)
         self.logger = logging.getLogger(__name__)
-        self.CONFIG = self.signal_settings.APPROACH_CONFIG.get(
-            self.APPROACH_NAME, self.signal_settings.APPROACH_CONFIG.get("default", {})
-        )
 
     def _calculate_ichimoku_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculates all necessary Ichimoku indicators."""
-        tenkan_period = self.CONFIG.get('TENKAN_PERIOD', 9)
-        kijun_period = self.CONFIG.get('KIJUN_PERIOD', 26)
-        senkou_b_period = self.CONFIG.get('SENKOU_B_PERIOD', 52)
-        chikou_lag = self.CONFIG.get('CHIKOU_LAG', 26)
+        tenkan_period = self.settings.tenkan_period
+        kijun_period = self.settings.kijun_period
+        senkou_b_period = self.settings.senkou_b_period
+        chikou_lag = self.settings.chikou_lag
 
         # Tenkan-sen (Conversion Line)
         high_tenkan = df['high'].rolling(window=tenkan_period).max()
@@ -96,17 +93,14 @@ class IchimokuExecutor(Executor):
 
         # Determine the minimum amount of data needed for one calculation
         required_lookback = max(
-            self.CONFIG.get('TENKAN_PERIOD', 9),
-            self.CONFIG.get('KIJUN_PERIOD', 26),
-            self.CONFIG.get('SENKOU_B_PERIOD', 52),
-            self.CONFIG.get('CHIKOU_LAG', 26)
-        )
-
-        # All indicators must be prepared first.
-        df = prepare_indicators(df)
+            self.settings.tenkan_period,
+            self.settings.kijun_period,
+            self.settings.senkou_b_period
+        ) + self.settings.chikou_lag
         
-        can_run_analysis = can_apply_analysis(df, self.APPROACH_NAME, required_rows=required_lookback)
-        if not can_run_analysis:
+        min_bars_between_alerts = self.settings.min_bars_between_alerts
+        
+        if not can_apply_analysis(df, self.APPROACH_NAME, required_rows=required_lookback):
             return alerts
 
         # Ensure index is set to 'time' and is timezone-aware
@@ -125,10 +119,9 @@ class IchimokuExecutor(Executor):
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         
         # Config for the loop
-        min_bars_between_alerts = self.CONFIG.get('MIN_BARS_BETWEEN_ALERTS', 5)
-        use_divergence_filter = self.CONFIG.get("USE_DIVERGENCE_FILTER", False)
-        use_confirmation_filter = self.CONFIG.get("USE_CONFIRMATION_CANDLE_FILTER", False)
-        confirmation_candles = self.CONFIG.get("CONFIRMATION_CANDLE_COUNT", 1)
+        use_divergence_filter = self.settings.use_divergence_filter
+        use_confirmation_filter = self.settings.use_confirmation_candle_filter
+        confirmation_candles = self.settings.confirmation_candle_count
 
         # State tracking for signal and alert spacing
         last_alert_idx = float('inf')  # Use infinity for reverse loop
@@ -149,7 +142,7 @@ class IchimokuExecutor(Executor):
             
             if alert:
                 # --- Volume Confirmation ---
-                volume_spike_is_confirmed = not self.CONFIG.get("USE_VOLUME_CONFIRMATION", False) or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), i))
+                volume_spike_is_confirmed = not self.settings.use_volume_confirmation or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), i))
                 
                 if not volume_spike_is_confirmed:
                     continue
@@ -169,12 +162,12 @@ class IchimokuExecutor(Executor):
         price_above_kumo = candle['close'] > candle['senkou_a'] and candle['close'] > candle['senkou_b']
         
         # Ensure the index for chikou lookup is valid
-        chikou_lookup_idx = i - self.CONFIG.get('CHIKOU_LAG', 26)
+        chikou_lookup_idx = i - self.settings.chikou_lag
         if chikou_lookup_idx < 0:
             return None
         chikou_above_price = candle['chikou'] > df_indexed['high'].iloc[chikou_lookup_idx]
 
-        if tenkan_cross_up_kijun and price_above_kumo and (chikou_above_price if not self.CONFIG.get("SKIP_CHIKOU_CONFIRMATION", False) else True):
+        if tenkan_cross_up_kijun and price_above_kumo and (chikou_above_price if not self.settings.skip_chikou_confirmation else True):
             signal = Signal.BUY
 
         # --- Bearish Signal Conditions ---
@@ -183,12 +176,12 @@ class IchimokuExecutor(Executor):
             price_below_kumo = candle['close'] < candle['senkou_a'] and candle['close'] < candle['senkou_b']
             
             # Ensure the index for chikou lookup is valid
-            chikou_lookup_idx = i - self.CONFIG.get('CHIKOU_LAG', 26)
+            chikou_lookup_idx = i - self.settings.chikou_lag
             if chikou_lookup_idx < 0:
                 return None
             chikou_below_price = candle['chikou'] < df_indexed['low'].iloc[chikou_lookup_idx]
 
-            if tenkan_cross_down_kijun and price_below_kumo and (chikou_below_price if not self.CONFIG.get("SKIP_CHIKOU_CONFIRMATION", False) else True):
+            if tenkan_cross_down_kijun and price_below_kumo and (chikou_below_price if not self.settings.skip_chikou_confirmation else True):
                 signal = Signal.SELL
 
         # --- Common Alert Creation Logic ---
@@ -197,14 +190,14 @@ class IchimokuExecutor(Executor):
             # Step 1: Check for RSI exhaustion on the signal candle.
             # For Ichimoku, we only check the signal candle itself.
             candles_for_exhaustion_check = [candle]
-            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, self.CONFIG):
+            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, self.settings):
                 return None
 
             # Step 2: Check for confirmation on the signal candle.
-            if not is_signal_confirmed(candle, signal, self.CONFIG):
+            if not is_signal_confirmed(candle, signal, self.settings):
                 return None
 
-            if use_divergence_filter and has_divergence(df_indexed, i, signal, self.CONFIG):
+            if use_divergence_filter and has_divergence(df_indexed, i, signal, self.settings):
                 return None
 
             # --- Look-forward Confirmation Candle Logic ---

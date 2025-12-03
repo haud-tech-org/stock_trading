@@ -18,6 +18,7 @@ from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_v
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.magnitude import check_magnitude
 from src.stockreports.alert.common.regime import has_divergence
+from .settings import RcmSettings
 
 
 class RcmExecutor(Executor):
@@ -25,12 +26,8 @@ class RcmExecutor(Executor):
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
+        self.settings = RcmSettings(symbol)
         self.logger = logging.getLogger(__name__)
-        self.CONFIG = self.signal_settings.APPROACH_CONFIG.get(
-            self.APPROACH_NAME, self.signal_settings.APPROACH_CONFIG.get("default", {})
-        )
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -64,7 +61,7 @@ class RcmExecutor(Executor):
         alerts = []
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         
-        confirmation_window = self.CONFIG.get("CONFIRMATION_WINDOW", 3)
+        confirmation_window = self.settings.confirmation_window
         required_lookback = confirmation_window + 1
 
         df = prepare_indicators(df)
@@ -72,7 +69,7 @@ class RcmExecutor(Executor):
         if not can_apply_analysis(df, self.APPROACH_NAME, required_rows=required_lookback):
             return alerts
 
-        peak_trough_prominence = self.CONFIG.get("PEAK_TROUGH_PROMINENCE", 5)
+        peak_trough_prominence = self.settings.peak_trough_prominence
         
         peaks, _ = find_peaks(df['high'], prominence=peak_trough_prominence)
         troughs, _ = find_peaks(-df['low'], prominence=peak_trough_prominence)
@@ -82,9 +79,9 @@ class RcmExecutor(Executor):
             'trough': {idx: True for idx in troughs}
         }
 
-        min_consistency = self.CONFIG.get("CONFIRMATION_MIN_CONSISTENCY", 2)
-        lookback_period = self.CONFIG.get('PEAK_BOTTOM_LOOKBACK_PERIOD')
-        min_magnitude = self.CONFIG.get("MIN_ALERT_MAGNITUDE", 0)
+        min_consistency = self.settings.confirmation_min_consistency
+        lookback_period = self.settings.peak_bottom_lookback_period
+        min_magnitude = self.settings.min_alert_magnitude
 
         if len(df) < required_lookback:
             return alerts
@@ -127,10 +124,10 @@ class RcmExecutor(Executor):
                 if not signal:
                     continue
 
-                if not _is_rsi_not_exhausted([current_candle], signal, self.CONFIG):
+                if not _is_rsi_not_exhausted([current_candle], signal, self.settings.approach_settings):
                     continue
 
-                if not is_signal_confirmed(current_candle, signal, self.CONFIG):
+                if not is_signal_confirmed(current_candle, signal, self.settings.approach_settings):
                     continue
 
                 if lookback_period is not None:
@@ -147,9 +144,9 @@ class RcmExecutor(Executor):
                 if not is_sufficient:
                     continue
 
-                use_volume_spike = self.CONFIG.get("USE_VOLUME_CONFIRMATION", False)
-                use_increasing_volume = self.CONFIG.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-                use_last_candle_max_volume = self.CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+                use_volume_spike = self.settings.approach_settings.get("USE_VOLUME_CONFIRMATION", False)
+                use_increasing_volume = self.settings.approach_settings.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+                use_last_candle_max_volume = self.settings.approach_settings.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
                 volume_spike_ok = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
                 volume_increasing_ok = not use_increasing_volume or is_volume_increasing(confirmation_df)

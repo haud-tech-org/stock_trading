@@ -24,6 +24,7 @@ from src.stockreports.alert.common.volume import (
 )
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.utils.time_utils import to_iso8601_with_tz
+from .settings import ConsistentMomentumSettings
 
 
 class ConsistentMomentumExecutor(Executor):
@@ -31,12 +32,8 @@ class ConsistentMomentumExecutor(Executor):
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
+        self.settings = ConsistentMomentumSettings(symbol)
         self.logger = logging.getLogger(__name__)
-        self.CONFIG = self.signal_settings.APPROACH_CONFIG.get(
-            self.APPROACH_NAME, self.signal_settings.APPROACH_CONFIG.get("default", {})
-        )
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -94,7 +91,7 @@ class ConsistentMomentumExecutor(Executor):
         candle_range = (current_candle['high'] - current_candle['low'])
         if candle_range == 0: return None
 
-        strong_close_min, _ = self.signal_settings.STRONG_CLOSE_THRESHOLD_RANGE
+        strong_close_min, _ = self.settings.strong_close_threshold_range
         is_strong_close = False
         if signal == Signal.BUY and ((current_candle['close'] - current_candle['low']) / candle_range) >= strong_close_min:
             is_strong_close = True
@@ -104,8 +101,8 @@ class ConsistentMomentumExecutor(Executor):
         if not is_strong_close:
             return None
 
-        lookback_minutes = self.CONFIG.get("PEAK_BOTTOM_LOOKBACK_PERIOD")
-        prominence = self.CONFIG.get("PEAK_TROUGH_PROMINENCE", 1)
+        lookback_minutes = self.settings.peak_bottom_lookback_period
+        prominence = self.settings.peak_trough_prominence
         momentum_start_time = window.index[0]
         
         if lookback_minutes is None:
@@ -136,9 +133,9 @@ class ConsistentMomentumExecutor(Executor):
         if not is_breakout_confirmed:
             return None
 
-        use_volume_spike = self.CONFIG.get("USE_VOLUME_CONFIRMATION", False)
-        use_increasing_volume = self.CONFIG.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-        use_last_candle_max_volume = self.CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+        use_volume_spike = self.settings.use_volume_confirmation
+        use_increasing_volume = self.settings.use_volume_increasing_confirmation
+        use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
 
         confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
         confirmation_df = df_indexed.iloc[confirmation_candle_index - window_size + 1 : confirmation_candle_index + 1]
@@ -150,7 +147,7 @@ class ConsistentMomentumExecutor(Executor):
         if not (volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed):
             return None
 
-        body_to_range_min_ratio = self.CONFIG.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
+        body_to_range_min_ratio = self.settings.body_to_range_min_ratio
         current_candle_body = abs(current_candle['close'] - current_candle['open'])
         current_candle_range = current_candle['high'] - current_candle['low']
 
@@ -176,10 +173,10 @@ class ConsistentMomentumExecutor(Executor):
         end_candle = window.iloc[-1]
         candles_for_rsi_check = [start_candle, end_candle]
         
-        if not _is_rsi_not_exhausted(candles_for_rsi_check, signal, self.CONFIG):
+        if not _is_rsi_not_exhausted(candles_for_rsi_check, signal, self.settings):
             return None
 
-        if not is_signal_confirmed(end_candle, signal, self.CONFIG):
+        if not is_signal_confirmed(end_candle, signal, self.settings):
             return None
 
         start_candle = window.iloc[0]
@@ -217,7 +214,7 @@ class ConsistentMomentumExecutor(Executor):
         """
         Checks if the given candle is a strong reversal compared to the original signal.
         """
-        reversal_ratio = self.CONFIG.get("REVERSAL_CANDLE_BODY_RATIO", 0.6)
+        reversal_ratio = self.settings.reversal_candle_body_ratio
         
         candle_range = candle['high'] - candle['low']
         if candle_range == 0:
@@ -239,7 +236,7 @@ class ConsistentMomentumExecutor(Executor):
         Finds alerts based on a consistent momentum pattern using a unified reverse loop.
         """
         alerts = []
-        window_size = self.CONFIG.get("CONFIRMATION_WINDOW", 3)
+        window_size = self.settings.window_size
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         
         if window_size < 2:
@@ -266,8 +263,8 @@ class ConsistentMomentumExecutor(Executor):
             alert = self._analyze_window(window, df_indexed, window_size)
             
             if alert:
-                if self.CONFIG.get("USE_REALTIME_REVERSAL_CONFIRMATION", False):
-                    confirmation_window_size = self.CONFIG.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 1)
+                if self.settings.use_realtime_reversal_confirmation:
+                    confirmation_window_size = self.settings.realtime_reversal_confirmation_window
                     if i + confirmation_window_size < len(df_indexed):
                         confirmation_window = df_indexed.iloc[i + 1 : i + 1 + confirmation_window_size]
                         is_reversal = False

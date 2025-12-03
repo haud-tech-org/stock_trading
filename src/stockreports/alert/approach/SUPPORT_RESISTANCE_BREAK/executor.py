@@ -17,18 +17,15 @@ from src.stockreports.alert.common.confirmation.confirmation import (
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, is_volume_increasing, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.volatility import is_bb_squeeze
 from src.stockreports.alert.common.data_utils import can_apply_analysis
+from .settings import SupportResistanceBreakSettings
 
 class SupportResistanceBreakExecutor(Executor):
     APPROACH_NAME = Approach.SUPPORT_RESISTANCE_BREAK
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
+        self.settings = SupportResistanceBreakSettings(symbol)
         self.logger = logging.getLogger(__name__)
-        self.CONFIG = self.signal_settings.APPROACH_CONFIG.get(
-            self.APPROACH_NAME, self.signal_settings.APPROACH_CONFIG.get("default", {})
-        )
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -74,14 +71,14 @@ class SupportResistanceBreakExecutor(Executor):
         Orchestrates finding both support breakdown and resistance breakout alerts.
         """
         alerts = []
-        lookback_period = self.CONFIG.get("LOOKBACK_PERIOD", 50)
-        confirmation_window_size = self.CONFIG.get("CONFIRMATION_WINDOW", 3)
-        consistency_threshold = self.CONFIG.get("CONSISTENCY_THRESHOLD", 2)
+        lookback_period = self.settings.lookback_period
+        confirmation_window_size = self.settings.confirmation_window
+        consistency_threshold = self.settings.consistency_threshold
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         
-        use_bb_squeeze = self.CONFIG.get("USE_BB_SQUEEZE_CONFIRMATION", False)
-        bb_squeeze_lookback = self.CONFIG.get("BB_SQUEEZE_LOOKBACK", 40)
-        bb_squeeze_threshold = self.CONFIG.get("BB_SQUEEZE_THRESHOLD_RATIO", 0.08)
+        use_bb_squeeze = self.settings.use_bb_squeeze_confirmation
+        bb_squeeze_lookback = self.settings.bb_squeeze_lookback
+        bb_squeeze_threshold = self.settings.bb_squeeze_threshold_ratio
 
         required_lookback = lookback_period + 1 + confirmation_window_size
         
@@ -138,13 +135,13 @@ class SupportResistanceBreakExecutor(Executor):
                 continue
 
             candles_for_exhaustion_check = [break_candle]
-            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, self.CONFIG):
+            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, self.settings.approach_settings):
                 continue
 
-            if not is_signal_confirmed(break_candle, signal, self.CONFIG):
+            if not is_signal_confirmed(break_candle, signal, self.settings.approach_settings):
                 continue
             
-            use_volume = self.CONFIG.get("USE_VOLUME_CONFIRMATION", False)
+            use_volume = self.settings.approach_settings.get("USE_VOLUME_CONFIRMATION", False)
             if use_volume and not (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, break_candle_index)):
                 continue
 
@@ -157,8 +154,8 @@ class SupportResistanceBreakExecutor(Executor):
                 elif level_type == 'support' and self._is_breakdown_candle(conf_candle, level):
                     consistency_count += 1
             
-            use_increasing_volume = self.CONFIG.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-            use_last_candle_max_volume = self.CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+            use_increasing_volume = self.settings.approach_settings.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
+            use_last_candle_max_volume = self.settings.approach_settings.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
 
             volume_increasing_confirmed = not use_increasing_volume or is_volume_increasing(confirmation_df.reset_index())
             last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(confirmation_df.reset_index())
