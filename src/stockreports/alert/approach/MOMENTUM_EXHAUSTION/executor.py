@@ -16,6 +16,7 @@ from src.stockreports.alert.common.confirmation.confirmation import (
     is_signal_confirmed
 )
 from src.stockreports.alert.common.data_utils import can_apply_analysis
+from .settings import MomentumExhaustionSettings
 
 
 class MomentumExhaustionExecutor(Executor):
@@ -23,12 +24,8 @@ class MomentumExhaustionExecutor(Executor):
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
+        self.settings = MomentumExhaustionSettings(symbol)
         self.logger = logging.getLogger(__name__)
-        self.CONFIG = self.signal_settings.APPROACH_CONFIG.get(
-            self.APPROACH_NAME, self.signal_settings.APPROACH_CONFIG.get("default", {})
-        )
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -59,9 +56,9 @@ class MomentumExhaustionExecutor(Executor):
         """
         Analyzes a single window of data to find a momentum exhaustion alert.
         """
-        momentum_count = self.CONFIG.get("MOMENTUM_CANDLE_COUNT", 2)
-        exhaustion_count = self.CONFIG.get("EXHAUSTION_CANDLE_COUNT", 2)
-        use_volume = self.CONFIG.get("USE_VOLUME_CONFIRMATION", True)
+        momentum_count = self.settings.momentum_candle_count
+        exhaustion_count = self.settings.exhaustion_candle_count
+        use_volume = self.settings.use_volume_confirmation
         total_pattern_candles = momentum_count + exhaustion_count
 
         confirmation_candle = window.iloc[-1]
@@ -86,7 +83,7 @@ class MomentumExhaustionExecutor(Executor):
         y = trend_sma.values
         slope = np.polyfit(x, y, 1)[0]
 
-        slope_threshold = self.CONFIG.get("SMA_SLOPE_THRESHOLD", 0.05) 
+        slope_threshold = self.settings.sma_slope_threshold 
 
         is_bullish_trend = slope > slope_threshold
         is_bearish_trend = slope < -slope_threshold
@@ -164,8 +161,8 @@ class MomentumExhaustionExecutor(Executor):
         Finds alerts based on a momentum exhaustion pattern using a unified reverse loop.
         """
         alerts = []
-        momentum_count = self.CONFIG.get("MOMENTUM_CANDLE_COUNT", 2)
-        exhaustion_count = self.CONFIG.get("EXHAUSTION_CANDLE_COUNT", 2)
+        momentum_count = self.settings.momentum_candle_count
+        exhaustion_count = self.settings.exhaustion_candle_count
         required_lookback = momentum_count + exhaustion_count + 2
         
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
@@ -193,10 +190,10 @@ class MomentumExhaustionExecutor(Executor):
                 confirmation_candle = df_indexed.iloc[i]
 
                 candles_for_exhaustion_check = [confirmation_candle]
-                if not _is_rsi_not_exhausted(candles_for_exhaustion_check, alert.signal, self.CONFIG):
+                if not _is_rsi_not_exhausted(candles_for_exhaustion_check, alert.signal, self.settings.approach_settings):
                     continue
 
-                if not is_signal_confirmed(confirmation_candle, alert.signal, self.CONFIG):
+                if not is_signal_confirmed(confirmation_candle, alert.signal, self.settings.approach_settings):
                     continue
 
                 alerts.append(alert)

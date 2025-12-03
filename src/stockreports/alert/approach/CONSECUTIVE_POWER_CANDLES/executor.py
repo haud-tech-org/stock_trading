@@ -12,18 +12,15 @@ from src.stockreports.alert.common.constants import Approach, Mode, Signal
 from src.stockreports.alert.common.volume import is_volume_spike_confirmed, can_apply_volume_confirmation, is_last_candle_volume_max
 from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators, is_signal_confirmed, _is_rsi_not_exhausted
 from src.stockreports.alert.common.data_utils import can_apply_analysis
+from .settings import ConsecutivePowerCandlesSettings
 
 class ConsecutivePowerCandlesExecutor(Executor):
     APPROACH_NAME = Approach.CONSECUTIVE_POWER_CANDLES
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
-        self.settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
+        self.settings = ConsecutivePowerCandlesSettings(symbol)
         self.logger = logging.getLogger(__name__)
-        self.CONFIG = self.signal_settings.APPROACH_CONFIG.get(
-            self.APPROACH_NAME, self.signal_settings.APPROACH_CONFIG.get("default", {})
-        )
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -54,11 +51,11 @@ class ConsecutivePowerCandlesExecutor(Executor):
         """
         Analyzes a window for a configurable number of consecutive power candles.
         """
-        candle_count = self.CONFIG.get("CANDLE_COUNT", 3)
-        min_body_ratio = self.CONFIG.get("MIN_BODY_TO_RANGE_RATIO", 0.7)
-        use_volume = self.CONFIG.get("USE_VOLUME_CONFIRMATION", False)
-        use_last_candle_max_volume = self.CONFIG.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
-        min_pre_candle_body_sizes = self.CONFIG.get("MIN_PRE_CANDLE_BODY_SIZES", [])
+        candle_count = self.settings.candle_count
+        min_body_ratio = self.settings.min_body_to_range_ratio
+        use_volume = self.settings.use_volume_confirmation
+        use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
+        min_pre_candle_body_sizes = self.settings.min_pre_candle_body_sizes
 
         if len(window) != candle_count:
             return None
@@ -113,13 +110,13 @@ class ConsecutivePowerCandlesExecutor(Executor):
         first_candle_index = df_indexed.index.get_loc(window.iloc[0].name)
         setup_candle = df_indexed.iloc[first_candle_index - 1] if first_candle_index > 0 else None
         
-        if self.CONFIG.get("USE_RSI_EXHAUSTION_FILTER", False):
+        if self.settings.use_rsi_exhaustion_filter:
             candles_for_exhaustion_check = [setup_candle] if setup_candle is not None else []
-            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, self.CONFIG):
+            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, self.settings):
                 return None
 
         final_candle = window.iloc[-1]
-        if not is_signal_confirmed(final_candle, signal, self.CONFIG):
+        if not is_signal_confirmed(final_candle, signal, self.settings):
             return None
 
         self.logger.info(f"[{final_candle.name}] SUCCESS: Consecutive Power Candles Pattern Found! Signal: {signal}")
@@ -150,7 +147,7 @@ class ConsecutivePowerCandlesExecutor(Executor):
         Finds alerts based on the consecutive power candles pattern.
         """
         alerts = []
-        window_size = self.CONFIG.get("CANDLE_COUNT", 3)
+        window_size = self.settings.candle_count
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
 
         df = prepare_indicators(df)

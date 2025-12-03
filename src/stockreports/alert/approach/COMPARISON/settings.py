@@ -12,3 +12,6 @@ class ComparisonSignalSettings:
         self.ma_short_period = self.approach_settings.get('MA_SHORT_PERIOD', 5)
         self.referenced_symbol = self.approach_settings.get('REFERENCED_SYMBOL')
         self.disable_sell_signal = self.approach_settings.get('DISABLE_SELL_SIGNAL', True)
+
+    def get(self, key, default=None):
+        return self.approach_settings.get(key, default)

@@ -16,3 +16,6 @@ class VolumeSpikeConfirmationSettings:
         self.cooldown_period = self.approach_settings.get("COOLDOWN_PERIOD", 2)
         self.min_lookback_data = self.approach_settings.get("MIN_LOOKBACK_DATA", 30)
         self.peak_trough_prominence = self.approach_settings.get("PEAK_TROUGH_PROMINENCE", 0.5)
+
+    def get(self, key, default=None):
+        return self.approach_settings.get(key, default)
