@@ -375,7 +375,7 @@ class SymbolAlerter:
                     for _, alert_row in result.alerts.iterrows():
                         alert_data = AlertData(**alert_row.to_dict())
                         alert_data.symbol = self.symbol
-                        validated_alert = calculate_alert_performance(alert_data, daily_df, signal_settings.VALIDATION_PERIOD_MINUTES)
+                        validated_alert = calculate_alert_performance(alert_data, daily_df, validation_settings.VALIDATION_PERIOD_MINUTES)
                         validated_alerts.append(validated_alert.to_dict())
                     result.alerts = pd.DataFrame(validated_alerts)
                 

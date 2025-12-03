@@ -52,7 +52,8 @@ SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.2
 
 # --- Close Position Scheduler ---
 # The number of minutes to wait after a signal is sent before sending a "Close Position" notification.
-# Set to None to disable.
+# This also serves as the validation period in development mode.
+# Set to None to disable the scheduler.
 CLOSE_POSITION_DELAY_MINUTES = 5
 
 
@@ -268,11 +269,3 @@ APPROACH_CONFIG = {
     }
 }
 
-# --- Trend Validation Settings ---
-# The minimum change in price points required for a trend to be considered significant.
-# TREND_MINIMUM_MAGNITUDE = 4
-
-# --- Validation Settings ---
-# Defines the time window in minutes after an alert to check its outcome (profit/loss).
-# Used only in DEVELOPMENT mode against historical data.
-VALIDATION_PERIOD_MINUTES = 4
