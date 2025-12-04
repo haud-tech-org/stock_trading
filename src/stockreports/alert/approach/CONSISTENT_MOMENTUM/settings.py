@@ -15,11 +15,11 @@ class ConsistentMomentumSettings:
         self.use_volume_increasing_confirmation = self.approach_settings.get("USE_VOLUME_INCREASING_CONFIRMATION", False)
         self.strong_close_threshold_range = signal_settings.STRONG_CLOSE_THRESHOLD_RANGE
         self.peak_bottom_lookback_period = self.approach_settings.get("PEAK_BOTTOM_LOOKBACK_PERIOD")
-        self.peak_trough_prominence = self.approach_settings.get("PEAK_TROUGH_PROMINENCE", 5)
+        self.peak_trough_prominence = self.approach_settings.get("PEAK_TROUGH_PROMINENCE", 2)
         self.body_to_range_min_ratio = self.approach_settings.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
         self.reversal_candle_body_ratio = self.approach_settings.get("REVERSAL_CANDLE_BODY_RATIO", 0.6)
         self.use_realtime_reversal_confirmation = self.approach_settings.get("USE_REALTIME_REVERSAL_CONFIRMATION", False)
-        self.realtime_reversal_confirmation_window = self.approach_settings.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 3)
+        self.realtime_reversal_confirmation_window = self.approach_settings.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 2)
 
     def get(self, key, default=None):
         return self.approach_settings.get(key, default)

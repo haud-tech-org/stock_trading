@@ -66,10 +66,14 @@ If a `BUY` or `SELL` signal is triggered, it undergoes a series of final validat
     *   **RSI Exhaustion:** Checks that the signal candle is not starting from an overbought/oversold level.
     *   **Standard Indicators:** Checks for alignment with other indicators like MA, MACD, etc., if enabled.
 2.  **Divergence Filter (Optional):** If `USE_DIVERGENCE_FILTER` is `True`, the algorithm checks for and filters out signals that occur during price-indicator divergence.
-3.  **Volume Confirmation (Optional):** If `USE_VOLUME_CONFIRMATION` is `True`, the algorithm checks if the signal candle has a significant volume spike. Other volume flags like `USE_INCREASING_VOLUME_CONFIRMATION` are present in the settings but not currently implemented in the executor.
-4.  **Look-Forward Confirmation (Optional):** If `USE_CONFIRMATION_CANDLE_FILTER` is `True`, the algorithm "peeks" at the next `CONFIRMATION_CANDLE_COUNT` candles. For a `BUY`, their closes must remain above the signal candle's close. For a `SELL`, they must remain below. If the trend doesn't continue, the signal is discarded.
+3.  **Volume Confirmation (Optional):** If `USE_VOLUME_CONFIRMATION` is `True`, the algorithm checks if the signal candle has a significant volume spike.
+4.  **Look-Forward Confirmation (Optional):** If `USE_CONFIRMATION_CANDLE_FILTER` is `True`, the algorithm "peeks" at the next `CONFIRMATION_CANDLE_COUNT` candles.
+    *   For a `BUY` signal, the `close` of each of these confirmation candles must remain **above** the `close` of the initial signal candle.
+    *   For a `SELL` signal, the `close` of each confirmation candle must remain **below** the `close` of the initial signal candle.
+    *   If the trend doesn't continue at any point during the confirmation window, the signal is discarded.
+    *   **Important:** If the signal is confirmed, the `alert_time` and `alert_price` for the alert are taken from the **last confirmation candle** in the look-forward window. The `start_time` and `start_price` are taken from the candle just before the initial signal.
 
-If all configured conditions are met, an `AlertData` object is created.
+If all configured conditions are met, an `AlertData` object is created. If the look-forward filter is not used, the alert is generated based on the main signal candle.
 
 ## Flow Diagram
 
@@ -92,7 +96,7 @@ graph TD
     I -- No --> X;
     I -- Yes --> J{6. Look-Forward Confirmed?};
     J -- No --> X;
-    J -- Yes --> Z;
+    J -- Yes --> Z[Generate Alert];
     X --> B;
 ```
 
@@ -104,5 +108,5 @@ graph TD
 4.  **Chikou Span Confirmed?**: Checks if the Lagging Span (Chikou) is free from historical price obstruction.
 5.  **Optional Filters**: If the three core Ichimoku conditions align, the algorithm proceeds to a series of powerful optional filters.
 6.  **Indicators/Divergence/Volume/Look-Forward**: These steps validate the signal with standard indicators (RSI, MA), check for price-indicator divergence, check for confirming volume patterns, and peek ahead to confirm the trend continues.
-7.  **Generate Alert**: If all mandatory and enabled optional checks pass, an alert is generated.
+7.  **Generate Alert**: If all mandatory and enabled optional checks pass, an alert is generated. **Note:** If look-forward confirmation is used, the alert's time/price comes from the end of the confirmation window.
 8.  **Continue to Next Candle**: If any check fails, the current candle is discarded, and the algorithm moves to the next one.

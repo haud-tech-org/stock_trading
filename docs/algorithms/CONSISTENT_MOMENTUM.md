@@ -13,7 +13,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 | `WINDOW_SIZE` | 3 | The number of consecutive candles that must all show consistent directional momentum. |
 | `PEAK_BOTTOM_LOOKBACK_PERIOD` | `None` | The number of minutes to look back from the start of the momentum window to find a recent peak/trough. If `None`, it looks back through all available history. |
 | `PEAK_TROUGH_PROMINENCE` | 5 | The prominence value used to detect peaks and troughs. A higher value requires a peak/trough to be more significant relative to its neighbors. |
-| `BODY_TO_RANGE_MIN_RATIO` | 0.5 | The minimum ratio of the **final candle's** body to its total range. This ensures the breakout candle is decisive. |
+| `BODY_TO_RANGE_MIN_RATIO` | 0.5 | The minimum ratio of the final candle's **body to its total range**. E.g., a value of 0.5 means the body must be at least 50% of the candle's full range. |
 | `STRONG_CLOSE_THRESHOLD_RANGE` | `(0.7, 0.3)` | The final candle must close in the top 70% of its range for a BUY, or bottom 30% for a SELL. The implementation uses the first value (0.7) as the minimum threshold for both BUY and SELL checks. |
 | `USE_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle in the window to have a volume spike. |
 | `USE_VOLUME_INCREASING_CONFIRMATION` | `False` | If `True`, requires the volume to be generally increasing across the confirmation window. |
@@ -29,21 +29,22 @@ The core logic resides in the `ConsistentMomentumExecutor` class in `src/stockre
     *   All candles must be bearish (`close < open`) for a `SELL` signal.
 
 2.  **Consistent Trend (Average Price):**
-    *   The average price `(High + Low + Close) / 3` is calculated for each candle in the window.
+    *   The average price `(open + close) / 2` is calculated for each candle in the window. This focuses on the midpoint of the candle's body.
     *   For a `BUY` signal, this average price must be consistently increasing or flat from one candle to the next.
     *   For a `SELL` signal, it must be consistently decreasing or flat.
 
 3.  **Strong Close Check:**
-    *   The final candle in the window must close "strongly."
-    *   For a `BUY` signal, the ratio `(close - low) / (high - low)` must be greater than or equal to the `strong_close_min` threshold (e.g., 0.7).
-    *   For a `SELL` signal, the ratio `(high - close) / (high - low)` must be greater than or equal to the `strong_close_min` threshold.
+    *   The final candle in the window must have a body that is a significant portion of its total range.
+    *   For a `BUY` signal, the ratio `(close - open) / (high - low)` must be greater than or equal to the `strong_close_min` threshold.
+    *   For a `SELL` signal, the ratio `(open - close) / (high - low)` must be greater than or equal to the `strong_close_min` threshold.
 
 4.  **Peak/Trough Breakout Confirmation (Key Logic):**
     *   This is a critical check to ensure the momentum is breaking out of a recent price structure.
     *   The algorithm looks back in time from the *start* of the momentum window (`PEAK_BOTTOM_LOOKBACK_PERIOD`).
-    *   It identifies all significant historical peaks (for a `BUY`) or troughs (for a `SELL`) using the `scipy.signal.find_peaks` function with the configured `PEAK_TROUGH_PROMINENCE`.
-    *   For a `BUY` signal, the closing price of the final candle must be **higher than the most recent peak** found in that lookback period.
-    *   For a `SELL` signal, the closing price must be **lower than the most recent trough**.
+    *   It identifies all significant historical peaks (for a `BUY`) or troughs (for a `SELL`) on the **closing prices** using `scipy.signal.find_peaks`.
+    *   For a `BUY` signal, the closing price of the final candle must be **higher than the most recent peak's close**.
+    *   For a `SELL` signal, the closing price must be **lower than the most recent trough's close**.
+    *   **Important:** If no relevant peak or trough is found in the lookback period, this condition is automatically considered **confirmed**. It only fails if a peak/trough exists and the price fails to break it.
 
 5.  **Volume Confirmation (Optional):**
     *   The logic checks up to three volume conditions on the momentum window if their respective flags are `True`:
@@ -72,7 +73,7 @@ If all configured checks pass, an `AlertData` object is created to signal the de
 
 ```mermaid
 graph TD
-    A[Start] --> B{Analyze Rolling Window of `CONFIRMATION_WINDOW`};
+    A[Start] --> B{Analyze Rolling Window of `WINDOW_SIZE`};
     B --> C{1. Basic Momentum?};
     C -- No --> X[Discard Window];
     C -- Yes --> D{2. Consistent Trend (Avg Price)?};
@@ -101,9 +102,9 @@ graph TD
 
 1.  **Analyze Rolling Window**: The algorithm processes data in rolling windows of `WINDOW_SIZE` size.
 2.  **Basic Momentum?**: Checks if all candles in the window share the same direction (all bullish or all bearish).
-3.  **Consistent Trend (Avg Price)?**: Ensures the average price of the candles is consistently increasing (for a BUY) or decreasing (for a SELL).
-4.  **Strong Close?**: Validates that the final candle closes in the upper (BUY) or lower (SELL) portion of its range.
-5.  **Breakout Confirmed?**: The key logic step. Checks if the final candle's close has broken past the most recent significant peak (BUY) or trough (SELL).
+3.  **Consistent Trend (Avg Price)?**: Ensures the average price (midpoint of the body) of the candles is consistently increasing (for a BUY) or decreasing (for a SELL).
+4.  **Strong Close?**: Validates that the final candle's body is a significant portion of its total range.
+5.  **Breakout Confirmed?**: The key logic step. Checks if the final candle's close has broken past the most recent significant peak/trough based on closing prices. If no peak/trough exists, this passes.
 6.  **Optional Filters**: If the core pattern is valid, it proceeds to a series of optional validation filters.
 7.  **Volume/Quality/Dominance/Indicators/Reversal**: These steps check for various volume patterns, ensure the final candle is decisive, check that total body size outweighs wicks, validate with standard indicators (RSI, MACD, etc.), and finally peek ahead to ensure no immediate reversal invalidates the signal.
 8.  **Generate Alert**: If all mandatory and enabled optional checks pass, an alert is generated.
