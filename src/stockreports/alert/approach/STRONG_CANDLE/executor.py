@@ -126,11 +126,6 @@ class StrongCandleExecutor(Executor):
                 if not has_divergence(df_indexed, i, potential_signal):
                     continue
 
-            # --- 5. Magnitude Check ---
-            is_sufficient, magnitude = check_magnitude(momentum_candle['close'], confirmation_candle['close'], self.settings.min_alert_magnitude)
-            if not is_sufficient:
-                continue
-
             strong_candle_found = False
             strong_candle = None
             
@@ -162,7 +157,21 @@ class StrongCandleExecutor(Executor):
             if not strong_candle_found:
                 continue
 
-            start_price = strong_candle['low'] if potential_signal == Signal.BUY else strong_candle['high']
+            # --- New conditions for comparing momentum candle to strong candle ---
+            if potential_signal == Signal.BUY:
+                # 1. The open of the momentum candle must be higher than the strong candle's open.
+                if momentum_candle['open'] <= strong_candle['open']:
+                    continue
+            
+            elif potential_signal == Signal.SELL:
+                # 1. The open of the momentum candle must be lower than the strong candle's open.
+                if momentum_candle['open'] >= strong_candle['open']:
+                    continue
+            else:
+                continue # Should not happen
+
+            # 2. The close of the momentum candle must be higher/lower than the strong candle's close (checked by magnitude).
+            start_price = strong_candle['close']
             is_sufficient, magnitude = check_magnitude(momentum_candle['close'], start_price, self.settings.min_alert_magnitude)
             if not is_sufficient:
                 continue

@@ -28,7 +28,7 @@ The core logic is implemented in the `RCMExecutor` class in `src/stockreports/al
 
 ### Step 1: Identify All Potential Reversal Points
 
-1.  **Find Peaks and Troughs:** The algorithm first scans the entire historical price data to identify all potential reversal points using `scipy.signal.find_peaks`.
+1.  **Find Peaks and Troughs:** The algorithm first scans the `close` price data to identify all potential reversal points using `scipy.signal.find_peaks`. By analyzing the closing prices, it focuses on the confirmed end-of-period sentiment rather than intra-period volatility (highs and lows).
 2.  **Apply Prominence Filter:** It uses the `PEAK_TROUGH_PROMINENCE` setting to filter these points, ensuring that only price swings more significant than this threshold are considered. The locations of these valid peaks and troughs are stored for quick lookup.
 
 ### Step 2: Backward Scan for a Reversal-Confirmation Pattern
@@ -47,7 +47,7 @@ Once a potential Reversal -> Confirmation pattern is identified, a final series 
     *   **RSI Exhaustion:** Checks that the confirmation candle is not signaling a move that is already overbought/oversold.
     *   **Standard Indicators:** Checks for alignment with other indicators like MA, MACD, etc., if enabled.
 2.  **Breakout Filter (Optional):** If `PEAK_BOTTOM_LOOKBACK_PERIOD` is set, it checks that the confirmation candle's close has broken above the highs (for a BUY) or below the lows (for a SELL) of the specified lookback window *prior* to the reversal point.
-3.  **Magnitude Filter:** The price change between the reversal point (e.g., the low of the trough) and the confirmation candle's close must be greater than `MIN_ALERT_MAGNITUDE`.
+3.  **Magnitude Filter:** The price change between the **`close` price of the reversal candle** and the `close` price of the confirmation candle must be greater than `MIN_ALERT_MAGNITUDE`.
 4.  **Volume Filters (Optional):** If enabled, it performs final checks for a volume spike, increasing volume, or the confirmation candle having the maximum volume in its local window.
 
 If all enabled filters pass, an `AlertData` object is created with the signal (`BUY` or `SELL`). In deployment mode, the function returns immediately with this latest alert. In development mode, the loop continues to find all historical occurrences of the pattern.
