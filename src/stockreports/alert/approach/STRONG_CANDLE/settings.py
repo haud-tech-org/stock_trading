@@ -15,7 +15,7 @@ class StrongCandleSettings:
         self.use_volume_increasing_confirmation = self.approach_settings.get("USE_VOLUME_INCREASING_CONFIRMATION", False)
         self.use_divergence_confirmation = self.approach_settings.get("USE_DIVERGENCE_CONFIRMATION", False)
         self.trend_strength_strong_close_tail_ratio = signal_settings.TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
-        self.min_alert_magnitude = self.approach_settings.get("MIN_ALERT_MAGNITUDE", 0)
+        self.min_alert_magnitude = self.approach_settings.get("MIN_ALERT_MAGNITUDE", 2)
 
     def get(self, key, default=None):
         return self.approach_settings.get(key, default)

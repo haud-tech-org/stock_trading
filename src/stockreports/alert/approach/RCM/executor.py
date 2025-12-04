@@ -71,8 +71,8 @@ class RcmExecutor(Executor):
 
         peak_trough_prominence = self.settings.peak_trough_prominence
         
-        peaks, _ = find_peaks(df['high'], prominence=peak_trough_prominence)
-        troughs, _ = find_peaks(-df['low'], prominence=peak_trough_prominence)
+        peaks, _ = find_peaks(df['close'], prominence=peak_trough_prominence)
+        troughs, _ = find_peaks(-df['close'], prominence=peak_trough_prominence)
         
         reversal_points = {
             'peak': {idx: True for idx in peaks},
@@ -139,7 +139,7 @@ class RcmExecutor(Executor):
                         if signal == Signal.SELL and current_candle['close'] >= lookback_df['low'].min():
                             continue
                 
-                reversal_price = reversal_candle['low'] if signal == 'BUY' else reversal_candle['high']
+                reversal_price = reversal_candle['close']
                 is_sufficient, magnitude = check_magnitude(current_candle['close'], reversal_price, min_magnitude)
                 if not is_sufficient:
                     continue

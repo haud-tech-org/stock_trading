@@ -27,7 +27,7 @@ VALIDATION_PRICE_DROP_THRESHOLD = 3.0
 # Guidance: This sets the time horizon for your trade's success. A shorter window (e.g., 15) tests for immediate performance, while a longer window (e.g., 60) allows more time for the price to move.
 # Range: Integer > 0.
 # Example: `VALIDATION_TIME_WINDOW_MINUTES = 15`
-VALIDATION_TIME_WINDOW_MINUTES = 10
+VALIDATION_TIME_WINDOW_MINUTES = 5
 VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity in validation scripts
 
 # Validation Price Threshold
@@ -35,7 +35,7 @@ VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity 
 # A signal is "Success" if its best_profit >= threshold AND abs(worst_loss) <= threshold.
 # Guidance: This helps evaluate signal quality independently of the final trade outcome.
 # Range: Float > 0.
-VALIDATION_PRICE_THRESHOLD = 5.0
+VALIDATION_PRICE_THRESHOLD = 3.0
 
 
 # --- Data Source Configuration ---
