@@ -51,38 +51,84 @@ def update_historical_data(symbol: str, data_df: pd.DataFrame):
 
 def _get_historical_data_with_resolution(symbol: str, start_time: pd.Timestamp, end_time: pd.Timestamp, resolution: Optional[int] = None) -> Optional[pd.DataFrame]:
     """
-    Internal function to retrieve historical data with an optional resolution.
+    Retrieves historical data for a given symbol and time range, with optional resolution.
+    This function intelligently fetches only the data missing from the cache.
     """
     cache_key = (symbol, resolution)
     cached_df = _data_cache.get(cache_key)
 
-    # Check if the cache already contains the full required range
-    if cached_df is not None:
-        cache_start = cached_df['time'].min()
-        cache_end = cached_df['time'].max()
-        if cache_start <= start_time and cache_end >= end_time:
-            logger.debug(f"Cache hit for '{symbol}' with resolution '{resolution}' for the window {start_time} to {end_time}.")
-            return cached_df[(cached_df['time'] >= start_time) & (cached_df['time'] <= end_time)].copy()
+    # --- Case 1: No data in cache for this key ---
+    if cached_df is None or cached_df.empty:
+        logger.info(f"Cache empty for '{symbol}' (res: {resolution}). Fetching full range: {start_time} to {end_time}.")
+        
+        if settings.MODE == Mode.DEVELOPMENT:
+            fetched_df = load_data_for_development(symbol)
+        else:
+            from_ts = int(start_time.timestamp())
+            to_ts = int(end_time.timestamp())
+            fetched_df = _load_live_data_with_resolution(symbol, from_ts, to_ts, resolution=resolution)
 
-    logger.info(f"Cache miss or incomplete data for '{symbol}' with resolution '{resolution}' for window {start_time} to {end_time}. Fetching.")
+        if fetched_df is not None and not fetched_df.empty:
+            _update_historical_data_with_resolution(symbol, fetched_df, resolution)
+        else:
+            logger.error(f"Initial fetch failed for '{symbol}' (res: {resolution}).")
+            return None
 
-    if settings.MODE == Mode.DEVELOPMENT:
-        fetched_df = load_data_for_development(symbol)
-    else:
-        from_timestamp = int(start_time.timestamp())
-        to_timestamp = int(end_time.timestamp())
-        fetched_df = _load_live_data_with_resolution(symbol, from_timestamp, to_timestamp, resolution=resolution)
+    # --- Case 2: Data exists in cache, check for missing segments ---
+    cached_df = _data_cache[cache_key] # Re-read from cache
+    cache_start, cache_end = cached_df['time'].min(), cached_df['time'].max()
 
-    if fetched_df is None or fetched_df.empty:
-        logger.error(f"Manual fetch failed for symbol '{symbol}' for window {start_time} to {end_time}.")
-        return None
+    # Check if the full range is already cached
+    if cache_start <= start_time and cache_end >= end_time:
+        logger.debug(f"Full range cache hit for '{symbol}' (res: {resolution}).")
+        return cached_df[(cached_df['time'] >= start_time) & (cached_df['time'] <= end_time)].copy()
 
-    _update_historical_data_with_resolution(symbol, fetched_df, resolution=resolution)
+    # Determine and fetch missing segments
+    segments_to_fetch = []
+    # if start_time < cache_start:
+    #     segments_to_fetch.append((start_time, cache_start - pd.Timedelta(seconds=1)))
+    #     logger.info(f"Fetching missing data for '{symbol}' at the beginning: {start_time} to {cache_start}.")
+        
+    if end_time > cache_end:
+        segments_to_fetch.append((cache_end + pd.Timedelta(seconds=1), end_time))
+        logger.info(f"Fetching missing data for '{symbol}' at the end: {cache_end} to {end_time}.")
 
+    for seg_start, seg_end in segments_to_fetch:
+        if settings.MODE == Mode.DEVELOPMENT:
+            # In dev mode, we load the whole file once, so this part is less critical
+            # but we maintain the logic for consistency.
+            logger.debug("In dev mode, full data file is loaded, no partial fetch needed.")
+            continue
+
+        from_ts = int(seg_start.timestamp())
+        to_ts = int(seg_end.timestamp())
+        
+        logger.debug(f"Fetching segment for '{symbol}' (res: {resolution}): {seg_start} to {seg_end}")
+        segment_df = _load_live_data_with_resolution(symbol, from_ts, to_ts, resolution=resolution)
+        
+        if segment_df is not None and not segment_df.empty:
+            _update_historical_data_with_resolution(symbol, segment_df, resolution)
+        else:
+            logger.warning(f"Failed to fetch segment for '{symbol}' from {seg_start} to {seg_end}.")
+
+    # --- Final retrieval from updated cache ---
     final_df = _data_cache.get(cache_key)
     if final_df is not None:
-        return final_df[(final_df['time'] >= start_time) & (final_df['time'] <= end_time)].copy()
+        # After fetch attempts, return whatever is available within the requested window,
+        # even if it's incomplete. The calling function is responsible for handling it.
+        partial_df = final_df[(final_df['time'] >= start_time) & (final_df['time'] <= end_time)].copy()
+        
+        if partial_df.empty:
+            logger.warning(f"No data available for '{symbol}' in the requested window {start_time} to {end_time} after fetch attempts.")
+            return None
+            
+        # Check if the returned data fully covers the request and log a warning if not.
+        if not (partial_df['time'].min() <= start_time and partial_df['time'].max() >= end_time):
+             logger.warning(f"Returning incomplete data for '{symbol}'. Requested: {start_time} to {end_time}, Available: {partial_df['time'].min()} to {partial_df['time'].max()}.")
 
+        return partial_df
+            
+    logger.error(f"Cache for '{symbol}' is unexpectedly empty after processing.")
     return None
 
 
