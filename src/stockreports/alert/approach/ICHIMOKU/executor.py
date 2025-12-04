@@ -212,6 +212,11 @@ class IchimokuExecutor(Executor):
                 if not is_confirmed:
                     return None
 
+                # If confirmed, the alert is created from the last confirmation candle.
+                # The original signal candle is passed as the 'previous' candle for context.
+                last_confirmation_candle = df_indexed.iloc[i + confirmation_candles]
+                return self._create_alert(last_confirmation_candle, prev_candle, signal)
+
             return self._create_alert(candle, prev_candle, signal)
 
     def _create_alert(self, candle: pd.Series, prev_candle: pd.Series, signal: Signal) -> AlertData:

@@ -72,7 +72,7 @@ class ConsistentMomentumExecutor(Executor):
         if not (is_all_bullish or is_all_bearish):
             return None
 
-        window['avg_price'] = (window['high'] + window['low'] + window['close']) / 3
+        window['avg_price'] = (window['open'] + window['close']) / 2
         
         is_momentum_confirmed = False
         if is_all_bullish:
@@ -93,9 +93,9 @@ class ConsistentMomentumExecutor(Executor):
 
         strong_close_min, _ = self.settings.strong_close_threshold_range
         is_strong_close = False
-        if signal == Signal.BUY and ((current_candle['close'] - current_candle['low']) / candle_range) >= strong_close_min:
+        if signal == Signal.BUY and ((current_candle['close'] - current_candle['open']) / candle_range) >= strong_close_min:
             is_strong_close = True
-        elif signal == Signal.SELL and ((current_candle['high'] - current_candle['close']) / candle_range) >= strong_close_min:
+        elif signal == Signal.SELL and ((current_candle['open'] - current_candle['close']) / candle_range) >= strong_close_min:
             is_strong_close = True
 
         if not is_strong_close:
@@ -114,21 +114,21 @@ class ConsistentMomentumExecutor(Executor):
         if lookback_df.empty:
             return None
 
-        is_breakout_confirmed = False
+        is_breakout_confirmed = True  # Default to True, assume confirmed if no peak/trough is found
         if signal == Signal.BUY:
-            peaks, _ = find_peaks(lookback_df['high'], prominence=prominence)
+            peaks, _ = find_peaks(lookback_df['close'], prominence=prominence)
             if peaks.size > 0:
                 last_peak_index = peaks[-1]
-                last_peak_high = lookback_df['high'].iloc[last_peak_index]
-                if current_candle['close'] > last_peak_high:
-                    is_breakout_confirmed = True
+                last_peak_price = lookback_df['close'].iloc[last_peak_index]
+                if current_candle['close'] <= last_peak_price:
+                    is_breakout_confirmed = False  # Failed to break out
         elif signal == Signal.SELL:
-            troughs, _ = find_peaks(-lookback_df['low'], prominence=prominence)
+            troughs, _ = find_peaks(-lookback_df['close'], prominence=prominence)
             if troughs.size > 0:
                 last_trough_index = troughs[-1]
-                last_trough_low = lookback_df['low'].iloc[last_trough_index]
-                if current_candle['close'] < last_trough_low:
-                    is_breakout_confirmed = True
+                last_trough_price = lookback_df['close'].iloc[last_trough_index]
+                if current_candle['close'] >= last_trough_price:
+                    is_breakout_confirmed = False  # Failed to break out
 
         if not is_breakout_confirmed:
             return None
