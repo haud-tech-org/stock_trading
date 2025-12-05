@@ -20,6 +20,11 @@ class ConsistentMomentumSettings:
         self.reversal_candle_body_ratio = self.approach_settings.get("REVERSAL_CANDLE_BODY_RATIO", 0.6)
         self.use_realtime_reversal_confirmation = self.approach_settings.get("USE_REALTIME_REVERSAL_CONFIRMATION", False)
         self.realtime_reversal_confirmation_window = self.approach_settings.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 2)
+        self.use_breakout_confirmation = self.approach_settings.get("USE_BREAKOUT_CONFIRMATION", False)
+
+        # --- General Confirmation Settings ---
+        self.use_ma_confirmation = self.approach_settings.get("USE_MA_CONFIRMATION", False)
+        self.use_adx_confirmation = self.approach_settings.get("USE_ADX_CONFIRMATION", False)
 
     def get(self, key, default=None):
         return self.approach_settings.get(key, default)

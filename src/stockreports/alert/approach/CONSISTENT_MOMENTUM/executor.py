@@ -101,37 +101,38 @@ class ConsistentMomentumExecutor(Executor):
         if not is_strong_close:
             return None
 
-        lookback_minutes = self.settings.peak_bottom_lookback_period
-        prominence = self.settings.peak_trough_prominence
-        momentum_start_time = window.index[0]
-        
-        if lookback_minutes is None:
-            lookback_df = df_indexed.loc[:momentum_start_time].iloc[:-1]
-        else:
-            lookback_start_time = momentum_start_time - pd.Timedelta(minutes=lookback_minutes)
-            lookback_df = df_indexed.loc[lookback_start_time:momentum_start_time].iloc[:-1]
+        if self.settings.use_breakout_confirmation:
+            lookback_minutes = self.settings.peak_bottom_lookback_period
+            prominence = self.settings.peak_trough_prominence
+            momentum_start_time = window.index[0]
+            
+            if lookback_minutes is None:
+                lookback_df = df_indexed.loc[:momentum_start_time].iloc[:-1]
+            else:
+                lookback_start_time = momentum_start_time - pd.Timedelta(minutes=lookback_minutes)
+                lookback_df = df_indexed.loc[lookback_start_time:momentum_start_time].iloc[:-1]
 
-        if lookback_df.empty:
-            return None
+            if lookback_df.empty:
+                return None
 
-        is_breakout_confirmed = True  # Default to True, assume confirmed if no peak/trough is found
-        if signal == Signal.BUY:
-            peaks, _ = find_peaks(lookback_df['close'], prominence=prominence)
-            if peaks.size > 0:
-                last_peak_index = peaks[-1]
-                last_peak_price = lookback_df['close'].iloc[last_peak_index]
-                if current_candle['close'] <= last_peak_price:
-                    is_breakout_confirmed = False  # Failed to break out
-        elif signal == Signal.SELL:
-            troughs, _ = find_peaks(-lookback_df['close'], prominence=prominence)
-            if troughs.size > 0:
-                last_trough_index = troughs[-1]
-                last_trough_price = lookback_df['close'].iloc[last_trough_index]
-                if current_candle['close'] >= last_trough_price:
-                    is_breakout_confirmed = False  # Failed to break out
+            is_breakout_confirmed = True  # Default to True, assume confirmed if no peak/trough is found
+            if signal == Signal.BUY:
+                peaks, _ = find_peaks(lookback_df['close'], prominence=prominence)
+                if peaks.size > 0:
+                    last_peak_index = peaks[-1]
+                    last_peak_price = lookback_df['close'].iloc[last_peak_index]
+                    if current_candle['close'] <= last_peak_price:
+                        is_breakout_confirmed = False  # Failed to break out
+            elif signal == Signal.SELL:
+                troughs, _ = find_peaks(-lookback_df['close'], prominence=prominence)
+                if troughs.size > 0:
+                    last_trough_index = troughs[-1]
+                    last_trough_price = lookback_df['close'].iloc[last_trough_index]
+                    if current_candle['close'] >= last_trough_price:
+                        is_breakout_confirmed = False  # Failed to break out
 
-        if not is_breakout_confirmed:
-            return None
+            if not is_breakout_confirmed:
+                return None
 
         use_volume_spike = self.settings.use_volume_confirmation
         use_increasing_volume = self.settings.use_volume_increasing_confirmation
@@ -191,6 +192,16 @@ class ConsistentMomentumExecutor(Executor):
         start_time = to_iso8601_with_tz(momentum_start_time)
         momentum_start_time_iso = to_iso8601_with_tz(momentum_start_time)
 
+        details = {
+            "reason": "Consistent Momentum",
+            "momentum_start_time": momentum_start_time_iso,
+            "momentum_window_size": window_size,
+        }
+
+        if self.settings.use_breakout_confirmation:
+            details["reason"] = "Consistent Momentum with Breakout"
+            details["breakout_lookback_minutes"] = self.settings.peak_bottom_lookback_period
+
         alert_data = AlertData(
             approach=self.APPROACH_NAME,
             id=alert_id,
@@ -201,12 +212,7 @@ class ConsistentMomentumExecutor(Executor):
             start_price=momentum_start_price,
             start_time=start_time,
             magnitude=round(abs(current_price - momentum_start_price), 2),
-            details=json.dumps({
-                "reason": "Consistent Momentum with Breakout",
-                "momentum_start_time": momentum_start_time_iso,
-                "momentum_window_size": window_size,
-                "breakout_lookback_minutes": lookback_minutes
-            })
+            details=json.dumps(details)
         )
         return alert_data
 
