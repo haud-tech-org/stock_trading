@@ -11,10 +11,11 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
 | `WINDOW_SIZE` | 3 | The number of consecutive candles that must all show consistent directional momentum. |
-| `PEAK_BOTTOM_LOOKBACK_PERIOD` | `None` | The number of minutes to look back from the start of the momentum window to find a recent peak/trough. If `None`, it looks back through all available history. |
-| `PEAK_TROUGH_PROMINENCE` | 5 | The prominence value used to detect peaks and troughs. A higher value requires a peak/trough to be more significant relative to its neighbors. |
+| `USE_BREAKOUT_CONFIRMATION` | `True` | If `True`, enables the Peak/Trough Breakout Confirmation step. |
+| `PEAK_BOTTOM_LOOKBACK_PERIOD` | `None` | The number of minutes to look back from the start of the momentum window to find a recent peak/trough. If `None`, it looks back through all available history. Only used if `USE_BREAKOUT_CONFIRMATION` is `True`. |
+| `PEAK_TROUGH_PROMINENCE` | 5 | The prominence value used to detect peaks and troughs. A higher value requires a peak/trough to be more significant relative to its neighbors. Only used if `USE_BREAKOUT_CONFIRMATION` is `True`. |
 | `BODY_TO_RANGE_MIN_RATIO` | 0.5 | The minimum ratio of the final candle's **body to its total range**. E.g., a value of 0.5 means the body must be at least 50% of the candle's full range. |
-| `STRONG_CLOSE_THRESHOLD_RANGE` | `(0.7, 0.3)` | The final candle must close in the top 70% of its range for a BUY, or bottom 30% for a SELL. The implementation uses the first value (0.7) as the minimum threshold for both BUY and SELL checks. |
+| `STRONG_CLOSE_THRESHOLD_RANGE` | `(0.7, 0.3)` | The minimum ratio of the final candle's **body to its total range**. E.g., a value of 0.7 means the body must be at least 70% of the candle's full range. |
 | `USE_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle in the window to have a volume spike. |
 | `USE_VOLUME_INCREASING_CONFIRMATION` | `False` | If `True`, requires the volume to be generally increasing across the confirmation window. |
 | `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle's volume to be the highest within the window. |
@@ -38,12 +39,12 @@ The core logic resides in the `ConsistentMomentumExecutor` class in `src/stockre
     *   For a `BUY` signal, the ratio `(close - open) / (high - low)` must be greater than or equal to the `strong_close_min` threshold.
     *   For a `SELL` signal, the ratio `(open - close) / (high - low)` must be greater than or equal to the `strong_close_min` threshold.
 
-4.  **Peak/Trough Breakout Confirmation (Key Logic):**
-    *   This is a critical check to ensure the momentum is breaking out of a recent price structure.
+4.  **Peak/Trough Breakout Confirmation (Optional):**
+    *   This step is controlled by the `USE_BREAKOUT_CONFIRMATION` flag.
+    *   It is a critical check to ensure the momentum is breaking out of a recent price structure.
     *   The algorithm looks back in time from the *start* of the momentum window (`PEAK_BOTTOM_LOOKBACK_PERIOD`).
     *   It identifies all significant historical peaks (for a `BUY`) or troughs (for a `SELL`) on the **closing prices** using `scipy.signal.find_peaks`.
-    *   For a `BUY` signal, the closing price of the final candle must be **higher than the most recent peak's close**.
-    *   For a `SELL` signal, the closing price must be **lower than the most recent trough's close**.
+    *   The final candle's close must be beyond the identified peak/trough by a certain buffer to confirm the breakout.
     *   **Important:** If no relevant peak or trough is found in the lookback period, this condition is automatically considered **confirmed**. It only fails if a peak/trough exists and the price fails to break it.
 
 5.  **Volume Confirmation (Optional):**
@@ -80,7 +81,7 @@ graph TD
     D -- No --> X;
     D -- Yes --> E{3. Strong Close?};
     E -- No --> X;
-    E -- Yes --> F{4. Breakout Confirmed?};
+    E -- Yes --> F{4. Breakout Confirmed? (Optional)};
     F -- No --> X;
     F -- Yes --> G{"Optional Filters Enabled?"};
     G -- No --> Z[Generate Alert];
@@ -104,8 +105,8 @@ graph TD
 2.  **Basic Momentum?**: Checks if all candles in the window share the same direction (all bullish or all bearish).
 3.  **Consistent Trend (Avg Price)?**: Ensures the average price (midpoint of the body) of the candles is consistently increasing (for a BUY) or decreasing (for a SELL).
 4.  **Strong Close?**: Validates that the final candle's body is a significant portion of its total range.
-5.  **Breakout Confirmed?**: The key logic step. Checks if the final candle's close has broken past the most recent significant peak/trough based on closing prices. If no peak/trough exists, this passes.
-6.  **Optional Filters**: If the core pattern is valid, it proceeds to a series of optional validation filters.
+5.  **Breakout Confirmed? (Optional)**: If enabled, this key logic step checks if the final candle's close has broken past the most recent significant peak/trough. If no peak/trough exists, this passes.
+6.  **Optional Filters**: If the core pattern is valid, it proceeds to a series of other optional validation filters.
 7.  **Volume/Quality/Dominance/Indicators/Reversal**: These steps check for various volume patterns, ensure the final candle is decisive, check that total body size outweighs wicks, validate with standard indicators (RSI, MACD, etc.), and finally peek ahead to ensure no immediate reversal invalidates the signal.
 8.  **Generate Alert**: If all mandatory and enabled optional checks pass, an alert is generated.
 9.  **Discard Window**: If any check fails, the current window is discarded.
