@@ -253,9 +253,12 @@ APPROACH_CONFIG = {
         "VN30F2512": {
             "REFERENCED_SYMBOL": "VN30",
             "LOOKBACK_WINDOW": 10,
-            "COOLDOWN_PERIOD": 3,
-            "MA_SHORT_PERIOD": 5,
-            "DISABLE_SELL_SIGNAL": True
+            "COOLDOWN_PERIOD": 10,
+            "MA_SHORT_PERIOD": 15,
+            "DISABLE_SELL_SIGNAL": True,
+            "USE_VOLUME_CONFIRMATION": True,
+            "USE_INCREASING_VOLUME_CONFIRMATION": False,
+            "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True
         }
     },
     "VOLUME_SPIKE_CONFIRMATION": {
