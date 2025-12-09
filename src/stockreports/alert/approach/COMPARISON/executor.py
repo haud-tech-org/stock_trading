@@ -11,6 +11,12 @@ from src.stockreports.utils.data_utils import load_data_for_development, load_li
 from src.stockreports.utils.historical_data_manager import get_historical_data
 from src.stockreports.config import loader
 from src.stockreports.alert.common.constants import Approach, Mode, Signal
+from src.stockreports.alert.common.volume import (
+    is_volume_increasing, 
+    is_last_candle_volume_max, 
+    is_volume_spike_confirmed, 
+    can_apply_volume_confirmation
+)
 
 settings = loader.get_settings()
 logger = logging.getLogger(__name__)
@@ -126,6 +132,22 @@ class ComparisonExecutor(Executor):
             if confirmation_result:
                 reversal_time = confirmation_result.reversal_time
                 
+                # --- Volume Confirmation ---
+                use_volume_spike = approach_settings.use_volume_confirmation
+                use_increasing_volume = approach_settings.use_increasing_volume_confirmation
+                use_last_candle_max_volume = approach_settings.use_last_candle_max_volume_confirmation
+
+                # Define the window for volume checks, typically the lookback window ending at the current candle
+                volume_check_window_df = main_window.iloc[-approach_settings.lookback_window:]
+
+                volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(final_main) and is_volume_spike_confirmed(final_main.reset_index(), i))
+                volume_is_increasing = not use_increasing_volume or is_volume_increasing(volume_check_window_df)
+                last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(volume_check_window_df)
+
+                if not (volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed):
+                    continue
+                # --- End Volume Confirmation ---
+
                 alert = self._create_alert(
                     candle=main_window.iloc[-1],
                     alert_info=confirmation_result,
