@@ -86,7 +86,7 @@ APPROACH_CONFIG = {
         # --- Main Consolidation Logic: Price Clustering ---
         # Defines the range of window sizes (in candles) to check for consolidation.
         # The system will test every lookback period from the min to the max value.
-        "CONSOLIDATION_LOOKBACK": [15, 30],
+        "CONSOLIDATION_LOOKBACK": [25, 30],
         # The maximum distance (in price points) a candle's close can be from the median
         # price of the window to be considered part of the "cluster".
         "MAX_DEVIATION_FROM_CENTER": 0.5,
@@ -164,22 +164,21 @@ APPROACH_CONFIG = {
         "USE_MA_CONFIRMATION": True
     },
     "CONSISTENT_MOMENTUM": {
-        "REVERSAL_CANDLE_BODY_RATIO": 0.3,
         "PEAK_TROUGH_PROMINENCE": 2,
-        "USE_REALTIME_REVERSAL_CONFIRMATION": True,
-        "REALTIME_REVERSAL_CONFIRMATION_WINDOW": 1,
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 60,
-        "USE_BREAKOUT_CONFIRMATION": False,
+        "USE_BREAKOUT_CONFIRMATION": True,
+        "BREAKOUT_FORWARD_WINDOW": 16,
         "CONFIRMATION_WINDOW": 3,
         "USE_VOLUME_CONFIRMATION": True,
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
-        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": False,
+        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
         "BODY_TO_RANGE_MIN_RATIO": 0.5,
-        "USE_MA_CONFIRMATION": False,
-        "USE_ADX_CONFIRMATION": False,
-        "USE_RSI_EXHAUSTION_FILTER": False,
-        "RSI_OVERSOLD_THRESHOLD": 30,
-        "RSI_OVERBOUGHT_THRESHOLD": 70
+        "USE_MA_CONFIRMATION": True,
+        "USE_ADX_CONFIRMATION": True,
+        "USE_RSI_EXHAUSTION_FILTER": True,
+        "RSI_OVERSOLD_THRESHOLD": 25,
+        "RSI_OVERBOUGHT_THRESHOLD": 75,
+        "COOLDOWN_PERIOD": 10
     },
     "SUPPORT_RESISTANCE_BREAK": {
         "LOOKBACK_PERIOD": 50,
@@ -254,7 +253,7 @@ APPROACH_CONFIG = {
             "REFERENCED_SYMBOL": "VN30",
             "LOOKBACK_WINDOW": 10,
             "COOLDOWN_PERIOD": 10,
-            "MA_SHORT_PERIOD": 15,
+            "MA_SHORT_PERIOD": 30,
             "DISABLE_SELL_SIGNAL": True,
             "USE_VOLUME_CONFIRMATION": True,
             "USE_INCREASING_VOLUME_CONFIRMATION": False,
@@ -268,7 +267,7 @@ APPROACH_CONFIG = {
         "SIGNAL_LOOKBACK_PERIOD": 5,
         "COOLDOWN_PERIOD": 10,
         "MIN_LOOKBACK_DATA": 30,
-        "PEAK_TROUGH_PROMINENCE": 1.0,
+        "PEAK_TROUGH_PROMINENCE": 2.0,
     }
 }
 
