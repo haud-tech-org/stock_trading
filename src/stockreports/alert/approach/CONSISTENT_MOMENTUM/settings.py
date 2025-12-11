@@ -17,14 +17,13 @@ class ConsistentMomentumSettings:
         self.peak_bottom_lookback_period = self.approach_settings.get("PEAK_BOTTOM_LOOKBACK_PERIOD")
         self.peak_trough_prominence = self.approach_settings.get("PEAK_TROUGH_PROMINENCE", 2)
         self.body_to_range_min_ratio = self.approach_settings.get("BODY_TO_RANGE_MIN_RATIO", 0.5)
-        self.reversal_candle_body_ratio = self.approach_settings.get("REVERSAL_CANDLE_BODY_RATIO", 0.6)
-        self.use_realtime_reversal_confirmation = self.approach_settings.get("USE_REALTIME_REVERSAL_CONFIRMATION", False)
-        self.realtime_reversal_confirmation_window = self.approach_settings.get("REALTIME_REVERSAL_CONFIRMATION_WINDOW", 2)
         self.use_breakout_confirmation = self.approach_settings.get("USE_BREAKOUT_CONFIRMATION", False)
+        self.breakout_forward_window = self.approach_settings.get("BREAKOUT_FORWARD_WINDOW", 3)
 
         # --- General Confirmation Settings ---
         self.use_ma_confirmation = self.approach_settings.get("USE_MA_CONFIRMATION", False)
         self.use_adx_confirmation = self.approach_settings.get("USE_ADX_CONFIRMATION", False)
+        self.cooldown_period = self.approach_settings.get("COOLDOWN_PERIOD", 10)
 
     def get(self, key, default=None):
         return self.approach_settings.get(key, default)
