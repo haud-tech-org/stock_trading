@@ -70,8 +70,6 @@ class SymbolAlerter:
 
         # Use a logger specific to this symbol instance
         self.logger = logging.getLogger(f"SymbolAlerter.{self.symbol}")
-        self.logger.setLevel(logging.INFO)
-
         # Avoid adding handlers if they already exist
         if not self.logger.handlers:
             # File handler

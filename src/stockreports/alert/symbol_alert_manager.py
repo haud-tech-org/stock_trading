@@ -44,7 +44,9 @@ class SymbolAlertManager:
         This prevents duplicate file logging when run via launchd, which handles redirection.
         """
         logger = logging.getLogger()
-        logger.setLevel(logging.INFO)
+        # Use the log level from settings, not a hardcoded value
+        log_level = getattr(logging, self.settings.LOG_LEVEL, logging.INFO)
+        logger.setLevel(log_level)
 
         # Prevent adding handlers multiple times
         if logger.hasHandlers():
