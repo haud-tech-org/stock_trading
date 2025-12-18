@@ -87,11 +87,14 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
 
         # --- Definitive Entry Price & Suggested Price Logic ---
         # 1. Set the actual entry_price for the trade.
-        #    Priority: Use price from alert data if it exists, otherwise fallback to candle open.
-        if 'price' in alert and alert['price'] is not None:
-            entry_price = alert['price']
+        #    Priority: Use 'alert_price' from alert data if it exists AND the source symbol matches the execution symbol.
+        #    Otherwise (e.g. cross-symbol alert or missing price), use the candle 'close' price of the execution symbol.
+        if alert.get('source_symbol') == execution_symbol and 'alert_price' in alert and alert['alert_price'] is not None:
+            entry_price = alert['alert_price']
         else:
-            entry_price = entry_candle['open']
+            # Case: Alert source != Execution symbol (or missing alert_price).
+            # We simulate the trade using the 'close' price of the execution symbol at the alert time.
+            entry_price = entry_candle['close']
 
         # 2. Determine the entry_suggested_price for analysis.
         #    Priority: Use 'suggested_price' from alert data if symbols match.
