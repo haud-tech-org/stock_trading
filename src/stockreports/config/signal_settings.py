@@ -270,6 +270,19 @@ APPROACH_CONFIG = {
         "COOLDOWN_PERIOD": 10,
         "MIN_LOOKBACK_DATA": 30,
         "PEAK_TROUGH_PROMINENCE": 2.0,
+    },
+    "PROMINENT_PEAK_REVERSAL": {
+        "LOOKBACK_WINDOW": 30,
+        "CONFIRMATION_WINDOW": 6,
+        "PEAK_PROMINENCE": 6.0,
+        "USE_PEAK_IN_LOOKBACK_VALIDATION": True,
+        "WICK_TO_BODY_RATIO": 0.7,
+        "MIN_BODY_POINT_PRICE": 1.0,
+        "MIN_REVERSAL_PRICE_DIFF": 1.5,
+        "VOLUME_MULTIPLIER": 1.5,
+        "COOLDOWN_WINDOW": 5,
+        "DISABLE_SELL_SIGNAL": False,
+        "DISABLE_BUY_SIGNAL": False
     }
 }
 

@@ -85,147 +85,89 @@ class ConsolidationBreakoutSettings:
 
 ### Step 5: Implement the `executor.py` Using the Class-Based Template
 
-Copy and adapt the following template for your `executor.py`.
+Copy and adapt the following template for your `executor.py`. **Note:** This template uses the `AlertData` model. Executors **MUST** create and return `AlertData` objects, not `Alert` objects, to prevent circular import errors.
 
 ```python
-# src/stockreports/alert/approach/CONSOLIDATION_BREAKOUT/executor.py
+# src/stockreports/alert/approach/YOUR_APPROACH_NAME/executor.py
 
 import pandas as pd
 import logging
 import json
-from typing import Optional
+from typing import list
 
 # --- Standard Imports ---
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.model.models import AlertResult, AlertData
+from src.stockreports.alert.model.models import AlertData # CORRECT: Use AlertData
 from src.stockreports.alert.common.constants import Approach, Mode
-from src.stockreports.alert.common.data_utils import can_apply_analysis
-from src.stockreports.alert.common.confirmation.confirmation import prepare_indicators
+# ... other common imports
+
 # --- Custom Approach Imports ---
-from .settings import ConsolidationBreakoutSettings
+from .settings import YourApproachNameSettings
 
 logger = logging.getLogger(__name__)
 
-class ConsolidationBreakoutExecutor(Executor):
-    APPROACH_NAME = Approach.CONSOLIDATION_BREAKOUT
-    LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None # Use a class variable for global cooldown
+class YourApproachNameExecutor(Executor):
+    APPROACH_NAME = Approach.YOUR_APPROACH_NAME
 
-    def __init__(self, symbol: str, debug: bool = False):
-        super().__init__(symbol)
-        self.settings = ConsolidationBreakoutSettings(symbol)
+    def __init__(self, symbol: str, data: pd.DataFrame, mode: Mode):
+        super().__init__(symbol, data, mode)
+        self.settings = YourApproachNameSettings(symbol)
         self.logger = logging.getLogger(__name__)
-        self.debug = debug # Enable verbose logging for debug scripts
 
     # 1. MAIN ENTRY POINT
-    def run(self, df: pd.DataFrame, new_candle_count: int) -> AlertResult:
+    def run(self) -> list[AlertData]:
         """
-        Entry point for the CONSOLIDATION_BREAKOUT approach.
+        Entry point for the YOUR_APPROACH_NAME approach.
         """
-        try:
-            # MANDATORY: Standardize column names immediately.
-            df.columns = [col.lower() for col in df.columns]
-            self.logger.info(f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...")
-
-            alerts_data = self._find_consolidation_breakout_alerts(df, new_candle_count)
-            self.logger.info(f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts_data)} alerts.")
-
-            alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
-
-            return AlertResult(
-                approach_name=self.APPROACH_NAME,
-                alerts=alerts_df
-            )
-        except Exception as e:
-            self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
-            return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame(), status="FAILED", message=str(e))
-
-    # 2. PRIMARY FINDER FUNCTION (WITH UNIFIED REVERSE LOOP)
-    def _find_consolidation_breakout_alerts(self, df: pd.DataFrame, new_candle_count: int) -> list[AlertData]:
         alerts = []
-        is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
+        self.logger.info(f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...")
         
-        df = prepare_indicators(df)
+        # --- Core Logic ---
+        # Your unique pattern detection logic goes here.
+        # It should return a signal ("BUY" or "SELL") or None.
+        # Example: confirmation_result = self.confirmation.confirm(self.data)
+        confirmation_result = None # Placeholder
+
+        if confirmation_result:
+            alert = self._create_alert(confirmation_result)
+            alerts.append(alert)
+            self.logger.info(f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts)} alerts.")
+        else:
+            self.logger.info(f"'{self.APPROACH_NAME}' approach for {self.symbol} found 0 alerts.")
+
+        return alerts
+
+    # 2. ALERT CREATION HELPER
+    def _create_alert(self, confirmation_result) -> AlertData:
+        last_candle = self.data.iloc[-1]
+        reversal_candle = self.data.loc[confirmation_result.reversal_time]
         
-        required_lookback = self.settings.lookback_period
-        if not can_apply_analysis(df, required_rows=required_lookback):
-            self.logger.warning(f"{self.APPROACH_NAME}: Insufficient data. Required: {required_lookback}, have: {len(df)}.")
-            return alerts
-
-        df_indexed = df.set_index('time')
-
-        loop_end = len(df_indexed) - 1
-        loop_start = required_lookback - 1
-        active_region_start = len(df_indexed) - new_candle_count - required_lookback
-
-        for i in range(loop_end, loop_start - 1, -1):
-            if not is_development_mode and i < active_region_start:
-                break
-
-            current_candle_time = df_indexed.index[i]
-            
-            # --- Cooldown Check (Example) ---
-            if self.settings.cooldown_period > 0 and self.LATEST_ALERT_TIMESTAMP is not None:
-                time_since_last = (current_candle_time - self.LATEST_ALERT_TIMESTAMP).total_seconds() / 60
-                if time_since_last < self.settings.cooldown_period:
-                    if self.debug:
-                        self.logger.debug(f"Window ending {current_candle_time}: Skipped due to active cooldown. "
-                                        f"Last alert was {time_since_last:.2f} mins ago, "
-                                        f"cooldown is {self.settings.cooldown_period} mins.")
-                    continue
-
-            window = df_indexed.iloc[i - required_lookback + 1 : i + 1].copy()
-            
-            # --- Core Logic ---
-            # Your unique pattern detection logic goes here.
-            # It should return a signal ("BUY" or "SELL") or None.
-            # Make sure to include detailed debug logging for each failed check.
-            # Example: signal = self._check_pattern(window)
-            signal = "BUY" # Placeholder
-            
-            if signal:
-                # --- Optional Final Filters ---
-                # Apply standard filters like volume, RSI, etc. after finding a core pattern.
-                # if not self._is_breakout_confirmed(window):
-                #     continue
-
-                alert = self._create_alert(window, signal)
-                alerts.append(alert)
-                
-                # Update class-level timestamp for cooldown
-                ConsolidationBreakoutExecutor.LATEST_ALERT_TIMESTAMP = alert.alert_time
-                
-                if not is_development_mode:
-                    self.logger.info(f"Alert found in DEPLOYMENT mode. Exiting loop.")
-                    return alerts # Exit after first alert in deployment
-        
-        return alerts[::-1]
-
-    # 3. ALERT CREATION HELPER
-    def _create_alert(self, window: pd.DataFrame, signal: str) -> AlertData:
-        start_candle = window.iloc[0]
-        end_candle = window.iloc[-1]
-        alert_time = end_candle.name
+        alert_time = last_candle.name
         alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+        magnitude = round(abs(last_candle['close'] - reversal_candle['close']), 2)
 
-        details = { "lookback_period": self.settings.lookback_period }
+        details = { "parameter_1": self.settings.parameter_1 }
 
         return AlertData(
-            approach=self.APPROACH_NAME,
             id=alert_id,
             symbol=self.symbol,
-            signal=signal,
-            alert_price=end_candle['close'],
+            signal=confirmation_result.signal,
             alert_time=alert_time,
-            start_price=start_candle['open'],
-            start_time=start_candle.name,
-            magnitude=round(abs(end_candle['close'] - start_candle['open']), 2),
+            alert_price=last_candle['close'],
+            approach=self.APPROACH_NAME,
+            start_time=confirmation_result.reversal_time,
+            start_price=reversal_candle['close'],
+            magnitude=magnitude,
             details=json.dumps(details)
         )
 ```
 
 ### Step 6: Enable the Approach in `settings.py`
 
-This step remains the same. Add your approach's string name to the `ALERT_APPROACHES` list in `src/stockreports/config/settings.py`.
+**CRITICAL ACTIVATION STEP:** This step makes your new approach live.
+
+1.  Open `src/stockreports/config/settings.py`.
+2.  Add your approach's string name to the `ALERT_APPROACHES` list.
 
 ### Step 7: Create Documentation and Debug Script
 
@@ -257,7 +199,8 @@ These rules are adapted for the new class-based architecture.
 
 ### 5. Configuration and Code Structure
 -   **Rule 1**: Create a dedicated settings class for your approach (e.g., `MyApproachSettings`) to load all parameters from `signal_settings.py`. Instantiate this class in your executor's `__init__` method.
--   **Rule 2**: The `APPROACH_NAME` **MUST** be a class-level constant in your executor. For global state like a cooldown, use a class-level variable (e.g., `LATEST_ALERT_TIMESTAMP`).
+-   **Rule 2**: The `APPROACH_NAME` **MUST** be a class-level constant in your executor, assigned from the `Approach` enum (e.g., `APPROACH_NAME = Approach.MY_APPROACH`).
+-   **Rule 3**: Executors **MUST** create and return `AlertData` objects from `src.stockreports.alert.model.models`. They **MUST NOT** import or instantiate the `Alert` class directly. This prevents circular dependency errors.
 
 ### 6. Verbose Debug Logging for Validation
 -   **Rule**: Every validation check that can cause a window to be rejected **MUST** be accompanied by a `self.logger.debug()` message explaining the exact reason for the failure. This is critical for debugging and fine-tuning the approach.
