@@ -17,7 +17,7 @@ notifications, and market-specific details.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
-SYMBOLS = ["VN30", "VN30F2512", "VIC", "HPG"]
+SYMBOLS = ["VN30", "VN30F2512"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -131,10 +131,11 @@ ALERT_APPROACHES = [
     "ICHIMOKU",
     "STRONG_CANDLE",
     #"SUPPORT_RESISTANCE_BREAK",
-    "MOMENTUM_EXHAUSTION",
+    #"MOMENTUM_EXHAUSTION",
     "CONSECUTIVE_POWER_CANDLES",
-    "CONSOLIDATION_BREAKOUT",
+    #"CONSOLIDATION_BREAKOUT",
     "COMPARISON",
+    "PROMINENT_PEAK_REVERSAL",
     "VOLUME_SPIKE_CONFIRMATION"
     # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
@@ -156,7 +157,7 @@ TRADING_HOURS = {
         "name": "Vietnam",
         "timezone": "Asia/Ho_Chi_Minh",
         "sessions": {
-            "morning": {"start": "08:55", "end": "11:30"},
+            "morning": {"start": "09:00", "end": "11:30"},
             "afternoon": {"start": "13:00", "end": "14:35"},
         }
     },
