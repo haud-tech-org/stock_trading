@@ -183,7 +183,7 @@ def main():
     Main function to run the support/resistance detection script.
     """
     parser = argparse.ArgumentParser(description="Detect support and resistance levels for given stock symbols.")
-    parser.add_argument("--symbols", type=str, nargs='+', default=['VN30', 'VN30F2512', 'VIC', 'HPG'], help="One or more stock symbols.")
+    parser.add_argument("--symbols", type=str, nargs='+', default=['VN30', '41I1G1000', 'VIC', 'HPG'], help="One or more stock symbols.")
     parser.add_argument("--start-time", type=str, default="2025-08-01 09:00:00", help="Start time for data fetching (YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--end-time", type=str, default=None, help="End time for data fetching (YYYY-MM-DD HH:MM:SS). Defaults to current time.")
     parser.add_argument("--resolution", type=int, default=5, help="Data resolution in minutes (e.g., 1, 5, 60).")
