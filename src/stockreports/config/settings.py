@@ -17,7 +17,7 @@ notifications, and market-specific details.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
-SYMBOLS = ["VN30", "VN30F2512"]
+SYMBOLS = ["VN30", "41I1G1000"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -182,8 +182,8 @@ TRADING_HOURS = {
 #   - TRADE_EXECUTION_SYMBOL: The one symbol on which all trades will be simulated. This symbol's price data will be used to calculate profit/loss.
 CONSOLIDATED_PROFITABILITY = {
     "ENABLED": True,
-    "ALERT_SOURCE_SYMBOLS": ["VN30", "VN30F2512"],
-    "TRADE_EXECUTION_SYMBOL": "VN30F2512"
+    "ALERT_SOURCE_SYMBOLS": ["VN30", "41I1G1000"],
+    "TRADE_EXECUTION_SYMBOL": "41I1G1000"
 }
 
 # --- Debug Replay Configuration ---

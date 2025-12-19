@@ -40,7 +40,7 @@ python3 src/tools/extract_period_data.py \
 
 ### Command:
 ```sh
-python3 src/tools/support_resistance_detector.py --symbols VN30 VN30F2512 --start-time "2025-11-01 09:00:00" --end-time "2025-12-15 14:30:00" --resolution 15 --min-touches 3 --update-settings
+python3 src/tools/support_resistance_detector.py --symbols VN30 41I1G1000 --start-time "2025-11-01 09:00:00" --end-time "2025-12-18 14:30:00" --resolution 15 --min-touches 3 --update-settings
 ```
 
 
