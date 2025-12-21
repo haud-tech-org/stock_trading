@@ -100,10 +100,6 @@ class ComparisonConfirmation:
             return False
         logger.info(f"Uptrend PASSED: Price difference {price_diff} >= {self._settings.min_price_difference}.")
 
-        # 4. Confirm divergence conditions are met.
-        if not self._is_divergence_confirmed(main_data, ref_data, reversal_time):
-            return False
-
         logger.info(">>> All uptrend conditions PASSED. <<<")
         return True
 
@@ -148,52 +144,7 @@ class ComparisonConfirmation:
             return False
         logger.info(f"Downtrend PASSED: Price difference {price_diff} >= {self._settings.min_price_difference}.")
 
-        # 4. Confirm divergence conditions are met.
-        if not self._is_divergence_confirmed(main_data, ref_data, reversal_time):
-            return False
-
         logger.info(">>> All downtrend conditions PASSED. <<<")
-        return True
-
-    def _is_divergence_confirmed(self, main_data: pd.DataFrame, ref_data: pd.DataFrame, reversal_time: pd.Timestamp) -> bool:
-        """
-        Confirms that the divergence between the main and reference symbols meets
-        the configured criteria for both minimum difference and increasing trend.
-
-        Args:
-            main_data (pd.DataFrame): Historical data for the main symbol.
-            ref_data (pd.DataFrame): Historical data for the reference symbol.
-            reversal_time (pd.Timestamp): The timestamp of the crossover event.
-
-        Returns:
-            bool: True if divergence conditions are met, False otherwise.
-        """
-        # Align dataframes to ensure correct element-wise operations
-        aligned_main, aligned_ref = main_data.align(ref_data, join='inner', axis=0)
-
-        # 1. Check for minimum price difference at the last candle.
-        last_main_close = aligned_main.iloc[-1]['close']
-        last_ref_close = aligned_ref.iloc[-1]['close']
-        abs_diff = abs(last_main_close - last_ref_close)
-
-        if abs_diff < self._settings.min_price_difference:
-            logger.info(f"Divergence FAILED: Absolute difference {abs_diff:.2f} is less than minimum {self._settings.min_price_difference:.2f}")
-            return False
-        logger.info(f"Divergence PASSED: Absolute difference {abs_diff:.2f} meets minimum.")
-
-        # 2. Check if the absolute difference has been increasing since the reversal.
-        if self._settings.use_increasing_difference_confirmation:
-            # Calculate the absolute difference series
-            diff_series = (aligned_main['close'] - aligned_ref['close']).abs()
-            
-            # Get the series slice from the reversal point onwards
-            diff_since_reversal = diff_series.loc[reversal_time:]
-            
-            if not diff_since_reversal.is_monotonic_increasing:
-                logger.info(f"Divergence FAILED: Absolute difference has not been monotonically increasing since {reversal_time}.")
-                return False
-            logger.info("Divergence PASSED: Absolute difference is monotonically increasing.")
-            
         return True
 
     def _find_price_switch_reversal(self, main_data: pd.DataFrame, ref_data: pd.DataFrame, signal: str):

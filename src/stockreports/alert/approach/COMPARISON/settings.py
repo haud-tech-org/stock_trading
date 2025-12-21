@@ -16,7 +16,6 @@ class ComparisonSignalSettings:
         self.use_increasing_volume_confirmation = self.approach_settings.get('USE_INCREASING_VOLUME_CONFIRMATION', False)
         self.use_last_candle_max_volume_confirmation = self.approach_settings.get('USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION', False)
         self.min_price_difference = self.approach_settings.get('MIN_PRICE_DIFFERENCE', 2.0)
-        self.use_increasing_difference_confirmation = self.approach_settings.get('USE_INCREASING_DIFFERENCE_CONFIRMATION', False)
 
     def get(self, key, default=None):
         return self.approach_settings.get(key, default)
