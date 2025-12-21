@@ -68,33 +68,37 @@ class ComparisonConfirmation:
         including a "price-switch" crossover event between the two symbols.
         """
         last_main_candle = main_data.iloc[-1]
-        last_ref_candle = ref_data.iloc[-1]
         logger.info(f"--- Checking Uptrend for timestamp {last_main_candle.name} ---")
 
-        # 1. Both symbols must end on a green (bullish) candle.
+        # 1. Main symbol must end on a green (bullish) candle.
         is_main_green = self._is_green(last_main_candle)
-        is_ref_green = self._is_green(last_ref_candle)
-        if not (is_main_green and is_ref_green):
-            logger.info(f"Uptrend FAILED: Candles are not both green. Main green: {is_main_green}, Ref green: {is_ref_green}")
+        if not is_main_green:
+            logger.info(f"Uptrend FAILED: Main candle is not green.")
             return False
-        logger.info("Uptrend PASSED: Both candles are green.")
+        logger.info("Uptrend PASSED: Main candle is green.")
 
-        # 2. The closing price of both symbols must be above their short-term moving average.
+        # 2. The closing price of main symbol must be above their short-term moving average.
         is_main_above_ma = last_main_candle['close'] > last_main_candle[f'ma_{self._settings.ma_short_period}']
-        is_ref_above_ma = last_ref_candle['close'] > last_ref_candle[f'ma_{self._settings.ma_short_period}']
-        if not (is_main_above_ma and is_ref_above_ma):
-            logger.info(f"Uptrend FAILED: Close is not above MA. Main above MA: {is_main_above_ma}, Ref above MA: {is_ref_above_ma}")
+        if not is_main_above_ma:
+            logger.info(f"Uptrend FAILED: Main close is not above MA.")
             return False
-        logger.info("Uptrend PASSED: Both closes are above their MA.")
+        logger.info("Uptrend PASSED: Main close is above MA.")
             
-        # 3. The current closing price of both symbols must be higher than their
+        # 3. The current closing price of main symbol must be higher than their
         # respective prices at the time of the crossover. This confirms sustained momentum.
         is_main_higher = last_main_candle['close'] > main_data.loc[reversal_time]['close']
-        is_ref_higher = last_ref_candle['close'] > ref_data.loc[reversal_time]['close']
-        if not (is_main_higher and is_ref_higher):
-            logger.info(f"Uptrend FAILED: Close is not higher than reversal close. Main higher: {is_main_higher}, Ref higher: {is_ref_higher}")
+        if not is_main_higher:
+            logger.info(f"Uptrend FAILED: Main close is not higher than reversal close.")
             return False
-        logger.info("Uptrend PASSED: Both closes are higher than their reversal closes.")
+        logger.info("Uptrend PASSED: Main close is higher than reversal close.")
+
+        # 4. The difference between main and ref closing prices must be >= min_price_difference
+        last_ref_candle = ref_data.iloc[-1]
+        price_diff = last_main_candle['close'] - last_ref_candle['close']
+        if price_diff < self._settings.min_price_difference:
+            logger.info(f"Uptrend FAILED: Price difference {price_diff} is less than min required {self._settings.min_price_difference}.")
+            return False
+        logger.info(f"Uptrend PASSED: Price difference {price_diff} >= {self._settings.min_price_difference}.")
 
         logger.info(">>> All uptrend conditions PASSED. <<<")
         return True
@@ -108,33 +112,37 @@ class ComparisonConfirmation:
             return False
             
         last_main_candle = main_data.iloc[-1]
-        last_ref_candle = ref_data.iloc[-1]
         logger.info(f"--- Checking Downtrend for timestamp {last_main_candle.name} ---")
 
-        # 1. Both symbols must end on a red (bearish) candle.
+        # 1. Main symbol must end on a red (bearish) candle.
         is_main_red = self._is_red(last_main_candle)
-        is_ref_red = self._is_red(last_ref_candle)
-        if not (is_main_red and is_ref_red):
-            logger.info(f"Downtrend FAILED: Candles are not both red. Main red: {is_main_red}, Ref red: {is_ref_red}")
+        if not is_main_red:
+            logger.info(f"Downtrend FAILED: Main candle is not red.")
             return False
-        logger.info("Downtrend PASSED: Both candles are red.")
+        logger.info("Downtrend PASSED: Main candle is red.")
 
-        # 2. The closing price of both symbols must be below their short-term moving average.
+        # 2. The closing price of main symbol must be below their short-term moving average.
         is_main_below_ma = last_main_candle['close'] < last_main_candle[f'ma_{self._settings.ma_short_period}']
-        is_ref_below_ma = last_ref_candle['close'] < last_ref_candle[f'ma_{self._settings.ma_short_period}']
-        if not (is_main_below_ma and is_ref_below_ma):
-            logger.info(f"Downtrend FAILED: Close is not below MA. Main below MA: {is_main_below_ma}, Ref below MA: {is_ref_below_ma}")
+        if not is_main_below_ma:
+            logger.info(f"Downtrend FAILED: Main close is not below MA.")
             return False
-        logger.info("Downtrend PASSED: Both closes are below their MA.")
+        logger.info("Downtrend PASSED: Main close is below MA.")
 
-        # 3. The current closing price of both symbols must be lower than their
+        # 3. The current closing price of main symbol must be lower than their
         # respective prices at the time of the crossover. This confirms sustained momentum.
         is_main_lower = last_main_candle['close'] < main_data.loc[reversal_time]['close']
-        is_ref_lower = last_ref_candle['close'] < ref_data.loc[reversal_time]['close']
-        if not (is_main_lower and is_ref_lower):
-            logger.info(f"Downtrend FAILED: Close is not lower than reversal close. Main lower: {is_main_lower}, Ref lower: {is_ref_lower}")
+        if not is_main_lower:
+            logger.info(f"Downtrend FAILED: Main close is not lower than reversal close.")
             return False
-        logger.info("Downtrend PASSED: Both closes are lower than their reversal closes.")
+        logger.info("Downtrend PASSED: Main close is lower than reversal close.")
+
+        # 4. The difference between ref and main closing prices must be >= min_price_difference
+        last_ref_candle = ref_data.iloc[-1]
+        price_diff = last_ref_candle['close'] - last_main_candle['close']
+        if price_diff < self._settings.min_price_difference:
+            logger.info(f"Downtrend FAILED: Price difference {price_diff} is less than min required {self._settings.min_price_difference}.")
+            return False
+        logger.info(f"Downtrend PASSED: Price difference {price_diff} >= {self._settings.min_price_difference}.")
 
         logger.info(">>> All downtrend conditions PASSED. <<<")
         return True

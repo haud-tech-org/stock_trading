@@ -251,9 +251,10 @@ APPROACH_CONFIG = {
     "COMPARISON": {
         "VN30F2512": {
             "REFERENCED_SYMBOL": "VN30",
+            "MIN_PRICE_DIFFERENCE": 2.0,
             "LOOKBACK_WINDOW": 10,
             "COOLDOWN_PERIOD": 10,
-            "MA_SHORT_PERIOD": 30,
+            "MA_SHORT_PERIOD": 5,
             "DISABLE_SELL_SIGNAL": True,
             "USE_VOLUME_CONFIRMATION": True,
             "USE_INCREASING_VOLUME_CONFIRMATION": False,
