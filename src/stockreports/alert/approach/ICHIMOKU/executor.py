@@ -129,15 +129,14 @@ class IchimokuExecutor(Executor):
         # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
         end_offset = confirmation_candles if use_confirmation_filter else 0
         loop_end = len(df_indexed) - 1 - end_offset
-        loop_start = required_lookback -1
-
-        # The loop's scan depth is naturally optimized by this calculation.
-        active_region_start = len(df_indexed) - new_candle_count - required_lookback
+        min_scan_index = required_lookback - 1
+        
+        if is_development_mode:
+            loop_start = min_scan_index
+        else:
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - end_offset)
 
         for i in range(loop_end, loop_start - 1, -1):
-            if i < active_region_start:
-                break # Stop searching if we are past the active region for the current mode.
-
             alert = self._analyze_candle(df_indexed, i, use_divergence_filter, use_confirmation_filter, confirmation_candles)
             
             if alert:

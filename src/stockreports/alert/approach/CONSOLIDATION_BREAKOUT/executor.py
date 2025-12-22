@@ -68,14 +68,14 @@ class ConsolidationBreakoutExecutor(Executor):
         df_indexed = df.set_index('time')
 
         loop_end = len(df_indexed) - 1
-        loop_start = required_lookback - 1
+        min_scan_index = required_lookback - 1
         
-        active_region_start = len(df_indexed) - new_candle_count if not is_development_mode else loop_start
+        if is_development_mode:
+            loop_start = min_scan_index
+        else:
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
 
         for i in range(loop_end, loop_start - 1, -1):
-            if not is_development_mode and i < active_region_start:
-                break
-
             for lookback in range(min_lookback, max_lookback + 1):
                 current_required_lookback = lookback + self.settings.breakout_confirmation_candles
                 if i < current_required_lookback - 1:
