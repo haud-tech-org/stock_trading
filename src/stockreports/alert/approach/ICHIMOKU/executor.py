@@ -147,6 +147,9 @@ class IchimokuExecutor(Executor):
                     continue
 
                 alerts.append(alert)
+                
+                if not is_development_mode:
+                    return alerts
 
         # In DEVELOPMENT mode, return all found alerts in chronological order.
         return alerts[::-1]
