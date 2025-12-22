@@ -25,6 +25,13 @@ Every approach executor (`executor.py`) **MUST** be a class that inherits from `
             # ... analysis ...
         ```
     -   **No Inner Breaks**: Do not use `if not is_development_mode and i < ...: break` inside the loop. The range control handles this efficiently.
+    -   **Immediate Return in Deployment**: In `DEPLOYMENT` mode, the loop should typically return immediately after finding the first valid alert (since we iterate backwards from the newest data).
+        ```python
+        if alert:
+            alerts.append(alert)
+            if not is_development_mode:
+                return alerts # Return immediately after first alert in deployment
+        ```
 -   **Clear Class Structure**: The logic must be encapsulated within the executor class:
     -   `__init__`: Initializes the executor for a specific symbol and loads its settings.
     -   `run`: The main public entry point that receives the DataFrame.
@@ -197,8 +204,10 @@ class YourApproachNameExecutor(Executor):
             alert = self._analyze_candle(df_indexed, i, ...)
             if alert:
                 alerts.append(alert)
+                # Optimization: In deployment, we only need the most recent alert.
+                if not is_development_mode:
+                    return alerts
 ```
-
 
 ### Step 6: Enable the Approach in `settings.py`
 
