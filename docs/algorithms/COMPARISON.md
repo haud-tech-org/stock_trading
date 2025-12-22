@@ -43,13 +43,15 @@ The core logic resides in the `ComparisonExecutor` class (`executor.py`) and the
         *   For a `SELL` signal, it's where the primary symbol's close price crosses *below* the reference's.
     *   **Confirm Trend Post-Switch**: If a price-switch is found, the algorithm then confirms if the trend is valid *at the current candle*:
         *   **For an Uptrend (BUY):**
-            1.  Both symbols must be on a **green (bullish)** candle.
-            2.  The closing price of both symbols must be **above** their short-term MA.
-            3.  The current closing price of both symbols must be **higher** than their respective prices at the time of the price-switch, confirming sustained momentum.
+            1.  The primary symbol must be on a **green (bullish)** candle.
+            2.  The closing price of the primary symbol must be **above** its short-term MA.
+            3.  The current closing price of the primary symbol must be **higher** than its price at the time of the price-switch, confirming sustained momentum.
+            4.  The difference between the primary symbol's close and the reference symbol's close must be greater than or equal to `MIN_PRICE_DIFFERENCE`.
         *   **For a Downtrend (SELL):** (This check is skipped if `DISABLE_SELL_SIGNAL` is `True`)
-            1.  Both symbols must be on a **red (bearish)** candle.
-            2.  The closing price of both symbols must be **below** their short-term MA.
-            3.  The current closing price of both symbols must be **lower** than their respective prices at the time of the price-switch.
+            1.  The primary symbol must be on a **red (bearish)** candle.
+            2.  The closing price of the primary symbol must be **below** its short-term MA.
+            3.  The current closing price of the primary symbol must be **lower** than its price at the time of the price-switch.
+            4.  The difference between the reference symbol's close and the primary symbol's close must be greater than or equal to `MIN_PRICE_DIFFERENCE`.
 
 6.  **Alert Generation**: If all conditions are met, an `AlertData` object is created, and the global cooldown timestamp is updated. In `DEPLOYMENT` mode, the loop exits immediately after finding the first alert.
 
