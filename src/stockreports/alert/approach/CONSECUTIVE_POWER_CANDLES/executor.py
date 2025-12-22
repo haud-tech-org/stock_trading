@@ -158,13 +158,14 @@ class ConsecutivePowerCandlesExecutor(Executor):
         df_indexed = df.set_index('time')
 
         loop_end = len(df_indexed) - 1
-        loop_start = window_size - 1
-        active_region_start = len(df_indexed) - new_candle_count - window_size
+        min_scan_index = window_size - 1
+        
+        if is_development_mode:
+            loop_start = min_scan_index
+        else:
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
 
         for i in range(loop_end, loop_start - 1, -1):
-            if i < active_region_start:
-                break
-
             window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
             
             alert = self._analyze_window(window, df_indexed)

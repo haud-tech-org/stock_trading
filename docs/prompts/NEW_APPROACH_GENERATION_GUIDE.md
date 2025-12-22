@@ -11,6 +11,20 @@ Every approach executor (`executor.py`) **MUST** be a class that inherits from `
 -   **Configuration-Driven**: All key parameters (lookback periods, thresholds, feature flags) **MUST** be defined in `src/stockreports/config/signal_settings.py` and loaded via a dedicated settings class for the approach. Hard-coded "magic numbers" are **STRICTLY FORBIDDEN**.
 -   **Stateful but Pure Analysis**: The `Executor` instance holds state for a single symbol (like the last alert time), but the core analysis logic within the `run` method should be pure. Given the same DataFrame and configuration, it **MUST** always produce the same `AlertResult`.
 -   **Unified Reverse Loop**: The main loop for finding alerts **MUST** be a **reverse loop** (from the latest candle to the oldest). This single loop must efficiently handle both `DEVELOPMENT` mode (find all historical alerts) and `DEPLOYMENT` mode (find only the most recent alert and exit immediately).
+    -   **Loop Logic**: The loop range should be calculated upfront.
+        ```python
+        # Calculate loop_start based on mode
+        if is_development_mode:
+            loop_start = min_scan_index
+        else:
+            # In deployment, scan only new candles (minus offset if needed)
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - offset)
+
+        # Iterate backwards
+        for i in range(loop_end, loop_start - 1, -1):
+            # ... analysis ...
+        ```
+    -   **No Inner Breaks**: Do not use `if not is_development_mode and i < ...: break` inside the loop. The range control handles this efficiently.
 -   **Clear Class Structure**: The logic must be encapsulated within the executor class:
     -   `__init__`: Initializes the executor for a specific symbol and loads its settings.
     -   `run`: The main public entry point that receives the DataFrame.
@@ -160,7 +174,31 @@ class YourApproachNameExecutor(Executor):
             magnitude=magnitude,
             details=json.dumps(details)
         )
+
+        # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
+        # 1. Define loop_end (most recent index to scan)
+        #    - Subtract any forward-looking offset (e.g., confirmation candles) here.
+        offset = confirmation_candles if use_confirmation_filter else 0
+        loop_end = len(df_indexed) - 1 - offset
+        
+        # 2. Define min_scan_index (absolute minimum index required for lookback)
+        min_scan_index = required_lookback - 1
+        
+        # 3. Define loop_start (oldest index to scan) based on mode
+        if is_development_mode:
+            loop_start = min_scan_index
+        else:
+            # In DEPLOYMENT, we only scan the 'new_candle_count' range.
+            # We also subtract the offset to ensure we stop early enough for forward checks.
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - offset)
+
+        # 4. Execute the Loop
+        for i in range(loop_end, loop_start - 1, -1):
+            alert = self._analyze_candle(df_indexed, i, ...)
+            if alert:
+                alerts.append(alert)
 ```
+
 
 ### Step 6: Enable the Approach in `settings.py`
 

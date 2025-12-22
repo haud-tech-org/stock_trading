@@ -104,13 +104,15 @@ class ComparisonExecutor(Executor):
         cooldown_period_minutes = approach_settings.cooldown_period  # Use dedicated cooldown setting
         
         loop_end = len(final_main) - 1
-        loop_start = ma_period - 1 
-        active_region_start = len(final_main) - new_candle_count - ma_period
+        min_scan_index = approach_settings.lookback_window - 1
+        
+        if is_development_mode:
+            loop_start = min_scan_index
+        else:
+            # In production, we only scan the new candles, but never go below the minimum required lookback
+            loop_start = max(min_scan_index, len(final_main) - new_candle_count)
 
         for i in range(loop_end, loop_start - 1, -1):
-            if not is_development_mode and i < active_region_start:
-                break
-
             current_candle_time = final_main.index[i]
 
             # Time-based cooldown check using the instance-level timestamp

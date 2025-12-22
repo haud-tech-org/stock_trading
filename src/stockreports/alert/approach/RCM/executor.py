@@ -89,13 +89,14 @@ class RcmExecutor(Executor):
         df_indexed = df.reset_index()
 
         loop_end = len(df_indexed) - 1
-        loop_start = required_lookback - 1
-        active_region_start = len(df_indexed) - new_candle_count - required_lookback
+        min_scan_index = required_lookback - 1
+        
+        if is_development_mode:
+            loop_start = min_scan_index
+        else:
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
 
-        for i in range(loop_end, loop_start, -1):
-            if i < active_region_start:
-                break
-
+        for i in range(loop_end, loop_start - 1, -1):
             current_candle = df_indexed.iloc[i]
             prev_candle = df_indexed.iloc[i-1]
 
