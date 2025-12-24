@@ -23,6 +23,7 @@ The following table details the maximum lookback and the length of the pattern f
 | **`CONSECUTIVE_POWER_CANDLES`** | 3 periods (`CANDLE_COUNT`)          | **3 candles** (Full pattern length) | The alert triggers on the 3rd consecutive power candle. |
 | **`COMPARISON`**           | 10 periods (`LOOKBACK_WINDOW`)      | **1 candle**                    | The alert triggers on the single candle where the divergence condition is met. |
 | **`VOLUME_SPIKE_CONFIRMATION`** | 2 periods (`SIGNAL_LOOKBACK_PERIOD`) | **3 candles** (`SIGNAL_LOOKBACK_PERIOD` + 1) | A signal candle is found in a 2-candle lookback, and the alert triggers on the next confirmation candle. |
+| **`PRICE_GAP`**            | 20 periods (`LOOKBACK_PERIOD`)      | **1 candle**                    | The alert triggers immediately on the candle where the gap occurs. |
 
 ## Conclusion for Deployment Logic
 

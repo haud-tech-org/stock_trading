@@ -16,6 +16,7 @@ This document details which alerting approaches require looking at past data (lo
 | `STRONG_CANDLE`              |      **Yes**      |          No           |
 | `SUPPORT_RESISTANCE_BREAK`   |      **Yes**      |          No           |
 | `VOLUME_SPIKE_CONFIRMATION`  |      **Yes**      |          No           |
+| `PRICE_GAP`                  |      **Yes**      |          No           |
 
 ---
 
@@ -91,5 +92,13 @@ This document details which alerting approaches require looking at past data (lo
 *   **Lookback**:
     *   The pattern is identified in reverse. From a confirmation candle at index `i`, the logic looks back `SIGNAL_LOOKBACK_PERIOD` candles to find the signal candle with the highest volume.
     *   The total lookback is `1 (confirmation) + SIGNAL_LOOKBACK_PERIOD`.
+*   **Lookforward**:
+    *   None.
+
+### `PRICE_GAP`
+
+*   **Lookback**:
+    *   `LOOKBACK_PERIOD`: Used for the optional breakout confirmation to find the maximum close price over the previous N candles.
+    *   Requires at least 1 previous candle to calculate the gap.
 *   **Lookforward**:
     *   None.

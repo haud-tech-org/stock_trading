@@ -1,0 +1,157 @@
+"""
+A command-line tool for debugging the PRICE_GAP alert logic by calling the main executor class.
+
+Usage:
+    python3 tests/debug/alert/approach/PRICE_GAP/debug_executor.py \\
+        --symbol [SYMBOL_TICKER] \\
+        --start-time [YYYY-MM-DD HH:MM:SS] \\
+        --end-time [YYYY-MM-DD HH:MM:SS]
+
+Example:
+    # Ensure your PYTHONPATH is set to the project root
+    export PYTHONPATH=$(pwd)
+    python3 tests/debug/alert/approach/PRICE_GAP/debug_executor.py \\
+        --symbol "VN30F1M" \\
+        --start-time "2025-11-25 10:00:00" \\
+        --end-time "2025-11-25 11:30:00"
+"""
+import sys
+import os
+import argparse
+import pandas as pd
+import logging
+import importlib
+from typing import Optional
+
+# 1. Add the project root to the Python path for reliable imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../../'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# 2. Import necessary components from the main application
+from src.stockreports.config import loader
+from src.stockreports.utils.data_utils import load_live_data
+from tests.debug.common.utils.debug_utils import save_debug_data
+from tests.debug.common.charts.visibility_chart import generate_visibility_chart
+from src.stockreports.alert.common.constants import Mode
+# IMPORTANT: Update the import path to your approach's executor class
+from src.stockreports.alert.approach.PRICE_GAP.executor import PriceGapExecutor
+
+# Setup basic logging to see output from the main application
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
+
+def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file, generate_chart):
+    """
+    Sets up the environment and runs the debug analysis by calling the main executor
+    with a DataFrame representing the specified time window.
+    """
+    # --- 1. Load Configuration & Set Mode ---
+    importlib.reload(loader)
+    settings = loader.get_settings()
+    # Set the mode for your test. DEPLOYMENT is common for testing live scenarios.
+    settings.MODE = Mode.DEPLOYMENT 
+
+    print(f"--- Starting Debug Analysis for {symbol} from {start_time_str} to {end_time_str} (Mode: {settings.MODE}) ---")
+
+    # --- 2. Fetch Data for the Analysis Window ---
+    timezone = settings.TRADING_HOURS[settings.MARKET_COUNTRY_CODE]['timezone']
+    start_time = pd.to_datetime(start_time_str).tz_localize(timezone)
+    end_time = pd.to_datetime(end_time_str).tz_localize(timezone)
+
+    print(f"\n--- Fetching data for main symbol from {start_time} to {end_time} ---")
+    json_file_path = None
+    try:
+        from_timestamp = int(start_time.timestamp())
+        to_timestamp = int(end_time.timestamp())
+
+        # The executor is responsible for fetching its own dependencies (like a ref_symbol).
+        df_for_analysis = load_live_data(symbol, from_timestamp=from_timestamp, to_timestamp=to_timestamp)
+
+        if df_for_analysis is None or df_for_analysis.empty:
+            print(f"ERROR: Could not retrieve data for '{symbol}' in the specified range.")
+            return
+        
+        print("Data successfully fetched for the required window.")
+
+        if save_to_file:
+            # Use the centralized utility to save the data
+            json_file_path = save_debug_data(df_for_analysis, symbol, start_time, end_time, project_root)
+
+    except Exception as e:
+        print(f"ERROR: An error occurred during data fetching or saving: {e}")
+        return
+
+    # --- 3. Instantiate and Call the Main Executor ---
+    # The executor expects a DataFrame with a 'time' column, not as an index.
+    df_for_analysis = df_for_analysis.reset_index()
+    
+    # In DEPLOYMENT mode, new_candle_count determines the active analysis window.
+    new_candle_count = len(df_for_analysis)
+
+    print(f"\n--- Calling main executor with a dataframe of {len(df_for_analysis)} candles ---")
+    
+    # Instantiate your executor class
+    executor = PriceGapExecutor(symbol=symbol)
+    
+    # Call the run method
+    alert_result = executor.run(df=df_for_analysis, new_candle_count=new_candle_count)
+
+    # --- 4. Report Results ---
+    print("\n\n===== OVERALL RESULT =====")
+    if alert_result.status == "FAILED":
+        print(f"EXECUTOR FAILED: {alert_result.message}")
+    elif not alert_result.alerts.empty:
+        print("✅✅✅ ALERT(S) FOUND! ✅✅✅")
+        
+        alerts_df = alert_result.alerts.copy()
+        alerts_df['alert_time'] = pd.to_datetime(alerts_df['alert_time']).dt.tz_convert(timezone)
+
+        alerts_in_range = alerts_df[
+            (alerts_df['alert_time'] >= start_time) & 
+            (alerts_df['alert_time'] <= end_time)
+        ]
+        if not alerts_in_range.empty:
+            print(alerts_in_range.to_string())
+        else:
+            print("Alerts were found by the executor, but they were outside the specified time range.")
+    else:
+        print("No alerts were generated by the executor in the provided data.")
+
+    # --- 5. Generate Visibility Chart ---
+    if generate_chart:
+        if json_file_path:
+            print("\n--- Generating visibility chart ---")
+            # NEW: Construct a specific output directory for the chart based on the run parameters.
+            start_str = start_time.strftime('%Y%m%d_%H%M')
+            end_str = end_time.strftime('%Y%m%d_%H%M')
+            chart_output_dir = os.path.join(
+                project_root, 'tests', 'debug', 'data', 'charts', f"{symbol}_{start_str}_to_{end_str}"
+            )
+
+            # Pass the specific directory and other parameters to the chart generator.
+            generate_visibility_chart(
+                json_file_path, 
+                chart_output_dir,
+                approach_name="PRICE_GAP",
+                signal_type="BUY", # You might want to make this dynamic or default
+                breakout_time_str="2025-11-25 11:27:00" # This is a placeholder, maybe should be an arg or derived
+            )
+        else:
+            print("\n--- Skipping chart generation because --save-to-file was not used. ---")
+
+
+if __name__ == "__main__":
+    """
+    Argument parsing. This section generally does not need to be modified.
+    """
+    parser = argparse.ArgumentParser(description="Debug the PRICE_GAP logic by calling the main executor.")
+    parser.add_argument("--symbol", required=True, help="The primary symbol to analyze (e.g., 'VN30F1M').")
+    parser.add_argument("--start-time", required=True, help="The start of the time range to analyze (e.g., '2025-11-25 10:00:00').")
+    parser.add_argument("--end-time", required=True, help="The end of the time range to analyze (e.g., '2025-11-25 11:30:00').")
+    parser.add_argument("--save-to-file", action='store_true', help="If set, saves the fetched data to a CSV file in 'tests/debug/data/'.")
+    parser.add_argument("--generate-chart", action='store_true', help="If set, generates a visibility chart from the fetched data.")
+    
+    args = parser.parse_args()
+    
+    run_debug_analysis(args.symbol, args.start_time, args.end_time, args.save_to_file, args.generate_chart)
