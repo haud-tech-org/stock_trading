@@ -17,6 +17,8 @@ from .settings import PriceGapSettings
 
 class PriceGapExecutor(Executor):
     APPROACH_NAME = Approach.PRICE_GAP
+    # Class-level variable to track the last alert timestamp across all instances
+    LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
@@ -87,10 +89,18 @@ class PriceGapExecutor(Executor):
             loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
 
         for i in range(loop_end, loop_start - 1, -1):
+            # Cooldown check
+            current_time = df_indexed.index[i]
+            if PriceGapExecutor.LATEST_ALERT_TIMESTAMP is not None:
+                time_diff = (current_time - PriceGapExecutor.LATEST_ALERT_TIMESTAMP).total_seconds() / 60
+                if time_diff < self.settings.cooldown_window:
+                    continue
+
             alert = self._analyze_candle(df_indexed, i)
             
             if alert:
                 alerts.append(alert)
+                PriceGapExecutor.LATEST_ALERT_TIMESTAMP = current_time
                 # Optimization: In deployment, we only need the most recent alert.
                 if not is_development_mode:
                     return alerts

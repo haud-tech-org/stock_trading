@@ -12,6 +12,7 @@ class PriceGapSettings(BaseSettings):
         self.lookback_period = self.get("LOOKBACK_PERIOD", 30)
         self.confirmation_forward_window = self.get("CONFIRMATION_FORWARD_WINDOW", 3)
         self.min_confirmation_body_size = self.get("MIN_CONFIRMATION_BODY_SIZE", 1.0)
+        self.cooldown_window = self.get("COOLDOWN_WINDOW", 10)
         
         # --- Standard Optional Filter Flags ---
         # (Add any standard filters if needed, e.g., volume confirmation)
