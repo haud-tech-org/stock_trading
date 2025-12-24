@@ -79,14 +79,22 @@ class PriceGapExecutor(Executor):
         df_indexed = df
 
         # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
+        # 1. Define loop_end (most recent index to scan)
+        #    We do NOT subtract the forward window here because the signal candle itself
+        #    can be the confirmation candle. We want to check the most recent candles too.
         loop_end = len(df_indexed) - 1
+        
+        # 2. Define min_scan_index (absolute minimum index required for lookback)
         min_scan_index = required_lookback - 1
         
+        # 3. Define loop_start (oldest index to scan) based on mode
         if is_development_mode:
             loop_start = min_scan_index
         else:
-            # In DEPLOYMENT, we only scan the 'new_candle_count' range.
-            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
+            # In DEPLOYMENT, we scan back enough to cover signals that might be confirmed
+            # by the new candles (within the forward window).
+            forward_window = self.settings.confirmation_forward_window
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - forward_window + 1)
 
         for i in range(loop_end, loop_start - 1, -1):
             # Cooldown check
