@@ -136,7 +136,8 @@ ALERT_APPROACHES = [
     #"CONSOLIDATION_BREAKOUT",
     "COMPARISON",
     "PROMINENT_PEAK_REVERSAL",
-    "VOLUME_SPIKE_CONFIRMATION"
+    "VOLUME_SPIKE_CONFIRMATION",
+    "PRICE_GAP"
     # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 

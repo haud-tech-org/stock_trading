@@ -58,28 +58,24 @@ Every approach executor (`executor.py`) **MUST** be a class that inherits from `
 
 ### Step 3: Create a Dedicated Settings Class
 
-Create a settings class to provide a structured way to access configuration from `signal_settings.py`.
+Create a settings class that inherits from `BaseSettings`. This provides automatic configuration loading and helper methods.
 
 ```python
 # src/stockreports/alert/approach/CONSOLIDATION_BREAKOUT/settings.py
-from src.stockreports.config import loader
+from src.stockreports.alert.common.base_settings import BaseSettings
 
-signal_settings = loader.get_signal_settings()
-
-class ConsolidationBreakoutSettings:
+class ConsolidationBreakoutSettings(BaseSettings):
     def __init__(self, symbol: str):
-        self.primary_symbol = symbol
-        # Load the specific config for this symbol, with a fallback to "default"
-        self.approach_settings = signal_settings.APPROACH_CONFIG.get('CONSOLIDATION_BREAKOUT', {}).get(symbol, 
-            signal_settings.APPROACH_CONFIG.get('CONSOLIDATION_BREAKOUT', {}).get('default', {})
-        )
+        # Initialize BaseSettings with the symbol and the approach name (key in signal_settings.py)
+        super().__init__(symbol, "CONSOLIDATION_BREAKOUT")
         
         # --- Core Logic Parameters ---
-        self.lookback_period = self.approach_settings.get("LOOKBACK_PERIOD", 25)
-        self.min_clustered_candle_ratio = self.approach_settings.get("MIN_CLUSTERED_CANDLE_RATIO", 0.8)
+        # Use self.get(key, default) to access settings safely
+        self.lookback_period = self.get("LOOKBACK_PERIOD", 25)
+        self.min_clustered_candle_ratio = self.get("MIN_CLUSTERED_CANDLE_RATIO", 0.8)
         
         # --- Standard Optional Filter Flags ---
-        self.use_volume_confirmation = self.approach_settings.get("USE_VOLUME_CONFIRMATION", True)
+        self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION", True)
 ```
 
 ### Step 4: Configure the Approach in `signal_settings.py`
@@ -91,16 +87,18 @@ class ConsolidationBreakoutSettings:
     # src/stockreports/config/signal_settings.py
     APPROACH_CONFIG = {
         # ...
+        # Pattern 1: Flat Structure (Default)
         "CONSOLIDATION_BREAKOUT": {
-            "default": {
-                "LOOKBACK_PERIOD": 25,
-                "MIN_CLUSTERED_CANDLE_RATIO": 0.8,
-                "USE_VOLUME_CONFIRMATION": True,
-            },
-            "VN30": { # Symbol-specific override
-                "LOOKBACK_PERIOD": 30,
-            }
+            "LOOKBACK_PERIOD": 25,
+            "MIN_CLUSTERED_CANDLE_RATIO": 0.8,
+            "USE_VOLUME_CONFIRMATION": True,
         },
+
+        # Pattern 2: Symbol-Specific Structure (Use ONLY if logic depends on specific symbols)
+        # "CONSOLIDATION_BREAKOUT": {
+        #     "default": { "LOOKBACK_PERIOD": 25 },
+        #     "VN30": { "LOOKBACK_PERIOD": 30 }
+        # },
     }
     ```
 
