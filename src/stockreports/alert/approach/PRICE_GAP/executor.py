@@ -17,6 +17,8 @@ from .settings import PriceGapSettings
 
 class PriceGapExecutor(Executor):
     APPROACH_NAME = Approach.PRICE_GAP
+    # Class-level variable to track the last alert timestamp across all instances
+    LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
 
     def __init__(self, symbol: str):
         super().__init__(symbol)
@@ -87,10 +89,18 @@ class PriceGapExecutor(Executor):
             loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
 
         for i in range(loop_end, loop_start - 1, -1):
+            # Cooldown check
+            current_time = df_indexed.index[i]
+            if PriceGapExecutor.LATEST_ALERT_TIMESTAMP is not None:
+                time_diff = (current_time - PriceGapExecutor.LATEST_ALERT_TIMESTAMP).total_seconds() / 60
+                if time_diff < self.settings.cooldown_window:
+                    continue
+
             alert = self._analyze_candle(df_indexed, i)
             
             if alert:
                 alerts.append(alert)
+                PriceGapExecutor.LATEST_ALERT_TIMESTAMP = current_time
                 # Optimization: In deployment, we only need the most recent alert.
                 if not is_development_mode:
                     return alerts
@@ -142,7 +152,8 @@ class PriceGapExecutor(Executor):
                                 f"Close {current_candle['close']} <= Max Window Close {max_close_in_window}.")
                 return None
 
-        return self._create_alert(current_candle, prev_candle, gap_size, Signal.BUY)
+        # 3. Forward Window Confirmation
+        return self._find_confirmation_in_forward_window(df_indexed, i, gap_size, Signal.BUY, prev_candle)
 
     def _check_sell_signal(self, df_indexed: pd.DataFrame, i: int, current_candle: pd.Series, prev_candle: pd.Series) -> Optional[AlertData]:
         """
@@ -169,7 +180,53 @@ class PriceGapExecutor(Executor):
                                 f"Close {current_candle['close']} >= Min Window Close {min_close_in_window}.")
                 return None
 
-        return self._create_alert(current_candle, prev_candle, gap_size, Signal.SELL)
+        # 3. Forward Window Confirmation
+        return self._find_confirmation_in_forward_window(df_indexed, i, gap_size, Signal.SELL, prev_candle)
+
+    def _find_confirmation_in_forward_window(self, df_indexed: pd.DataFrame, signal_idx: int, gap_size: float, signal_type: str, prev_candle: pd.Series) -> Optional[AlertData]:
+        """
+        Scans the forward window (including the signal candle) for a valid confirmation candle.
+        Scans in reverse order (from the end of the window back to the signal candle) to find the latest confirmation.
+        """
+        forward_window = self.settings.confirmation_forward_window
+        min_body_size = self.settings.min_confirmation_body_size
+        
+        # Get signal candle for comparison
+        signal_candle = df_indexed.iloc[signal_idx]
+
+        # Scan from signal_idx up to signal_idx + forward_window - 1
+        # Ensure we don't go out of bounds
+        end_scan_idx = min(signal_idx + forward_window, len(df_indexed))
+        
+        # Reverse loop: from end of window back to signal_idx
+        for j in range(end_scan_idx - 1, signal_idx - 1, -1):
+            candle = df_indexed.iloc[j]
+            body_size = abs(candle['close'] - candle['open'])
+            
+            # Check direction and body size
+            is_valid_direction = False
+            if signal_type == Signal.BUY:
+                is_valid_direction = candle['close'] > candle['open']
+            elif signal_type == Signal.SELL:
+                is_valid_direction = candle['open'] > candle['close']
+            
+            # Check progression if not the signal candle
+            is_valid_progression = True
+            if j > signal_idx:
+                if signal_type == Signal.BUY:
+                    # Open of alert candle > Open of signal candle
+                    if candle['open'] <= signal_candle['open']:
+                        is_valid_progression = False
+                elif signal_type == Signal.SELL:
+                    # Open of alert candle < Open of signal candle (Symmetric logic)
+                    if candle['open'] >= signal_candle['open']:
+                        is_valid_progression = False
+
+            if is_valid_direction and body_size >= min_body_size and is_valid_progression:
+                # Found a valid confirmation candle!
+                return self._create_alert(candle, prev_candle, gap_size, signal_type)
+                
+        return None
 
     def _create_alert(self, current_candle: pd.Series, prev_candle: pd.Series, gap_size: float, signal_type: str) -> AlertData:
         """
