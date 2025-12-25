@@ -2,7 +2,9 @@
 
 ## Objective
 
-The **Consistent Momentum** strategy is designed to identify periods of strong, sustained, and high-quality directional movement. Unlike reversal strategies, its goal is to join a trend that is already demonstrating clear and consistent strength, confirmed by a breakout past a recent price structure. It validates this momentum through a series of strict checks, including candle patterns, breakout confirmation, volume, and optional indicator alignment.
+The **Consistent Momentum** strategy is designed to identify periods of strong, sustained, and high-quality directional movement. Unlike reversal strategies, its goal is to join a trend that is already demonstrating clear and consistent strength. However, it also includes a mechanism to detect and act on potential reversals signaled by a sharp drop in volume.
+
+It validates momentum through a series of strict checks, including candle patterns, breakout confirmation, volume, and optional indicator alignment.
 
 ## Key Parameters
 
@@ -17,13 +19,15 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 | `PEAK_TROUGH_PROMINENCE` | 5 | The prominence value used to detect peaks and troughs. A higher value requires a peak/trough to be more significant relative to its neighbors. |
 | `BREAKOUT_FORWARD_WINDOW` | 15 | The maximum number of candles to look forward (including the alert candle) for breakout confirmation. |
 | `BODY_TO_RANGE_MIN_RATIO` | 0.5 | The minimum ratio of a candle's body to its total range, used in the "Big Body" confirmation rule. |
+| `BREAKOUT_VOLUME_MULTIPLIER` | 0.8 | The multiplier for the breakout volume check. The latest candle's volume must be at least this much greater than the previous two candles' volumes. |
+| `REVERSAL_VOLUME_MULTIPLIER` | 0.8 | The multiplier for the reversal volume check. If the latest candle's volume is below this ratio of either of the previous two candles, a reversal is signaled. |
 | `USE_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle in the momentum window to have a volume spike. |
 | `USE_VOLUME_INCREASING_CONFIRMATION` | `False` | If `True`, requires the volume to be generally increasing across the momentum window. |
 | `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle's volume to be the highest within the momentum window. |
 
 ## Step-by-Step Logic
 
-The core logic resides in the `ConsistentMomentumExecutor` class. The algorithm first identifies a potential momentum pattern and then, if enabled, seeks to confirm it with a breakout.
+The core logic resides in the `ConsistentMomentumExecutor` class. The algorithm first identifies a potential momentum pattern and then, if enabled, seeks to confirm it with a breakout or a reversal.
 
 ### Part 1: Identifying the Momentum Window
 
@@ -51,44 +55,46 @@ The algorithm analyzes a rolling window of `WINDOW_SIZE` candles. For a window t
         *   `USE_VOLUME_INCREASING_CONFIRMATION`: Volume must be trending upwards across the window.
         *   `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION`: The final candle must have the highest volume in the window.
 
-### Part 2: Breakout Confirmation (Optional)
+### Part 2: Breakout & Reversal Confirmation (Optional)
 
 If a valid momentum window is found and `USE_BREAKOUT_CONFIRMATION` is `True`, this critical step is executed.
 
 1.  **Establish Breakout Price:**
     *   The algorithm looks back in time from the **last candle** of the momentum window (`PEAK_BOTTOM_LOOKBACK_PERIOD`).
     *   It identifies the **Highest Peak** (for a `BUY`) or **Lowest Trough** (for a `SELL`) on the **closing prices** using `scipy.signal.find_peaks`. This price becomes the `breakout_price`.
-    *   If no peak/trough is found, the alert is considered confirmed by default at the last candle of the momentum window.
+    *   If no peak/trough is found, the alert is considered confirmed by default with the original signal.
 
-2.  **Scan Forward Window for Confirmation:**
-    *   The algorithm scans a `BREAKOUT_FORWARD_WINDOW`, starting from the last candle of the momentum window.
-    *   It iterates **backwards** from the end of this forward window.
-    *   For each candle `j`, it checks two conditions in order:
+2.  **Check Forward Window for Confirmation:**
+    *   The algorithm defines a `BREAKOUT_FORWARD_WINDOW`, which starts at the last candle of the momentum window (the "alert candle").
+    *   It then checks three specific scenarios in order. If any one passes, the alert is confirmed.
 
-    *   **Condition A: "Big Body" Confirmation**
-        *   The candle `j` must have a body-to-range ratio >= `BODY_TO_RANGE_MIN_RATIO`.
-        *   The candle `j` must have the same direction as the signal.
-        *   The close price of candle `j` must be beyond the `breakout_price`.
-        *   If all three are true, candle `j` is the confirmation candle.
+    *   **Scenario A: "Big Body" Breakout on the Alert Candle**
+        *   This check is performed only on the **alert candle**.
+        *   The candle must have a body-to-range ratio >= `BODY_TO_RANGE_MIN_RATIO`.
+        *   The candle must have the same direction as the original signal.
+        *   The close price of the candle must be beyond the `breakout_price`.
+        *   If all three are true, the alert is confirmed with the **original signal**.
 
-    *   **Condition B: "Consistent Price Action" Confirmation**
-        *   If Condition A fails, this is checked. It requires a 3-candle sequence (`j`, `j-1`, `j-2`).
-        *   **For a BUY signal:**
-            1.  The close prices of all three candles must be **above** the `breakout_price`.
-            2.  The close prices must be consistently increasing: `close[j] > close[j-1] > close[j-2]`.
-        *   **For a SELL signal:**
-            1.  The close prices of all three candles must be **below** the `breakout_price`.
-            2.  The close prices must be consistently decreasing: `close[j] < close[j-1] < close[j-2]`.
-        *   If the pattern is found, candle `j` is the confirmation candle.
+    *   **Scenario B: Volume-Based Reversal on the 3 Latest Candles**
+        *   If Scenario A fails and the forward window has at least 3 candles, this check is performed on the **three most recent candles**.
+        *   **Condition:** The volume of the latest candle is less than or equal to the volume of either of the previous two candles, each multiplied by the `REVERSAL_VOLUME_MULTIPLIER`.
+        *   If this is true, the alert is confirmed with a **flipped signal** (e.g., BUY becomes SELL). The reason is noted as a "Reversal".
+
+    *   **Scenario C: "Consistent Price Action" Breakout on the 3 Latest Candles**
+        *   If both Scenarios A and B fail, this final check is performed on the **three most recent candles**. All of the following conditions must be met:
+            1.  **Price Condition:** The close prices of all three candles must be above (for BUY) or below (for SELL) the `breakout_price`.
+            2.  **Trend Condition:** The close price of the latest candle must be the highest (for BUY) or lowest (for SELL) of the three.
+            3.  **Volume Condition:** The volume of the latest candle must be greater than or equal to the volume of the previous two candles, each multiplied by the `BREAKOUT_VOLUME_MULTIPLIER`.
+        *   If this entire pattern is found, the alert is confirmed with the **original signal**.
 
 3.  **Finalization:**
-    *   If a confirmation candle is found by either Condition A or B, the alert is generated with the timestamp and price of that confirmation candle.
-    *   If the forward window is scanned and no confirmation is found, the alert is discarded.
+    *   If a confirmation candle is found by any scenario, the alert is generated with the timestamp, price, and final signal (original or flipped) of that confirmation candle.
+    *   If no scenario finds a confirmation, the entire alert is discarded.
 
 ### Part 3: Cooldown
 
-*   After a valid alert is generated (with or without breakout), a cooldown period of `COOLDOWN_PERIOD` minutes is applied.
-*   Any subsequent alert within this period that has the **same signal direction** (BUY/BUY or SELL/SELL) is ignored.
+*   After a valid alert is generated, a cooldown period of `COOLDOWN_PERIOD` minutes is applied.
+*   Any subsequent alert within this period that has the **same final signal direction** is ignored.
 
 ## Flow Diagram
 
@@ -98,13 +104,19 @@ graph TD
     B --> C{Part 1: Momentum Window Valid?};
     C -- No --> X[Discard Window];
     C -- Yes --> F{Breakout Enabled?};
-    F -- No --> K{Cooldown Check};
-    F -- Yes --> H{Part 2: Breakout Confirmed?};
-    H -- No --> X;
-    H -- Yes --> K;
-    K -- Fail --> X;
-    K -- Pass --> Z[Generate Alert];
-    X --> B;
+    F -- No --> G[Generate Alert w/ Original Signal];
+    F -- Yes --> H{Part 2: Confirmation};
+    H --> I{Scenario A: Big Body?};
+    I -- Yes --> G;
+    I -- No --> J{Scenario B: Reversal Volume?};
+    J -- Yes --> K[Generate Alert w/ Flipped Signal];
+    J -- No --> L{Scenario C: Breakout Volume?};
+    L -- Yes --> G;
+    L -- No --> X;
+    G --> M{Apply Cooldown};
+    K --> M;
+    M --> Z[End];
+    X --> Z;
 ```
 
 ### Diagram Explanation
@@ -112,7 +124,7 @@ graph TD
 1.  **Analyze Rolling Window**: The algorithm processes data in rolling windows of `WINDOW_SIZE` size.
 2.  **Part 1: Momentum Window Valid?**: Checks if the current window of candles constitutes a valid momentum pattern.
 3.  **Breakout Enabled?**: Determines if the optional breakout confirmation step is enabled.
-4.  **Part 2: Breakout Confirmed?**: If enabled, this step checks if the momentum pattern has been confirmed by a breakout.
+4.  **Part 2: Confirmation**: If enabled, this step checks if the momentum pattern has been confirmed by a breakout or a reversal.
 5.  **Cooldown Check**: Applies a cooldown period after a valid alert to prevent duplicate signals.
 6.  **Generate Alert**: If all mandatory checks pass, an alert is generated.
 7.  **Discard Window**: If any check fails, the current window is discarded.
