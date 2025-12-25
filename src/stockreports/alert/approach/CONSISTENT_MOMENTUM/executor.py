@@ -130,26 +130,44 @@ class ConsistentMomentumExecutor(Executor):
         if not (volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed):
             return None
 
-        current_price = current_candle['close']
-        momentum_start_price = start_candle['open']
-        momentum_start_time_iso = to_iso8601_with_tz(start_candle.name)
+        # --- Alert Confirmation and Generation ---
+        final_candle = current_candle
+        is_breakout_confirmed = False
+
+        # If breakout confirmation is enabled, run it as the last validation step.
+        if self.settings.use_breakout_confirmation:
+            confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
+            confirmation_candle = self._confirm_breakout_in_forward_window(df_indexed, confirmation_candle_index, signal)
+            
+            if confirmation_candle is None:
+                return None  # Breakout not confirmed, so no alert.
+
+            # If breakout is confirmed, update the final candle and mark as confirmed.
+            final_candle = confirmation_candle
+            is_breakout_confirmed = True
         
-        alert_id = str(int(current_candle.name.tz_convert('UTC').timestamp()))
-        
+        # Now that the final_candle is determined, generate the details.
         details = {
-            "reason": "Consistent Momentum",
-            "momentum_start_price": momentum_start_price,
-            "momentum_start_time": momentum_start_time_iso,
+            "momentum_start_price": start_candle['open'],
+            "momentum_start_time": to_iso8601_with_tz(start_candle.name),
             "momentum_window_size": window_size,
         }
+        if is_breakout_confirmed:
+            details["reason"] = "Consistent Momentum with Breakout"
+            details["breakout_lookback_minutes"] = self.settings.peak_bottom_lookback_period
+        else:
+            details["reason"] = "Consistent Momentum"
 
-        # Breakout details will be added later if confirmed.
+        # Create the AlertData object with the final, confirmed data.
+        alert_id = str(int(final_candle.name.tz_convert('UTC').timestamp()))
+        current_price = final_candle['close']
+        momentum_start_price = start_candle['open']
 
-        alert_data = AlertData(
+        return AlertData(
             approach=self.APPROACH_NAME,
             id=alert_id,
             symbol=self.symbol,
-            alert_time=current_candle.name,
+            alert_time=final_candle.name,
             signal=signal,
             alert_price=current_price,
             start_price=momentum_start_price,
@@ -157,7 +175,6 @@ class ConsistentMomentumExecutor(Executor):
             magnitude=round(abs(current_price - momentum_start_price), 2),
             details=json.dumps(details)
         )
-        return alert_data
 
     def _confirm_breakout_in_forward_window(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal) -> Optional[pd.Series]:
         """
@@ -190,57 +207,25 @@ class ConsistentMomentumExecutor(Executor):
                 breakout_price = lookback_df['close'].iloc[troughs].min()
 
         if breakout_price is None:
+            self.logger.debug(f"[{alert_candle_time}] No peak/trough found in lookback; confirming at alert candle.")
             return df_indexed.iloc[alert_candle_index] # No peak/trough, consider confirmed at alert candle
 
-        # 3. Check the emerging window (back + forward) for a breakout
+        self.logger.debug(f"[{alert_candle_time}] Breakout price set to {breakout_price:.2f} for {signal} signal.")
+
+        # 3. Check the forward window for a breakout, including the alert candle itself.
         forward_window_size = self.settings.breakout_forward_window
-        back_window_size = self.settings.window_size
-        
-        start_index = alert_candle_index - back_window_size + 1
-        end_index = min(alert_candle_index + 1 + forward_window_size, len(df_indexed))
-        
-        emerging_window = df_indexed.iloc[start_index : end_index]
         body_to_range_min_ratio = self.settings.body_to_range_min_ratio
 
-        breakout_candle = None
-        breakout_idx_in_window = -1
-
-        # Find Breakout Candle (B)
-        for idx, (time, candle) in enumerate(emerging_window.iterrows()):
-            candle_range = candle['high'] - candle['low']
-            if candle_range == 0:
-                continue
-            
-            candle_body = abs(candle['close'] - candle['open'])
-            body_ratio = candle_body / candle_range
-            
-            if body_ratio < body_to_range_min_ratio:
-                continue
-
-            is_breakout = False
-            if signal == Signal.BUY and candle['close'] > breakout_price:
-                is_breakout = True
-            elif signal == Signal.SELL and candle['close'] < breakout_price:
-                is_breakout = True
-            
-            if is_breakout:
-                breakout_candle = candle
-                breakout_idx_in_window = idx
-                break
+        # The forward window starts AT the alert candle index.
+        start_index = alert_candle_index
+        end_index = min(alert_candle_index + forward_window_size, len(df_indexed))
         
-        if breakout_candle is None:
+        if start_index >= end_index:
+            self.logger.debug(f"[{alert_candle_time}] Forward window is empty, cannot confirm breakout.")
             return None
 
-        # Get absolute index of breakout candle in df_indexed
-        # emerging_window starts at start_index
-        abs_breakout_index = start_index + breakout_idx_in_window
-        
-        # Check if B+1 exists
-        if abs_breakout_index + 1 >= len(df_indexed):
-            return None # Cannot confirm yet
-
-        candle_b = breakout_candle
-        candle_b_plus_1 = df_indexed.iloc[abs_breakout_index + 1]
+        forward_window = df_indexed.iloc[start_index:end_index]
+        self.logger.debug(f"[{alert_candle_time}] Checking forward window from {forward_window.index[0]} to {forward_window.index[-1]} for breakout.")
 
         # Helper to check direction
         def is_same_direction(candle, sig):
@@ -249,45 +234,80 @@ class ConsistentMomentumExecutor(Executor):
             else:
                 return candle['close'] < candle['open']
 
-        # Attempt Immediate Confirmation (at B+1)
-        # Condition: Vol(B+1) > Vol(B) AND Direction(B+1) == Signal
-        if candle_b_plus_1['volume'] > candle_b['volume'] and is_same_direction(candle_b_plus_1, signal):
-            return candle_b_plus_1
+        # Iterate backwards from the end of the forward window.
+        for j in range(len(forward_window) - 1, -1, -1):
+            candle_j = forward_window.iloc[j]
+            candle_time = candle_j.name
 
-        # Attempt Delayed Confirmation
-        # Reference Candle = B+1
-        reference_candle = candle_b_plus_1
-        
-        # Iterate from B+2 onwards, up to end_index
-        # We need to map end_index (which was relative to df_indexed) to the loop
-        # The loop should go from abs_breakout_index + 2 to end_index
-        
-        for i in range(abs_breakout_index + 2, end_index):
-            candle_c = df_indexed.iloc[i]
-            
-            # Conditions:
-            # 1. Vol(C) > Vol(Reference)
-            # 2. Direction(C) == Signal
-            # 3. Close(C) > Breakout Price (for BUY) or < Breakout Price (for SELL)
-            
-            if candle_c['volume'] <= reference_candle['volume']:
-                continue
+            # --- Condition A: "Big Body" Confirmation ---
+            candle_range = candle_j['high'] - candle_j['low']
+            if candle_range > 0:
+                candle_body = abs(candle_j['close'] - candle_j['open'])
+                body_ratio = candle_body / candle_range
 
-            # Found a candle with higher volume
-            dir_condition = is_same_direction(candle_c, signal)
-            
-            price_condition = False
-            if signal == Signal.BUY:
-                price_condition = candle_c['close'] > breakout_price
-            else:
-                price_condition = candle_c['close'] < breakout_price
-            
-            if dir_condition and price_condition:
-                return candle_c
-            
-            # If volume is higher but other conditions fail, update reference candle
-            reference_candle = candle_c
+                is_body_big = body_ratio >= body_to_range_min_ratio
+                is_dir_correct = is_same_direction(candle_j, signal)
+                
+                price_breaks_out = False
+                if signal == Signal.BUY and candle_j['close'] > breakout_price:
+                    price_breaks_out = True
+                elif signal == Signal.SELL and candle_j['close'] < breakout_price:
+                    price_breaks_out = True
 
+                if is_body_big and is_dir_correct and price_breaks_out:
+                    self.logger.debug(f"[{candle_time}] Confirmed by 'Big Body' rule.")
+                    return candle_j # Confirmed by "Big Body" rule
+                else:
+                    # Detailed logging for why "Big Body" failed
+                    if not is_body_big:
+                        self.logger.debug(f"[{candle_time}] BigBody fail: body ratio {body_ratio:.2f} < min {body_to_range_min_ratio:.2f}.")
+                    if not is_dir_correct:
+                        self.logger.debug(f"[{candle_time}] BigBody fail: direction is not {signal}.")
+                    if not price_breaks_out:
+                        self.logger.debug(f"[{candle_time}] BigBody fail: close price {candle_j['close']:.2f} did not break {breakout_price:.2f}.")
+
+            # --- Condition B: "Consistent Price Action" Confirmation ---
+            # This check requires at least 3 candles (j, j-1, j-2).
+            if j >= 2:
+                candle_j_minus_1 = forward_window.iloc[j - 1]
+                candle_j_minus_2 = forward_window.iloc[j - 2]
+
+                if signal == Signal.BUY:
+                    # All 3 must be above breakout price
+                    price_condition = (candle_j['close'] > breakout_price and
+                                       candle_j_minus_1['close'] > breakout_price and
+                                       candle_j_minus_2['close'] > breakout_price)
+                    # Prices must be consistently increasing
+                    trend_condition = candle_j['close'] > candle_j_minus_1['close'] > candle_j_minus_2['close']
+
+                    if price_condition and trend_condition:
+                        self.logger.debug(f"[{candle_time}] Confirmed by 'Consistent Price Action' rule.")
+                        return candle_j # Confirmed by "Consistent Price Action" rule
+                    else:
+                        if not price_condition:
+                            self.logger.debug(f"[{candle_time}] ConsistentPrice fail (BUY): one of 3 candles did not break above {breakout_price:.2f}.")
+                        if not trend_condition:
+                            self.logger.debug(f"[{candle_time}] ConsistentPrice fail (BUY): prices were not consistently increasing.")
+                
+                elif signal == Signal.SELL:
+                    # All 3 must be below breakout price
+                    price_condition = (candle_j['close'] < breakout_price and
+                                       candle_j_minus_1['close'] < breakout_price and
+                                       candle_j_minus_2['close'] < breakout_price)
+                    # Prices must be consistently decreasing
+                    trend_condition = candle_j['close'] < candle_j_minus_1['close'] < candle_j_minus_2['close']
+
+                    if price_condition and trend_condition:
+                        self.logger.debug(f"[{candle_time}] Confirmed by 'Consistent Price Action' rule.")
+                        return candle_j # Confirmed by "Consistent Price Action" rule
+                    else:
+                        if not price_condition:
+                            self.logger.debug(f"[{candle_time}] ConsistentPrice fail (SELL): one of 3 candles did not break below {breakout_price:.2f}.")
+                        if not trend_condition:
+                            self.logger.debug(f"[{candle_time}] ConsistentPrice fail (SELL): prices were not consistently decreasing.")
+
+        # If the loop completes without finding a confirmation, return None.
+        self.logger.debug(f"[{alert_candle_time}] No breakout confirmation found in the forward window.")
         return None
 
     def _find_consistent_momentum_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
@@ -309,52 +329,41 @@ class ConsistentMomentumExecutor(Executor):
 
         df_indexed = df.set_index('time')
 
-        # Adjust loop end to account for the forward window
-        forward_window_size = self.settings.breakout_forward_window if self.settings.use_breakout_confirmation else 0
-        loop_end = len(df_indexed) - 1 - forward_window_size
+        # The main loop can now run up to the last candle. The forward window logic
+        # inside the confirmation function will handle boundaries.
+        loop_end = len(df_indexed) - 1
         min_scan_index = required_lookback - 1
         
         if is_development_mode:
             loop_start = min_scan_index
         else:
-            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - forward_window_size)
+            # In DEPLOYMENT, we must scan back far enough to catch momentum windows
+            # that could be confirmed by one of the new candles.
+            forward_window = self.settings.breakout_forward_window if self.settings.use_breakout_confirmation else 0
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - forward_window)
 
         for i in range(loop_end, loop_start - 1, -1):
-            window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
-            
-            alert = self._analyze_window(window, df_indexed, window_size)
-            
-            if alert:
-                # New breakout confirmation logic using a forward-looking window.
-                if self.settings.use_breakout_confirmation:
-                    confirmation_candle = self._confirm_breakout_in_forward_window(df_indexed, i, alert.signal)
-                    if confirmation_candle is None:
-                        alert = None # Invalidate alert if breakout is not confirmed
-                    else:
-                        # If breakout is confirmed, update the alert details.
-                        details = json.loads(alert.details)
-                        details["reason"] = "Consistent Momentum with Breakout"
-                        details["breakout_lookback_minutes"] = self.settings.peak_bottom_lookback_period
-                        alert.details = json.dumps(details)
-                        
-                        # Update alert time and price to the confirmation candle
-                        alert.alert_time = confirmation_candle.name
-                        alert.alert_price = confirmation_candle['close']
-                        alert.id = str(int(confirmation_candle.name.tz_convert('UTC').timestamp()))
+            # Ensure we don't look past the end of the dataframe for the momentum window.
+            if i < window_size - 1:
+                continue
 
-                if alert:
-                    # Cooldown Check: Ignore alerts with the same direction within the cooldown period
-                    if ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT is not None:
-                        time_since_last = alert.alert_time - ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT.alert_time
-                        minutes_since_last = time_since_last.total_seconds() / 60
-                        
-                        if (minutes_since_last < self.settings.cooldown_period and 
-                            alert.signal == ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT.signal):
-                            alert = None 
+            window = df_indexed.iloc[i - window_size + 1 : i + 1].copy()
+
+            alert = self._analyze_window(window, df_indexed, window_size)
+
+            if alert:
+                # Cooldown Check: Ignore alerts with the same direction within the cooldown period
+                if ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT is not None:
+                    time_since_last = alert.alert_time - ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT.alert_time
+                    minutes_since_last = time_since_last.total_seconds() / 60
+
+                    if (minutes_since_last < self.settings.cooldown_period and 
+                        alert.signal == ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT.signal):
+                        alert = None
 
                 if alert:
                     alerts.append(alert)
-                    
+
                     # Update global state with the accepted alert
                     ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT = alert
 
