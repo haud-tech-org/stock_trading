@@ -272,26 +272,74 @@ class ConsistentMomentumExecutor(Executor):
             else:
                 self.logger.debug(f"[{candle_time}] 'Big Body' rule failed on the alert candle.")
 
-        # --- Scenario 2: Check the 3 latest candles for "Consistent Price Action" ---
+        # --- Scenario 2: Advanced Reversal and Breakout Logic ---
         if len(forward_window) >= 3:
-            self.logger.debug(f"[{alert_candle_time}] Checking Scenario 2: 'Consistent Price Action' on the 3 latest candles.")
+            self.logger.debug(f"[{alert_candle_time}] Checking Scenario 2: Advanced Reversal and Breakout.")
+
+            # --- New Reversal Logic (Scenario 2.A) ---
+            self.logger.debug(f"[{alert_candle_time}] Checking new reversal logic.")
             
+            # 1. Find key candles
+            candle_mx = forward_window.loc[forward_window['volume'].idxmax()]
+            candle_mn = forward_window.loc[forward_window['volume'].idxmin()]
+            mn_index_in_fw = forward_window.index.get_loc(candle_mn.name)
+
+            # 2. Find candle_n (candle after min volume candle)
+            if mn_index_in_fw < len(forward_window) - 1:
+                candle_n = forward_window.iloc[mn_index_in_fw + 1]
+                self.logger.debug(f"[{alert_candle_time}] Found Mn candle at {candle_mn.name} and N candle at {candle_n.name}.")
+
+                # 3. Define price-action lookback window (up to 5 candles before N)
+                price_lookback_end_index = mn_index_in_fw + 1 # Index of N
+                price_lookback_start_index = max(0, price_lookback_end_index - 5)
+                price_action_window = forward_window.iloc[price_lookback_start_index:price_lookback_end_index]
+
+                if not price_action_window.empty:
+                    # 4. Find peak/trough prices in the lookback window
+                    peak_trough_open_price = None
+                    peak_trough_close_price = None
+                    if signal == Signal.BUY: # Look for SELL reversal (peak)
+                        peak_trough_open_price = price_action_window['open'].max()
+                        peak_trough_close_price = price_action_window['close'].max()
+                    else: # Look for BUY reversal (trough)
+                        peak_trough_open_price = price_action_window['open'].min()
+                        peak_trough_close_price = price_action_window['close'].min()
+                    
+                    # 5. Apply reversal conditions
+                    reversal_multiplier = self.settings.reversal_volume_multiplier
+                    volume_condition_met = (candle_mx['volume'] >= candle_mn['volume'] * reversal_multiplier and
+                                            candle_n['volume'] > candle_mn['volume'])
+
+                    if volume_condition_met:
+                        self.logger.debug(f"[{candle_n.name}] Reversal volume condition met.")
+                        price_condition_met = False
+                        if signal == Signal.SELL and candle_n['close'] > peak_trough_close_price and candle_n['open'] > peak_trough_open_price:
+                            # Reverse to BUY
+                            price_condition_met = True
+                            confirmed_signal = Signal.BUY
+                        elif signal == Signal.BUY and candle_n['close'] < peak_trough_close_price and candle_n['open'] < peak_trough_open_price:
+                            # Reverse to SELL
+                            price_condition_met = True
+                            confirmed_signal = Signal.SELL
+
+                        if price_condition_met:
+                            self.logger.info(f"[{candle_n.name}] Confirmed reversal from {signal} to {confirmed_signal} based on new logic.")
+                            return candle_n, confirmed_signal
+                        else:
+                            self.logger.debug(f"[{candle_n.name}] Reversal price condition failed.")
+                    else:
+                        self.logger.debug(f"[{candle_n.name}] Reversal volume condition failed.")
+            else:
+                self.logger.debug(f"[{alert_candle_time}] Min volume candle is the last in window, cannot check for reversal.")
+
+
+            # --- Breakout Volume Check (Scenario 2.B) ---
+            # This part now acts as a fallback if the new reversal logic doesn't trigger.
             candle_j = forward_window.iloc[-1]
             candle_j_minus_1 = forward_window.iloc[-2]
             candle_j_minus_2 = forward_window.iloc[-3]
             candle_time = candle_j.name
 
-            # --- Reversal Volume Check (Scenario 2.A) ---
-            reversal_multiplier = self.settings.reversal_volume_multiplier
-            reversal_volume_condition = (candle_j['volume'] <= candle_j_minus_1['volume'] * reversal_multiplier or
-                                         candle_j['volume'] <= candle_j_minus_2['volume'] * reversal_multiplier)
-
-            if reversal_volume_condition:
-                self.logger.debug(f"[{candle_time}] Reversal volume condition met. Confirming with flipped signal.")
-                confirmed_signal = Signal.SELL if signal == Signal.BUY else Signal.BUY
-                return candle_j, confirmed_signal
-
-            # --- Breakout Volume Check (Scenario 2.B) ---
             volume_multiplier = self.settings.breakout_volume_multiplier
             volume_condition = (candle_j['volume'] >= candle_j_minus_1['volume'] * volume_multiplier and
                                 candle_j['volume'] >= candle_j_minus_2['volume'] * volume_multiplier)

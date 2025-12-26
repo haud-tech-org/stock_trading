@@ -54,7 +54,7 @@ SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.2
 # The number of minutes to wait after a signal is sent before sending a "Close Position" notification.
 # This also serves as the validation period in development mode.
 # Set to None to disable the scheduler.
-CLOSE_POSITION_DELAY_MINUTES = 5
+CLOSE_POSITION_DELAY_MINUTES = 10
 
 
 # --- Approach-Specific Configurations ---
@@ -167,14 +167,14 @@ APPROACH_CONFIG = {
         "PEAK_TROUGH_PROMINENCE": 2,
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 60,
         "USE_BREAKOUT_CONFIRMATION": True,
-        "BREAKOUT_FORWARD_WINDOW": 30,
+        "BREAKOUT_FORWARD_WINDOW": 6,
         "CONFIRMATION_WINDOW": 3,
         "USE_VOLUME_CONFIRMATION": True,
         "USE_INCREASING_VOLUME_CONFIRMATION": False,
         "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
         "BODY_TO_RANGE_MIN_RATIO": 0.5,
         "BREAKOUT_VOLUME_MULTIPLIER": 0.8,
-        "REVERSAL_VOLUME_MULTIPLIER": 0.5,
+        "REVERSAL_VOLUME_MULTIPLIER": 2.0,
         "USE_MA_CONFIRMATION": True,
         "USE_ADX_CONFIRMATION": True,
         "USE_RSI_EXHAUSTION_FILTER": True,
@@ -251,7 +251,7 @@ APPROACH_CONFIG = {
         "RSI_OVERBOUGHT_THRESHOLD": 70
     },
     "PRICE_GAP": {
-        "MIN_GAP_SIZE": 1.0,
+        "MIN_GAP_SIZE": 1.1,
         "USE_BREAKOUT_CONFIRMATION": True,
         "LOOKBACK_PERIOD": 20,
         "CONFIRMATION_FORWARD_WINDOW": 3,
