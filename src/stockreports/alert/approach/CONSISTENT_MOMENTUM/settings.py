@@ -20,7 +20,7 @@ class ConsistentMomentumSettings(BaseSettings):
         self.breakout_forward_window = self.get("BREAKOUT_FORWARD_WINDOW", 15)
         self.cooldown_period = self.get("COOLDOWN_PERIOD", 5) # In minutes
         self.breakout_volume_multiplier = self.get("BREAKOUT_VOLUME_MULTIPLIER", 0.8)
-        self.reversal_volume_multiplier = self.get("REVERSAL_VOLUME_MULTIPLIER", 0.5)
+        self.reversal_volume_multiplier = self.get("REVERSAL_VOLUME_MULTIPLIER", 2.0)
 
         # --- General Confirmation Settings ---
         self.use_ma_confirmation = self.get("USE_MA_CONFIRMATION", False)
