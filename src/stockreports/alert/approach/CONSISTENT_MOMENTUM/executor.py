@@ -140,7 +140,7 @@ class ConsistentMomentumExecutor(Executor):
             confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
             
             # This function now returns a tuple: (candle, confirmed_signal)
-            confirmation_result = self._confirm_breakout_in_forward_window(df_indexed, confirmation_candle_index, signal)
+            confirmation_result = self._get_forward_window_confirmation(df_indexed, confirmation_candle_index, signal)
             
             if confirmation_result is None:
                 return None  # Breakout not confirmed, so no alert.
@@ -189,9 +189,9 @@ class ConsistentMomentumExecutor(Executor):
             details=json.dumps(details)
         )
 
-    def _confirm_breakout_in_forward_window(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal) -> Optional[tuple[pd.Series, Signal]]:
+    def _get_forward_window_confirmation(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal) -> Optional[tuple[pd.Series, Signal]]:
         """
-        Confirms a breakout by checking if any candle in the emerging window (back + forward) breaks the most recent peak/trough.
+        Confirms a breakout or reversal by analyzing the forward window.
         Returns a tuple of (confirmation_candle, confirmed_signal) if confirmed, otherwise None.
         """
         lookback_minutes = self.settings.peak_bottom_lookback_period
@@ -349,6 +349,7 @@ class ConsistentMomentumExecutor(Executor):
 
             # --- Breakout Volume Check (Scenario 2.B) ---
             # This part now acts as a fallback if the new reversal logic doesn't trigger.
+            # Based on data analysis, this pattern is now treated as a reversal signal.
             candle_j = forward_window.iloc[-1]
             candle_j_minus_1 = forward_window.iloc[-2]
             candle_j_minus_2 = forward_window.iloc[-3]
@@ -366,8 +367,8 @@ class ConsistentMomentumExecutor(Executor):
                 trend_condition = candle_j['close'] > candle_j_minus_1['close'] and candle_j['close'] > candle_j_minus_2['close']
 
                 if price_condition and trend_condition and volume_condition:
-                    self.logger.debug(f"[{candle_time}] Confirmed by 'Consistent Price Action' on the 3 latest candles.")
-                    return candle_j, signal
+                    self.logger.info(f"[{candle_time}] Confirmed reversal from BUY to SELL by 'Consistent Price Action' pattern.")
+                    return candle_j, Signal.SELL # Flipped signal
                 else:
                     self.logger.debug(f"[{candle_time}] 'Consistent Price Action' (BUY) failed on the 3 latest candles.")
 
@@ -379,8 +380,8 @@ class ConsistentMomentumExecutor(Executor):
                 trend_condition = candle_j['close'] < candle_j_minus_1['close'] and candle_j['close'] < candle_j_minus_2['close']
 
                 if price_condition and trend_condition and volume_condition:
-                    self.logger.debug(f"[{candle_time}] Confirmed by 'Consistent Price Action' on the 3 latest candles.")
-                    return candle_j, signal
+                    self.logger.info(f"[{candle_time}] Confirmed reversal from SELL to BUY by 'Consistent Price Action' pattern.")
+                    return candle_j, Signal.BUY # Flipped signal
                 else:
                     self.logger.debug(f"[{candle_time}] 'Consistent Price Action' (SELL) failed on the 3 latest candles.")
 
