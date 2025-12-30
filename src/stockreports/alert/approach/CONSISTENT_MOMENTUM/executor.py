@@ -289,6 +289,11 @@ class ConsistentMomentumExecutor(Executor):
                 candle_n = forward_window.iloc[mn_index_in_fw + 1]
                 self.logger.debug(f"[{alert_candle_time}] Found Mn candle at {candle_mn.name} and N candle at {candle_n.name}.")
 
+                # Ensure N and Mn are different candles before proceeding
+                if candle_n.name == candle_mn.name:
+                    self.logger.debug(f"[{alert_candle_time}] Candle N and Mn are the same, skipping reversal check.")
+                    return None # Or continue to the next part of the logic if that's desired
+
                 # 3. Define price-action lookback window (up to 5 candles before N)
                 price_lookback_end_index = mn_index_in_fw + 1 # Index of N
                 price_lookback_start_index = max(0, price_lookback_end_index - 5)
@@ -307,26 +312,35 @@ class ConsistentMomentumExecutor(Executor):
                     
                     # 5. Apply reversal conditions
                     reversal_multiplier = self.settings.reversal_volume_multiplier
-                    volume_condition_met = (candle_mx['volume'] >= candle_mn['volume'] * reversal_multiplier and
-                                            candle_n['volume'] > candle_mn['volume'])
+                    volume_condition_met = candle_mx['volume'] >= candle_mn['volume'] * reversal_multiplier
 
                     if volume_condition_met:
                         self.logger.debug(f"[{candle_n.name}] Reversal volume condition met.")
+                        
+                        # New average body price check, where candle_mn is candle_n_minus_1 by definition
+                        avg_price_n = (candle_n['open'] + candle_n['close']) / 2
+                        avg_price_n_minus_1 = (candle_mn['open'] + candle_mn['close']) / 2
+                        
                         price_condition_met = False
-                        if signal == Signal.SELL and candle_n['close'] > peak_trough_close_price and candle_n['open'] > peak_trough_open_price:
-                            # Reverse to BUY
-                            price_condition_met = True
-                            confirmed_signal = Signal.BUY
-                        elif signal == Signal.BUY and candle_n['close'] < peak_trough_close_price and candle_n['open'] < peak_trough_open_price:
-                            # Reverse to SELL
-                            price_condition_met = True
-                            confirmed_signal = Signal.SELL
+                        reversal_trend_met = False
 
-                        if price_condition_met:
+                        if signal == Signal.SELL: # Original SELL, check for BUY reversal
+                            price_condition_met = candle_n['close'] > peak_trough_close_price and candle_n['open'] > peak_trough_open_price
+                            reversal_trend_met = avg_price_n > avg_price_n_minus_1
+                            if price_condition_met and reversal_trend_met:
+                                confirmed_signal = Signal.BUY
+                        
+                        elif signal == Signal.BUY: # Original BUY, check for SELL reversal
+                            price_condition_met = candle_n['close'] < peak_trough_close_price and candle_n['open'] < peak_trough_open_price
+                            reversal_trend_met = avg_price_n < avg_price_n_minus_1
+                            if price_condition_met and reversal_trend_met:
+                                confirmed_signal = Signal.SELL
+
+                        if price_condition_met and reversal_trend_met:
                             self.logger.info(f"[{candle_n.name}] Confirmed reversal from {signal} to {confirmed_signal} based on new logic.")
                             return candle_n, confirmed_signal
                         else:
-                            self.logger.debug(f"[{candle_n.name}] Reversal price condition failed.")
+                            self.logger.debug(f"[{candle_n.name}] Reversal price or trend condition failed.")
                     else:
                         self.logger.debug(f"[{candle_n.name}] Reversal volume condition failed.")
             else:

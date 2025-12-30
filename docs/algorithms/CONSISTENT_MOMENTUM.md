@@ -2,7 +2,7 @@
 
 ## Objective
 
-The **Consistent Momentum** strategy is designed to identify periods of strong, sustained, and high-quality directional movement. Unlike reversal strategies, its goal is to join a trend that is already demonstrating clear and consistent strength. However, it also includes a mechanism to detect and act on potential reversals signaled by a sharp drop in volume.
+The **Consistent Momentum** strategy is designed to identify periods of strong, sustained, and high-quality directional movement. Unlike reversal strategies, its primary goal is to join a trend that is already demonstrating clear and consistent strength. However, it also incorporates a sophisticated mechanism to detect and act on potential trend reversals based on a specific volume and price action signature.
 
 It validates momentum through a series of strict checks, including candle patterns, breakout confirmation, volume, and optional indicator alignment.
 
@@ -19,8 +19,8 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 | `PEAK_TROUGH_PROMINENCE` | 5 | The prominence value used to detect peaks and troughs. A higher value requires a peak/trough to be more significant relative to its neighbors. |
 | `BREAKOUT_FORWARD_WINDOW` | 15 | The maximum number of candles to look forward (including the alert candle) for breakout confirmation. |
 | `BODY_TO_RANGE_MIN_RATIO` | 0.5 | The minimum ratio of a candle's body to its total range, used in the "Big Body" confirmation rule. |
-| `BREAKOUT_VOLUME_MULTIPLIER` | 0.8 | The multiplier for the breakout volume check. The latest candle's volume must be at least this much greater than the previous two candles' volumes. |
-| `REVERSAL_VOLUME_MULTIPLIER` | 2.0 | The multiplier used in the advanced reversal logic. The max volume candle's volume must be at least this much greater than the min volume candle's volume. |
+| `BREAKOUT_VOLUME_MULTIPLIER` | 0.8 | The multiplier for the "Consistent Price Action" breakout check. The latest candle's volume must be at least this much greater than the previous two candles' volumes. |
+| `REVERSAL_VOLUME_MULTIPLIER` | 2.0 | The multiplier used in the advanced reversal logic. The max volume candle's volume must be at least this much greater than the min volume candle's volume within the forward window. |
 | `USE_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle in the momentum window to have a volume spike. |
 | `USE_VOLUME_INCREASING_CONFIRMATION` | `False` | If `True`, requires the volume to be generally increasing across the momentum window. |
 | `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle's volume to be the highest within the momentum window. |
@@ -68,15 +68,15 @@ If a valid momentum window is found and `USE_BREAKOUT_CONFIRMATION` is `True`, t
     *   The algorithm defines a `BREAKOUT_FORWARD_WINDOW`, which starts at the last candle of the momentum window (the "alert candle").
     *   It then checks three specific scenarios in order. If any one passes, the alert is confirmed.
 
-    *   **Scenario A: "Big Body" Breakout on the Alert Candle**
+    *   **Scenario 1: "Big Body" Breakout on the Alert Candle**
         *   This check is performed only on the **alert candle**.
         *   The candle must have a body-to-range ratio >= `BODY_TO_RANGE_MIN_RATIO`.
         *   The candle must have the same direction as the original signal.
         *   The close price of the candle must be beyond the `breakout_price`.
         *   If all three are true, the alert is confirmed with the **original signal**.
 
-    *   **Scenario B: Advanced Volume-Based Reversal**
-        *   If Scenario A fails and the forward window has at least 3 candles, this complex reversal check is performed on the **entire forward window**.
+    *   **Scenario 2: Advanced Volume-Based Reversal**
+        *   If Scenario 1 fails and the forward window has at least 3 candles, this complex reversal check is performed on the **entire forward window**.
         *   **Step 1: Identify Key Candles.**
             *   Find the candle with the maximum volume (`candle_mx`).
             *   Find the candle with the minimum volume (`candle_mn`).
@@ -85,14 +85,17 @@ If a valid momentum window is found and `USE_BREAKOUT_CONFIRMATION` is `True`, t
             *   A lookback window is defined, consisting of up to 5 candles that occur *before* `candle_n`.
             *   Within this 5-candle window, the algorithm finds the peak `open` and `close` prices (for a SELL reversal) or the trough `open` and `close` prices (for a BUY reversal). These become the `peak_trough_open_price` and `peak_trough_close_price`.
         *   **Step 3: Check Conditions.**
-            *   **Volume Condition:** `candle_mx.volume` must be >= `candle_mn.volume * REVERSAL_VOLUME_MULTIPLIER`, AND `candle_n.volume` must be > `candle_mn.volume`. This identifies a volume exhaustion (`Mn`) followed by a recovery (`N`).
+            *   **Volume Condition:** `candle_mx.volume` must be >= `candle_mn.volume * REVERSAL_VOLUME_MULTIPLIER`. This identifies a volume exhaustion (`mn`) followed by a volume spike (`mx`) within the window.
             *   **Price Condition:**
                 *   To reverse to **BUY**: `candle_n.close` > `peak_trough_close_price` AND `candle_n.open` > `peak_trough_open_price`.
                 *   To reverse to **SELL**: `candle_n.close` < `peak_trough_close_price` AND `candle_n.open` < `peak_trough_open_price`.
-        *   If **both** the volume and price conditions are met, the alert is confirmed at `candle_n` with a **flipped signal**.
+            *   **Reversal Trend Condition:** The average price `(open + close) / 2` of `candle_n` must show a reversal against `candle_mn`.
+                *   To reverse to **BUY**: `avg_price(candle_n)` > `avg_price(candle_mn)`.
+                *   To reverse to **SELL**: `avg_price(candle_n)` < `avg_price(candle_mn)`.
+        *   If **all three** conditions (Volume, Price, and Trend) are met, the alert is confirmed at `candle_n` with a **flipped signal**.
 
-    *   **Scenario C: "Consistent Price Action" Breakout (Fallback)**
-        *   If both Scenarios A and B fail, this final check is performed on the **three most recent candles** of the forward window. All of the following conditions must be met:
+    *   **Scenario 3: "Consistent Price Action" Breakout (Fallback)**
+        *   If both Scenarios 1 and 2 fail, this final check is performed on the **three most recent candles** of the forward window. All of the following conditions must be met:
             1.  **Price Condition:** The close prices of all three candles must be above (for BUY) or below (for SELL) the `breakout_price`.
             2.  **Trend Condition:** The close price of the latest candle must be the highest (for BUY) or lowest (for SELL) of the three.
             3.  **Volume Condition:** The volume of the latest candle must be greater than or equal to the volume of the previous two candles, each multiplied by the `BREAKOUT_VOLUME_MULTIPLIER`.
@@ -117,11 +120,11 @@ graph TD
     C -- Yes --> F{Breakout Enabled?};
     F -- No --> G[Generate Alert w/ Original Signal];
     F -- Yes --> H{Part 2: Confirmation};
-    H --> I{Scenario A: Big Body?};
+    H --> I{Scenario 1: Big Body?};
     I -- Yes --> G;
-    I -- No --> J{Scenario B: Reversal Volume?};
+    I -- No --> J{Scenario 2: Reversal?};
     J -- Yes --> K[Generate Alert w/ Flipped Signal];
-    J -- No --> L{Scenario C: Breakout Volume?};
+    J -- No --> L{Scenario 3: Consistent Price Action?};
     L -- Yes --> G;
     L -- No --> X;
     G --> M{Apply Cooldown};
