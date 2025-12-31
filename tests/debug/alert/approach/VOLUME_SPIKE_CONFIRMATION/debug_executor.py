@@ -5,15 +5,18 @@ Usage:
     python3 tests/debug/alert/approach/VOLUME_SPIKE_CONFIRMATION/debug_executor.py \\
         --symbol [SYMBOL_TICKER] \\
         --start-time [YYYY-MM-DD HH:MM:SS] \\
-        --end-time [YYYY-MM-DD HH:MM:SS]
+        --end-time [YYYY-MM-DD HH:MM:SS] \\
+        --save-to-file \\
+        --generate-chart
 
 Example:
     # Ensure your PYTHONPATH is set to the project root
-    export PYTHONPATH=/path/to/your/stock_trading
+    export PYTHONPATH=$(pwd)
     python3 tests/debug/alert/approach/VOLUME_SPIKE_CONFIRMATION/debug_executor.py \\
         --symbol "VN30F1M" \\
         --start-time "2023-09-15 10:00:00" \\
-        --end-time "2023-09-15- 11:00:00"
+        --end-time "2023-09-15 11:00:00" \\
+        --save-to-file --generate-chart
 """
 import sys
 import os
@@ -31,25 +34,26 @@ if project_root not in sys.path:
 
 # 2. Import necessary components from the main application
 from src.stockreports.config import loader
-# IMPORTANT: Choose the correct data loader based on your testing mode.
-# Use load_live_data for DEPLOYMENT mode testing (fetches from API).
-# Use load_data_for_development and historical_data_manager for DEVELOPMENT mode.
 from src.stockreports.utils.data_utils import load_live_data
-# IMPORTANT: Update the import path to your approach's executor
-from src.stockreports.alert.approach.VOLUME_SPIKE_CONFIRMATION.executor import VolumeSpikeConfirmationExecutor
 from src.stockreports.alert.common.constants import Approach
+from tests.debug.common.charts.visibility_chart import VisibilityChartGenerator
+from tests.debug.common.utils.debug_utils import save_debug_data
 
 # Setup basic logging to see output from the main application
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file):
+def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file, generate_chart):
     """
     Sets up the environment and runs the debug analysis by calling the main executor
     with a DataFrame representing the specified time window.
     """
     # --- 1. Load Configuration & Set Mode ---
     importlib.reload(loader)
+    
+    # Dynamically import the executor AFTER reloading the configuration to ensure it sees the changes.
+    from src.stockreports.alert.approach.VOLUME_SPIKE_CONFIRMATION.executor import VolumeSpikeConfirmationExecutor
+
     settings = loader.get_settings()
     # Set the mode for your test. DEPLOYMENT is common for testing live scenarios.
     settings.MODE = 'DEPLOYMENT' 
@@ -64,6 +68,7 @@ def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file):
     end_time = pd.to_datetime(end_time_str).tz_localize(timezone)
 
     print(f"\n--- Fetching data for main symbol from {start_time} to {end_time} ---")
+    json_file_path = None
     try:
         # Convert to UTC timestamps for the API call
         from_timestamp = int(start_time.timestamp())
@@ -79,41 +84,18 @@ def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file):
         print("Data successfully fetched for the required window.")
 
         if save_to_file:
-            # Format the filename
-            start_str = start_time.strftime('%Y%m%d_%H%M')
-            end_str = end_time.strftime('%Y%m%d_%H%M')
-            
-            # Create a specific directory for debug data if it doesn't exist
-            debug_data_dir = os.path.join(project_root, 'tests', 'debug', 'data')
-            os.makedirs(debug_data_dir, exist_ok=True)
-            
-            # Create a copy for file saving to avoid modifying the original df
-            df_to_save = df_for_analysis.copy()
-
-            # Reset index to make 'time' a column
-            df_to_save.reset_index(inplace=True)
-
-            # Convert 'time' column to the local timezone
-            df_to_save['time'] = df_to_save['time'].dt.tz_convert(timezone)
-
-            # --- Save to JSON with local timezone ---
-            json_filename = f"debug_data_{symbol}_{start_str}_to_{end_str}_intraday.json"
-            json_file_path = os.path.join(debug_data_dir, json_filename)
-            
-            # Manually format the 'time' column to an ISO string with timezone
-            df_to_save['time'] = df_to_save['time'].apply(lambda x: x.isoformat())
-            
-            df_to_save.to_json(json_file_path, orient='records', indent=4)
-            print(f"Data saved to {json_file_path}")
-
-            # --- Save to CSV with local timezone ---
-            csv_filename = f"debug_data_{symbol}_{start_str}_to_{end_str}_intraday.csv"
-            csv_file_path = os.path.join(debug_data_dir, csv_filename)
-            df_to_save.to_csv(csv_file_path, index=False)
-            print(f"Data saved to {csv_file_path}")
+            # Use the centralized utility to save the data.
+            # Note: This function expects Timestamp objects for start/end times.
+            json_file_path = save_debug_data(
+                df_for_analysis,
+                symbol,
+                start_time,
+                end_time,
+                project_root
+            )
 
     except Exception as e:
-        print(f"ERROR: An error occurred during data fetching: {e}")
+        print(f"ERROR: An error occurred during data fetching or saving: {e}")
         return
 
     # --- 3. Prepare and Call the Main Executor ---
@@ -131,6 +113,7 @@ def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file):
 
     # --- 4. Report Results ---
     print("\n\n===== OVERALL RESULT =====")
+    alerts_in_range = pd.DataFrame()
     if alert_result.status == "FAILED":
         print(f"EXECUTOR FAILED: {alert_result.message}")
     elif not alert_result.alerts.empty:
@@ -152,6 +135,38 @@ def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file):
     else:
         print("No alerts were generated by the executor in the provided data.")
 
+    # --- 5. Generate Visibility Chart ---
+    if generate_chart and not alerts_in_range.empty:
+        if json_file_path:
+            print("\n--- Generating visibility chart ---")
+            
+            # Instantiate the generator to check for enabled plots first
+            chart_generator = VisibilityChartGenerator(approach_name=approach_name)
+            if not chart_generator.has_enabled_plots():
+                print(f"No confirmation checks are enabled for the '{approach_name}' approach. Skipping chart generation.")
+                return
+
+            first_alert = alerts_in_range.iloc[0]
+            alert_time_str = first_alert['alert_time'].strftime('%Y-%m-%d %H:%M:%S')
+            signal_type = first_alert['signal']
+
+            start_str = start_time.strftime('%Y%m%d_%H%M')
+            end_str = end_time.strftime('%Y%m%d_%H%M')
+            chart_output_dir = os.path.join(project_root, 'tests', 'debug', 'data', 'charts', f"{symbol}_{start_str}_to_{end_str}")
+
+            # Update the generator with the correct signal type before generating
+            chart_generator.signal_type = signal_type
+            chart_generator.generate(
+                json_file_path,
+                chart_output_dir,
+                breakout_time_str=alert_time_str
+            )
+            print(f"Chart saved to directory: {chart_output_dir}")
+        else:
+            print("\n--- Skipping chart generation because --save-to-file was not used. ---")
+    elif generate_chart:
+        print("\n--- Skipping chart generation because no alerts were found in the specified range. ---")
+
 
 if __name__ == "__main__":
     """
@@ -162,7 +177,8 @@ if __name__ == "__main__":
     parser.add_argument("--start-time", required=True, help="The start of the time range to analyze (e.g., '2023-09-15 10:00:00').")
     parser.add_argument("--end-time", required=True, help="The end of the time range to analyze (e.g., '2023-09-15 11:00:00').")
     parser.add_argument("--save-to-file", action='store_true', help="If set, saves the fetched data to a JSON file.")
+    parser.add_argument("--generate-chart", action='store_true', help="If set, generates a visibility chart for the first found alert.")
     
     args = parser.parse_args()
     
-    run_debug_analysis(args.symbol, args.start_time, args.end_time, args.save_to_file)
+    run_debug_analysis(args.symbol, args.start_time, args.end_time, args.save_to_file, args.generate_chart)

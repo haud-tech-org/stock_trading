@@ -28,6 +28,38 @@ class VisibilityChartGenerator:
             print(f"ERROR: Approach '{self.approach_name}' not found in APPROACH_CONFIG. Using 'default'.")
             return self.signal_settings.APPROACH_CONFIG['default']
 
+    def has_enabled_plots(self) -> bool:
+        """
+        Checks if there are any confirmation plots enabled for the current approach.
+        """
+        if not self.approach_config:
+            return False
+            
+        enabled_plot_keys = self._get_enabled_plot_keys()
+        return len(enabled_plot_keys) > 0
+
+    def _get_enabled_plot_keys(self) -> list:
+        """
+        Returns a list of keys for plots that are enabled in the approach configuration.
+        """
+        if not self.approach_config:
+            return []
+
+        enabled_keys = []
+        if self.approach_config.get("USE_SHORT_TERM_MA_CONFIRMATION", False):
+            enabled_keys.append(PlotKeys.SHORT_MA)
+        if self.approach_config.get("USE_MA_CONFIRMATION", False):
+            enabled_keys.append(PlotKeys.LONG_MA)
+        if self.approach_config.get("USE_LONG_TERM_MA_FILTER", False):
+            enabled_keys.append(PlotKeys.PRIMARY_MA)
+        if self.approach_config.get("USE_RSI_CONFIRMATION", False):
+            enabled_keys.append(PlotKeys.RSI)
+        if self.approach_config.get("USE_MACD_CONFIRMATION", False):
+            enabled_keys.append(PlotKeys.MACD)
+        if self.approach_config.get("USE_ADX_CONFIRMATION", False):
+            enabled_keys.append(PlotKeys.ADX)
+        return enabled_keys
+
     def _add_confirmation_plot(self, fig, df, breakout_candle, breakout_time, price_at_breakout, plot_info, row):
         """
         Internal helper to add a subplot for a specific confirmation indicator.
@@ -119,19 +151,7 @@ class VisibilityChartGenerator:
         plot_configs = config_generator.get_all_configs()
 
         # --- 4. Determine which plots are enabled ---
-        enabled_plot_keys = []
-        if self.approach_config.get("USE_SHORT_TERM_MA_CONFIRMATION", False):
-            enabled_plot_keys.append(PlotKeys.SHORT_MA)
-        if self.approach_config.get("USE_MA_CONFIRMATION", False):
-            enabled_plot_keys.append(PlotKeys.LONG_MA)
-        if self.approach_config.get("USE_LONG_TERM_MA_FILTER", False):
-            enabled_plot_keys.append(PlotKeys.PRIMARY_MA)
-        if self.approach_config.get("USE_RSI_CONFIRMATION", False):
-            enabled_plot_keys.append(PlotKeys.RSI)
-        if self.approach_config.get("USE_MACD_CONFIRMATION", False):
-            enabled_plot_keys.append(PlotKeys.MACD)
-        if self.approach_config.get("USE_ADX_CONFIRMATION", False):
-            enabled_plot_keys.append(PlotKeys.ADX)
+        enabled_plot_keys = self._get_enabled_plot_keys()
 
         if not enabled_plot_keys:
             print(f"No confirmation checks are enabled for the '{self.approach_name}' approach. No chart will be generated.")
@@ -179,6 +199,11 @@ def generate_visibility_chart(input_file, output_dir, approach_name, signal_type
     Initializes and runs the VisibilityChartGenerator class.
     """
     chart_generator = VisibilityChartGenerator(approach_name, signal_type)
+    # Pre-flight check before generating
+    if not chart_generator.has_enabled_plots():
+        print(f"No confirmation checks are enabled for the '{approach_name}' approach. No chart will be generated.")
+        return
+
     chart_generator.generate(input_file, output_dir, breakout_time_str)
 
 

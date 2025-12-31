@@ -2,89 +2,73 @@
 
 ## Objective
 
-The **Volume Spike Confirmation** strategy is designed to identify potentially significant market moves that are initiated by a sudden surge in trading volume and immediately confirmed by a strong follow-up candle. The core idea is to filter out random noise by requiring two distinct events in sequence: a volume anomaly followed by price conviction.
+The **Volume Spike Confirmation** strategy is a two-phase approach designed to identify potential trend reversals. It first identifies a historical "climax event" characterized by a significant volume spike at the end of a confirmed trend. Then, it actively searches all subsequent data for a specific "reversal candle" that confirms the new trend has begun.
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `VolumeSpikeConfirmationSettings`, in `src/stockreports/alert/approach/VOLUME_SPIKE_CONFIRMATION/settings.py` loads these parameters.
+This approach is configured in `src/stockreports/config/signal_settings.py`.
 
 | Parameter | Default | Description |
 | :--- | :--- | :--- |
-| `SIGNAL_LOOKBACK_PERIOD` | 3 | The number of candles to look back from the confirmation candle to find the signal candle (the one with the highest volume). |
-| `VOLUME_SPIKE_MULTIPLIER` | 2.5 | The volume of the "signal candle" must be at least this many times greater than the average intraday volume calculated up to that point. |
-| `MIN_CONFIRMATION_BODY_SIZE` | 1.0 | The minimum absolute size (in price points) of the body of the "confirmation candle". |
-| `MIN_CONFIRMATION_BODY_RATIO` | 0.6 | The minimum ratio of the confirmation candle's body to its total range (`body / (high - low)`). This ensures the candle is decisive. |
-| `PEAK_TROUGH_PROMINENCE` | 0.5 | The prominence required for the peak/trough detection algorithm to identify a valid reversal point within the window. |
-| `COOLDOWN_PERIOD` | 2 | The number of minutes to wait after *any* alert before firing another one. |
-| `MIN_LOOKBACK_DATA` | 30 | The minimum number of candles required in the dataset to ensure a reliable average volume calculation. |
+| `LOOKBACK_WINDOW` | 30 | The number of past candles to analyze to find a climax event. |
+| `COOLDOWN_PERIOD` | 10 | The minimum time (in minutes) between consecutive alerts of the same signal direction. |
+| `PREVIOUS_CANDLES_VOLUME_MULTIPLIER` | 2.0 | The climax candle's volume must be at least this many times greater than the volume of at least one of the two preceding candles. |
+| `AVG_VOLUME_MULTIPLIER` | 3.0 | The climax candle's volume must be at least this many times greater than the average volume of its lookback window. |
+| `PEAK_TROUGH_PROMINENCE` | 2.0 | The prominence value for detecting peaks/troughs to confirm the prior trend leading up to the climax candle. Set to `null` or `0.0` to disable the prominence constraint. |
+| `MIN_REVERSAL_BODY_SIZE` | 1.0 | The minimum absolute body size of the **reversal candle** found after the climax event. |
+| `DISABLE_BUY_SIGNAL` | `False` | If `True`, the strategy will not generate any BUY signals. |
+| `DISABLE_SELL_SIGNAL` | `False` | If `True`, the strategy will not generate any SELL signals. |
 
-## Step-by-Step Logic (Backward Loop)
+## Step-by-Step Logic
 
-The core logic resides in the `VolumeSpikeConfirmationExecutor` class. It uses a reverse loop for real-time efficiency. For each candle `i`, it treats it as a potential "confirmation candle" and analyzes a window of preceding candles.
+The algorithm operates in a rolling fashion, analyzing the most recent data first. It is divided into two distinct phases. The process for a **BUY signal** (reversing a prior downtrend) is detailed below.
 
-The total analysis window size is `SIGNAL_LOOKBACK_PERIOD`.
+### Phase 1: Climax Event Identification
 
-### Signal Generation Conditions
+The algorithm first analyzes a rolling `LOOKBACK_WINDOW` to find a valid climax event.
 
-1.  **Identify Signal Candle:**
-    *   The algorithm looks at the window of `SIGNAL_LOOKBACK_PERIOD` candles ending at the confirmation candle `i`.
-    *   It identifies the candle with the highest volume in this window (excluding the confirmation candle itself) as the `signal_candle`.
-    *   **Position Constraint:** The `signal_candle` must **not** be the very first candle of the lookback window, nor the last one (immediately preceding the confirmation candle). It must be "sandwiched" within the lookback period.
+1.  **Find Max Volume Candle**: It identifies the candle with the maximum volume within the `LOOKBACK_WINDOW`. This is our potential **climax candle**.
+2.  **Volume Validation**: The climax candle's volume must meet two criteria:
+    *   It must be at least `PREVIOUS_CANDLES_VOLUME_MULTIPLIER` times the volume of at least one of the two candles that came before it.
+    *   It must be at least `AVG_VOLUME_MULTIPLIER` times the average volume of the entire `LOOKBACK_WINDOW`.
+3.  **Downtrend Confirmation**: The algorithm confirms that the climax candle occurred at the end of a valid downtrend.
+    *   **Find Peaks**: It uses `scipy.signal.find_peaks` to identify all significant price peaks on the closing prices in the window *leading up to and including the climax candle*.
+    *   **Build Trend Sequence**: It creates an ordered sequence of prices: [first candle's close, all peak closes, climax candle's close].
+    *   **Verify Trend**: It checks if this sequence is **monotonically decreasing**, confirming a consistent downtrend.
 
-2.  **Check for Volume Spike:**
-    *   The algorithm calculates the average volume of all candles in the dataset *prior* to the `signal_candle`.
-    *   It checks if the volume of the `signal_candle` is greater than or equal to this average volume multiplied by `VOLUME_SPIKE_MULTIPLIER`.
+If a valid climax event is found, the algorithm proceeds to Phase 2. Otherwise, it moves to the next window.
 
-3.  **Validate Confirmation Candle:**
-    *   The confirmation candle (at index `i`) is validated for shape:
-        *   **Body Size:** Its absolute body size (`abs(close - open)`) must be greater than or equal to `MIN_CONFIRMATION_BODY_SIZE`.
-        *   **Body-to-Range Ratio:** Its body must make up at least `MIN_CONFIRMATION_BODY_RATIO` of its total range.
+### Phase 2: Reversal Confirmation Validation
 
-4.  **Determine Signal Direction & Structural Reversal:**
-    *   The algorithm determines the potential signal based on the confirmation candle's color:
-        *   **Green Confirmation** -> Potential **BUY**.
-        *   **Red Confirmation** -> Potential **SELL**.
-    
-    *   **Reversal Validation (Peak/Trough):**
-        *   It uses a peak-finding algorithm (`scipy.signal.find_peaks`) on the closing prices within the entire analysis window (including the confirmation candle).
-        *   **For BUY:** It looks for a **Trough** (local minimum) in the closing prices. The most significant trough (lowest price) is chosen.
-        *   **For SELL:** It looks for a **Peak** (local maximum) in the closing prices. The most significant peak (highest price) is chosen.
-        *   The identified Peak or Trough must **not** be at the very start or end of the analysis window.
+Once a climax event is identified, the algorithm validates if the most recent candle in the dataset confirms the reversal.
 
-5.  **Validate Pre-Spike Trend:**
-    *   The algorithm examines the candles in the window *strictly before* the `signal_candle`.
-    *   **For BUY:** All pre-spike candles must be **Red** (indicating a downward trend leading into the spike).
-    *   **For SELL:** All pre-spike candles must be **Green** (indicating an upward trend leading into the spike).
+1.  **Define Validation Window**: The validation takes place in a window that starts from the climax candle and extends to the **very end of the available dataset**.
+2.  **Validate Last Candle**: The algorithm checks **only the last candle** in this window to see if it's a valid reversal signal.
+3.  **Reversal Candle Validation**: The last candle is considered a valid **BUY reversal** if it meets all the following conditions:
+    *   It must be a **bullish candle** (`close > open`).
+    *   Its closing price must be **higher than the closing price of the immediately preceding candle**.
+    *   Its absolute body size (`close - open`) must be greater than or equal to `MIN_REVERSAL_BODY_SIZE`.
 
-    If all conditions are met, an `AlertData` object is created.
+If the last candle is a valid reversal, a **BUY** alert is generated, timestamped at the time of that candle.
 
-## Cooldown Logic
+### Cooldown
 
-To prevent alert spam, a cooldown mechanism is implemented:
-- The executor tracks the timestamp of the last generated alert.
-- If a new alert is detected, it checks the time elapsed since the last alert.
-- If this duration is less than `COOLDOWN_PERIOD` minutes, the new alert is suppressed.
-- This cooldown applies globally to the strategy instance, regardless of signal direction.
+The cooldown check is the very first step in the process. Before any analysis runs, the algorithm checks a class-level timestamp that records when the last alert was processed. If the time elapsed since that timestamp is less than the `COOLDOWN_PERIOD`, the entire execution for the current symbol is skipped to prevent duplicate alerts and save resources. This timestamp is updated whenever a new alert is generated.
 
 ## Flow Diagram
 
 ```mermaid
 graph TD
-    A[Start Loop at candle `i`] --> B_CHECK{Data > MIN_LOOKBACK_DATA?};
-    B_CHECK -- No --> X[Continue Loop];
-    B_CHECK -- Yes --> B{Find Signal Candle in Lookback Window};
-    B --> C{1. Signal Candle Position Valid?};
-    C -- No --> X;
-    C -- Yes --> D{2. Volume Spike on Signal Candle?};
-    D -- No --> X;
-    D -- Yes --> E{3. Confirmation Candle Shape Valid?};
-    E -- No --> X;
-    E -- Yes --> F{4. Structural Reversal (Peak/Trough) Found?};
+    A[Start] --> B{Cooldown Active?};
+    B -- Yes --> Z[End];
+    B -- No --> C{Analyze Rolling Lookback Window};
+    C --> D{Phase 1: Climax Event Found?};
+    D -- No --> X[Discard & Move to Next Window];
+    D -- Yes --> E{Phase 2: Define Validation Window (Climax to End of Data)};
+    E --> F{Is Last Candle a Valid Reversal?};
     F -- No --> X;
-    F -- Yes --> G{5. Pre-Spike Trend Valid?};
-    G -- No --> X;
-    G -- Yes --> H{6. Cooldown Active?};
-    H -- Yes --> X;
-    H -- No --> Z[Generate Alert];
-    X --> A;
+    F -- Yes --> G[Generate Reversal Alert];
+    G --> H[Update Last Alert Timestamp];
+    H --> Z;
+    X --> Z;
 ```
