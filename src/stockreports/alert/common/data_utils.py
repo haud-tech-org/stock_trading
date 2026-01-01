@@ -3,6 +3,9 @@ import logging
 from src.stockreports.alert.common.constants import Approach
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
+from typing import Optional, Tuple
+from scipy.signal import find_peaks
+from .constants import PeakTrough, PriceColumn
 
 signal_settings = loader.get_signal_settings()
 
@@ -79,3 +82,83 @@ def can_apply_analysis(df: pd.DataFrame, approach_name: str, required_rows: int 
         )
         return False
     return True
+
+
+def find_extreme_point(
+    df: pd.DataFrame,
+    price_column: PriceColumn,
+    extreme_type: PeakTrough,
+    prominence: float
+) -> Optional[Tuple[float, pd.Timestamp]]:
+    """
+    Finds the most extreme peak or trough in a given DataFrame.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to search. Must have a datetime index.
+        price_column (PriceColumn): The enum member for the column to analyze (e.g., PriceColumn.CLOSE).
+        extreme_type (PeakTrough): The enum member for the type of extreme point (PeakTrough.PEAK or PeakTrough.TROUGH).
+        prominence (float): The prominence required for a peak/trough to be detected.
+
+    Returns:
+        Optional[Tuple[float, pd.Timestamp]]: A tuple of (price, timestamp) of the most extreme point, or None if not found.
+    """
+    if df.empty or price_column not in df.columns:
+        return None
+
+    points, _ = find_peaks(df[price_column] if extreme_type == PeakTrough.PEAK else -df[price_column], prominence=prominence)
+
+    if points.size == 0:
+        return None
+
+    if extreme_type == PeakTrough.PEAK:
+        # Find the index of the maximum value among the detected peaks
+        extreme_point_index = df.iloc[points][price_column].idxmax()
+    else: # TROUGH
+        # Find the index of the minimum value among the detected troughs
+        extreme_point_index = df.iloc[points][price_column].idxmin()
+
+    extreme_price = df.loc[extreme_point_index, price_column]
+    
+    # The index of a DataFrame slice is a pd.Timestamp
+    return extreme_price, extreme_point_index
+
+
+def find_nearest_extreme_point(
+    df: pd.DataFrame,
+    price_column: PriceColumn,
+    extreme_type: PeakTrough,
+    prominence: float
+) -> Optional[Tuple[float, pd.Timestamp]]:
+    """
+    Finds the nearest (most recent) peak or trough in a given DataFrame.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to search. Must have a datetime index.
+        price_column (str): The column to search ('high', 'low', 'close').
+        extreme_type (str): 'peak' or 'trough'.
+        prominence (float): The prominence required for a peak/trough to be detected.
+
+    Returns:
+        Optional[Tuple[float, pd.Timestamp]]: A tuple of (price, timestamp) of the nearest point, or None if not found.
+    """
+    if df.empty or price_column not in df.columns:
+        return None
+
+    series = df[price_column]
+    
+    if extreme_type == PeakTrough.PEAK:
+        points, _ = find_peaks(series, prominence=prominence)
+    elif extreme_type == PeakTrough.TROUGH:
+        points, _ = find_peaks(-series, prominence=prominence)
+    else:
+        return None
+
+    if points.size == 0:
+        return None
+
+    # The nearest point is the one with the largest index (most recent)
+    nearest_point_iloc = points[-1]
+    nearest_point_index = series.index[nearest_point_iloc]
+    nearest_price = series.loc[nearest_point_index]
+    
+    return nearest_price, nearest_point_index

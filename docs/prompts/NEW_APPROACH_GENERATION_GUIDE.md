@@ -98,166 +98,62 @@ class ConsolidationBreakoutSettings(BaseSettings):
         # "CONSOLIDATION_BREAKOUT": {
         #     "default": { "LOOKBACK_PERIOD": 25 },
         #     "VN30": { "LOOKBACK_PERIOD": 30 }
-        # },
+        # }
     }
     ```
 
-### Step 5: Implement the `executor.py` Using the Class-Based Template
+### Step 5: Implement the Executor Class
 
-Copy and adapt the following template for your `executor.py`. **Note:** This template uses the `AlertData` model. Executors **MUST** create and return `AlertData` objects, not `Alert` objects, to prevent circular import errors.
+This is the core of the work. Follow the template below, ensuring you adhere to the principles outlined in Section 2.
 
 ```python
-# src/stockreports/alert/approach/YOUR_APPROACH_NAME/executor.py
-
+# src/stockreports/alert/approach/CONSOLIDATION_BREAKOUT/executor.py
 import pandas as pd
 import logging
-import json
-from typing import list
+from typing import Optional
 
-# --- Standard Imports ---
+# --- Project Imports ---
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.model.models import AlertData # CORRECT: Use AlertData
-from src.stockreports.alert.common.constants import Approach, Mode
-# ... other common imports
+from src.stockreports.config import loader
+from src.stockreports.alert.common.constants import Approach, Mode, Signal
+from src.stockreports.alert.model.models import AlertResult, AlertData
+from .settings import ConsolidationBreakoutSettings
 
-# --- Custom Approach Imports ---
-from .settings import YourApproachNameSettings
+class ConsolidationBreakoutExecutor(Executor):
+    APPROACH_NAME = Approach.CONSOLIDATION_BREAKOUT
+    LATEST_ACCEPTED_ALERT: Optional[AlertData] = None
 
-logger = logging.getLogger(__name__)
-
-class YourApproachNameExecutor(Executor):
-    APPROACH_NAME = Approach.YOUR_APPROACH_NAME
-
-    def __init__(self, symbol: str, data: pd.DataFrame, mode: Mode):
-        super().__init__(symbol, data, mode)
-        self.settings = YourApproachNameSettings(symbol)
+    def __init__(self, symbol: str):
+        super().__init__(symbol)
+        self.settings = ConsolidationBreakoutSettings(symbol)
         self.logger = logging.getLogger(__name__)
 
-    # 1. MAIN ENTRY POINT
-    def run(self) -> list[AlertData]:
-        """
-        Entry point for the YOUR_APPROACH_NAME approach.
-        """
-        alerts = []
-        self.logger.info(f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...")
-        
-        # --- Core Logic ---
-        # Your unique pattern detection logic goes here.
-        # It should return a signal ("BUY" or "SELL") or None.
-        # Example: confirmation_result = self.confirmation.confirm(self.data)
-        confirmation_result = None # Placeholder
+    def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
+        # ... (try/except block) ...
+        # ... (call to _find_consolidation_breakout_alerts) ...
 
-        if confirmation_result:
-            alert = self._create_alert(confirmation_result)
-            alerts.append(alert)
-            self.logger.info(f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts)} alerts.")
-        else:
-            self.logger.info(f"'{self.APPROACH_NAME}' approach for {self.symbol} found 0 alerts.")
+    def _find_consolidation_breakout_alerts(self, df: pd.DataFrame, new_candle_count: int) -> list[AlertData]:
+        # ... (main reverse loop logic) ...
 
-        return alerts
-
-    # 2. ALERT CREATION HELPER
-    def _create_alert(self, confirmation_result) -> AlertData:
-        last_candle = self.data.iloc[-1]
-        reversal_candle = self.data.loc[confirmation_result.reversal_time]
-        
-        alert_time = last_candle.name
-        alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-        magnitude = round(abs(last_candle['close'] - reversal_candle['close']), 2)
-
-        details = { "parameter_1": self.settings.parameter_1 }
-
-        return AlertData(
-            id=alert_id,
-            symbol=self.symbol,
-            signal=confirmation_result.signal,
-            alert_time=alert_time,
-            alert_price=last_candle['close'],
-            approach=self.APPROACH_NAME,
-            start_time=confirmation_result.reversal_time,
-            start_price=reversal_candle['close'],
-            magnitude=magnitude,
-            details=json.dumps(details)
-        )
-
-        # --- Unified Reverse Loop for both DEPLOYMENT and DEVELOPMENT modes ---
-        # 1. Define loop_end (most recent index to scan)
-        #    - Subtract any forward-looking offset (e.g., confirmation candles) here.
-        offset = confirmation_candles if use_confirmation_filter else 0
-        loop_end = len(df_indexed) - 1 - offset
-        
-        # 2. Define min_scan_index (absolute minimum index required for lookback)
-        min_scan_index = required_lookback - 1
-        
-        # 3. Define loop_start (oldest index to scan) based on mode
-        if is_development_mode:
-            loop_start = min_scan_index
-        else:
-            # In DEPLOYMENT, we only scan the 'new_candle_count' range.
-            # We also subtract the offset to ensure we stop early enough for forward checks.
-            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - offset)
-
-        # 4. Execute the Loop
-        for i in range(loop_end, loop_start - 1, -1):
-            alert = self._analyze_candle(df_indexed, i, ...)
-            if alert:
-                alerts.append(alert)
-                # Optimization: In deployment, we only need the most recent alert.
-                if not is_development_mode:
-                    return alerts
+    def _analyze_window(self, window: pd.DataFrame) -> Optional[AlertData]:
+        # ... (core analysis for a single window) ...
 ```
 
-### Step 6: Enable the Approach in `settings.py`
+## 6. Case Studies: Common Pitfalls to Avoid
 
-**CRITICAL ACTIVATION STEP:** This step makes your new approach live.
+This section documents real errors made during development to serve as learning examples.
 
-1.  Open `src/stockreports/config/settings.py`.
-2.  Add your approach's string name to the `ALERT_APPROACHES` list.
+### Case Study 1: The Phantom Deletion During Refactoring
 
-### Step 7: Create Documentation and Debug Script
-
-These steps are still **MANDATORY**.
--   **Algorithm Documentation**: Create a markdown file in `docs/algorithms/` explaining your strategy. You can reference the existing documentation for other algorithms in this directory for examples.
--   **Window Analysis Documentation**: Update `docs/window/APPROACH_LOOKBACK_FORWARD_ANALYSIS.md` and `docs/window/APPROACH_ANALYSIS_SUMMARY.md` to include your new approach's lookback and pattern length analysis. This is critical for deployment logic.
--   **Debug Script**: Follow the updated guide at `docs/prompts/DEBUG_SCRIPT_GENERATION_GUIDE.md` to create a script that instantiates and runs your new `Executor` class.
-
----
-
-## Non-Negotiable Rules for Implementation (Class-Based)
-
-These rules are adapted for the new class-based architecture.
-
-### 1. Column Name Consistency
--   **Rule**: Standardize column names to lowercase as the very first step inside the `try` block of the public `run` method.
--   **Implementation**: `df.columns = [col.lower() for col in df.columns]`
-
-### 2. Data Handling and Validation
--   **Rule 1**: Use the centralized `can_apply_analysis` check at the beginning of your private `_find_*_alerts` function before any looping.
--   **Rule 2**: Trust the DataFrame Index. The `run` method receives a DataFrame with a valid `DatetimeIndex`. Do not manually set the index or perform timezone localization within the executor.
-
-### 3. Data Flow Integrity
--   **Rule**: Any helper function that modifies a DataFrame (e.g., `prepare_indicators`) **MUST** return it, and the caller **MUST** use the returned object. `df = prepare_indicators(df)`.
-
-### 4. Error Handling and Type Safety
--   **Rule 1**: The public `run` method **MUST** be wrapped in a `try...except Exception as e` block. This is the global safety net for the entire approach. Do not add extra `try...except` blocks inside the core logic.
--   **Rule 2**: Maintain type consistency, especially with Enums (`Signal.BUY`, `Trend.UPTREND`, etc.).
-
-### 5. Configuration and Code Structure
--   **Rule 1**: Create a dedicated settings class for your approach (e.g., `MyApproachSettings`) to load all parameters from `signal_settings.py`. Instantiate this class in your executor's `__init__` method.
--   **Rule 2**: The `APPROACH_NAME` **MUST** be a class-level constant in your executor, assigned from the `Approach` enum (e.g., `APPROACH_NAME = Approach.MY_APPROACH`).
--   **Rule 3**: Executors **MUST** create and return `AlertData` objects from `src.stockreports.alert.model.models`. They **MUST NOT** import or instantiate the `Alert` class directly. This prevents circular dependency errors.
-
-### 6. Verbose Debug Logging for Validation
--   **Rule**: Every validation check that can cause a window to be rejected **MUST** be accompanied by a `self.logger.debug()` message explaining the exact reason for the failure. This is critical for debugging and fine-tuning the approach.
--   **Implementation**:
-    -   The log message **MUST** start with the window identifier: `f"Window ending {window.index[-1]}: ..."`
-    -   It **MUST** clearly state the name of the failed check (ideally matching the config key): `... Failed {CHECK_NAME}. ...`
-    -   It **MUST** provide the actual and expected values for comparison: `... Got {actual_value}, required {expected_value}."`
--   **Example**:
-    ```python
-    min_ratio = self.CONFIG.get("MIN_CLUSTERED_CANDLE_RATIO")
-    if is_clustered.mean() < min_ratio:
-        self.logger.debug(f"Window ending {window.index[-1]}: Failed MIN_CLUSTERED_CANDLE_RATIO. "
-                        f"Got {is_clustered.mean():.2f}, need {min_ratio}.")
-        return None # Stop processing this window
-    ```
+*   **Scenario**: An agent was tasked with refactoring a single, complex function within an `Executor` class (`_confirm_reversal_in_forward_window`). The goal was to split the function's logic into two new, smaller helper methods.
+*   **The Error**: During the `insert_edit_into_file` operation, the agent's provided code block was incomplete. It correctly showed the changes for the target function and the new helper methods but **omitted several other essential, unrelated methods** that were present in the original file (e.g., `_find_consistent_momentum_alerts`). The edit tool, following instructions, replaced a large chunk of the file with the provided code, inadvertently deleting the omitted methods.
+*   **The Symptom**: The application immediately failed at runtime with an `AttributeError: 'ConsistentMomentumExecutor' object has no attribute '_find_consistent_momentum_alerts'`, because the main alert-finding loop method had been accidentally deleted.
+*   **The Lesson**:
+    *   **Scope of Edits is Critical**: When using file editing tools, be acutely aware of the context you provide. Omitting code that should remain is as destructive as adding incorrect code. The tool assumes the provided snippet is the desired final state for the specified range.
+    *   **Always Account for `...existing code...`**: The `// ...existing code...` marker is a crucial instruction to the editing tool to preserve the surrounding, unchanged code. Ensure that all parts of the file that are not being changed are correctly framed by these markers. A missing marker can lead to large, unintended deletions.
+    *   **Review the Diff**: After an edit is applied, the resulting diff is the ground truth. A large number of deletions in unexpected places is a major red flag that warrants an immediate revert and review. Do not proceed if you see unexpected deletions.
+    *   **Refactor Incrementally**: Instead of one massive edit that refactors a function and adds two new ones, consider a multi-step approach:
+        1.  Add the new, empty helper methods first in one edit.
+        2.  Move the logic into the helper methods one by one in subsequent edits.
+        3.  Finally, update the original function to be a dispatcher.
+        This reduces the risk of large-scale accidental deletions and makes errors easier to pinpoint.
