@@ -27,3 +27,13 @@ class Trend:
 class AlertKeys:
     TREND = "trend"
     SIGNAL = "signal"
+
+class PeakTrough:
+    PEAK = "PEAK"
+    TROUGH = "TROUGH"
+
+class PriceColumn:
+    OPEN = "open"
+    HIGH = "high"
+    LOW = "low"
+    CLOSE = "close"
