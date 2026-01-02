@@ -14,13 +14,7 @@ class ConsistentMomentumSettings(BaseSettings):
         
         # Forward Window Confirmation
         self.use_forward_window_confirmation = self.get("USE_FORWARD_WINDOW_CONFIRMATION", True)
-        self.long_forward_window = self.get("LONG_FORWARD_WINDOW", 9)
-        self.short_forward_window = self.get("SHORT_FORWARD_WINDOW", 5)
-        self.reversal_body_ratio_threshold = self.get("REVERSAL_BODY_RATIO_THRESHOLD", 0.7)
-        self.reversal_volume_multiplier = self.get("REVERSAL_VOLUME_MULTIPLIER", 2.5)
-        self.reversal_price_diff_threshold = self.get("REVERSAL_PRICE_DIFF_THRESHOLD", 2.0)
         self.significant_price_change_threshold = self.get("SIGNIFICANT_PRICE_CHANGE_THRESHOLD", 5.0)
-        self.gap_price = self.get("GAP_PRICE", 0.5)
 
         # Volume Confirmation
         self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION", False)
