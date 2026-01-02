@@ -86,28 +86,34 @@ If the pre-filter is passed, the algorithm analyzes a forward-looking window (up
     *   This logic applies to small forward windows (typically 2-4 candles). It looks for a quick, sharp reversal.
     *   **All** of the following conditions must be met in order:
     *   **1. Reversal Trend:** The **last candle** in the forward window must show a reversal trend (e.g., be bearish after a BUY signal).
-    *   **2. Dominant Reversal Candle:** The reversal candle must be dominant among its peers.
-        *   It must have a body size greater than or equal to the largest body of all other candles in the forward window *that share the same reversal trend*.
-        *   It must have a volume greater than or equal to the largest volume of those same same-trend candles.
-    *   **3. Valid Gap Price:** The gap between the previous candle's close and the reversal candle's open must be less than or equal to `GAP_PRICE`.
-    *   **4. Volume Multiplier:** The reversal candle's volume multiplied by `REVERSAL_VOLUME_MULTIPLIER` must be greater than the maximum volume of all *other* candles in the forward window (i.e., excluding the reversal candle itself).
-    *   **5. Strong Body:** The reversal candle's body must be at least `REVERSAL_BODY_RATIO_THRESHOLD` of its total range (high-low).
-    *   If all five conditions pass, a reversal is confirmed at the last candle.
+    *   **2. Strong Body:** The reversal candle's body must be strong enough, with its body-to-range ratio being >= `REVERSAL_BODY_RATIO_THRESHOLD`.
+    *   **3. Conditional Validation Logic:** After the trend and body are confirmed, the algorithm chooses one of two paths:
+        *   If other candles with the same reversal trend exist in the window, it performs a **Dominance Check**.
+        *   If no such candles exist, it performs a **Volume Multiplier Check** as a fallback.
+    *   **4. Dominance Check (Conditional):** This check is performed if other same-trend candles are available for comparison. It ensures the reversal candle's price action is decisively dominant.
+        *   For a **bullish reversal** (after a SELL signal), the reversal candle's `low` must be **higher** than the `max(low)` of all other bullish candles in the window.
+        *   For a **bearish reversal** (after a BUY signal), the reversal candle's `high` must be **lower** than the `min(high)` of all other bearish candles in the window.
+    *   **5. Volume Multiplier Check (Conditional Fallback):** This check is performed only if there are no other same-trend candles to compare against.
+        *   The reversal candle's volume multiplied by `REVERSAL_VOLUME_MULTIPLIER` must be greater than the maximum volume of all *other* candles in the forward window.
+    *   **6. Valid Gap Price:** The gap between the previous candle's close and the reversal candle's open must be less than or equal to `GAP_PRICE`.
+    *   If all relevant conditions pass, a reversal is confirmed at the last candle.
 
 3.  **Scenario B: Long-Window Reversal Logic**
     *   This logic applies to larger forward windows (at least 3 candles) and identifies a more complex, multi-candle reversal pattern.
-    *   **All** of the following conditions must be met:
-    *   **1. Identify Key Candles:**
-        *   `Max Volume Candle`: The candle with the highest volume *that follows the original trend* within the forward window.
-        *   `Min Volume Candle`: The candle with the lowest volume *that also follows the original trend* and appears *after* the max volume candle but *before* the final candle.
-        *   `J-Candle`: The very last candle of the forward window, which is the potential reversal candle.
-    *   **2. Volume Ratio:** The volume of the `Max Volume Candle` must be >= the volume of the `Min Volume Candle` multiplied by `REVERSAL_VOLUME_MULTIPLIER`.
-    *   **3. Strong Reversal Body:** The `J-Candle` must have a strong body, with its body-to-range ratio being >= `REVERSAL_BODY_RATIO_THRESHOLD`.
-    *   **4. Price Proximity:** The alert candle's closing price must be "close" to the forward window's overall high/low. The difference between the alert price and the furthest extreme must be less than `REVERSAL_PRICE_DIFF_THRESHOLD`.
-    *   **5. Failed New High/Low:** The `J-Candle` must fail to continue the trend.
-        *   For a BUY-to-SELL reversal, the `J-Candle`'s high must be **lower** than the highest high in the forward window.
-        *   For a SELL-to-BUY reversal, the `J-Candle`'s low must be **higher** than the lowest low in the forward window.
-    *   If all five conditions pass, a reversal is confirmed at the `J-Candle`.
+    *   The confirmation is a two-step process:
+    *   **Step 1: Comprehensive Pattern Validation**
+        *   This primary step validates the trend, structure, and volume pattern in a specific, optimized order. All of the following checks must pass:
+        *   **a. Reversal Trend:** The **last candle** of the forward window must show a clear reversal trend.
+        *   **b. Strong Reversal Body:** The last candle must have a strong body, with its body-to-range ratio being >= `REVERSAL_BODY_RATIO_THRESHOLD`.
+        *   **c. Reversal Structure:** The last candle must fail to continue the original trend (e.g., for a BUY-to-SELL reversal, its high must be lower than the window's highest high).
+        *   **d. Volume Exhaustion Pattern (Optional):** If there are at least two candles matching the *original* trend direction, the algorithm checks for a volume exhaustion pattern:
+            *   It identifies the `Max Volume Candle` and `Min Volume Candle` from this group.
+            *   The `Max Volume Candle` must appear *before* the `Min Volume Candle`.
+            *   The volume of the `Max Volume Candle` must be >= the volume of the `Min Volume Candle` multiplied by `REVERSAL_VOLUME_MULTIPLIER`.
+            *   If this pattern is not met, it is a hard failure. If there aren't enough candles to check it, the validation proceeds.
+    *   **Step 2: Price Proximity Validation**
+        *   If the pattern validation passes, a final check ensures the alert candle's closing price is "close" to the forward window's overall high/low. The difference between the alert price and the furthest extreme must be less than `REVERSAL_PRICE_DIFF_THRESHOLD`.
+    *   If both steps pass, a reversal is confirmed at the last candle of the forward window.
 
 If either `Scenario A` or `Scenario B` confirms a reversal, an alert is generated with the **flipped signal**. If no pattern is confirmed, no alert is created.
 
