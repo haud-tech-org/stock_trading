@@ -212,7 +212,11 @@ class Executor(ABC):
         if not self._is_strong_reversal_body(latest_candle, signal, alert_candle_time, "Long-window Step 2", settings):
             return False
 
-        # 3. Find all trend-consistent candles in the forward window
+        # 3. The latest_candle must fail to make a new high (for SELL reversal) or a new low (for BUY reversal).
+        if not self._validate_reversal_structure(forward_window, signal, alert_candle_time):
+            return False
+
+        # 4. Find all trend-consistent candles in the forward window
         if signal == Signal.BUY:
             trend_candles = forward_window[forward_window['close'] > forward_window['open']]
         else:
@@ -225,11 +229,11 @@ class Executor(ABC):
             # We can proceed to the other checks.
             return True
             
-        # 4. Find the max and min volume candles from the trend-consistent set
+        # 5. Find the max and min volume candles from the trend-consistent set
         max_volume_candle = trend_candles.loc[trend_candles['volume'].idxmax()]
         min_volume_candle = trend_candles.loc[trend_candles['volume'].idxmin()]
 
-        # 5. Validate the positional requirement: max volume must be before min volume.
+        # 6. Validate the positional requirement: max volume must be before min volume.
         if not (max_volume_candle.name < min_volume_candle.name):
             self.logger.debug(f"[{alert_candle_time}] Positional check FAILED: Max volume candle at {max_volume_candle.name} does not appear before min volume candle at {min_volume_candle.name}.")
             # This is not a failure of the overall reversal, but this specific volume pattern is not met.
@@ -237,7 +241,7 @@ class Executor(ABC):
             return True
         self.logger.info(f"[{alert_candle_time}] Positional check PASSED: Max volume candle is before min volume candle.")
 
-        # 6. Perform volume ratio check
+        # 7. Perform volume ratio check
         self.logger.info(f"[{alert_candle_time}] Potential reversal found. Max vol: {max_volume_candle.name}, Min vol: {min_volume_candle.name}, Reversal (latest): {latest_candle.name}")
 
         is_volume_ratio_met = max_volume_candle['volume'] >= min_volume_candle['volume'] * settings.reversal_volume_multiplier
@@ -268,10 +272,11 @@ class Executor(ABC):
         self.logger.info(f"[{alert_candle_time}] Step 3 PASSED: Price level is close enough to forward window extremes.")
         return True
 
-    def _validate_reversal_structure(self, latest_candle: pd.Series, forward_window: pd.DataFrame, signal: Signal, alert_candle_time) -> bool:
+    def _validate_reversal_structure(self, forward_window: pd.DataFrame, signal: Signal, alert_candle_time) -> bool:
         """
         Confirms the reversal structure by checking if the final candle fails to make a new high/low.
         """
+        latest_candle = forward_window.iloc[-1]
         is_reversal_structure_confirmed = False
         if signal == Signal.SELL: # Original SELL, seeking BUY reversal
             lowest_low_in_window = forward_window['low'].min()
@@ -294,16 +299,12 @@ class Executor(ABC):
         latest_candle = forward_window.iloc[-1]
         alert_candle = df_indexed.iloc[alert_candle_index]
 
-        # Condition 1: Validate the volume pattern of max vs. min volume candles.
+        # Condition 1: Validate the volume and structure pattern of max vs. min volume candles.
         if not self._validate_reversal_volume_pattern(forward_window, signal, alert_candle_time, settings):
             return None
 
         # Condition 2: The price level of the alert candle must be close to the forward window's extremes.
         if not self._validate_price_level_proximity(alert_candle, forward_window, signal, alert_candle_time, settings):
-            return None
-
-        # Condition 3: The latest_candle must fail to make a new high (for SELL reversal) or a new low (for BUY reversal).
-        if not self._validate_reversal_structure(latest_candle, forward_window, signal, alert_candle_time):
             return None
 
         # All conditions are met
