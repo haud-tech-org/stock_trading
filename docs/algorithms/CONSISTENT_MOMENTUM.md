@@ -88,7 +88,7 @@ If the pre-filter is passed, the algorithm analyzes a forward-looking window (up
     *   **1. Reversal Trend:** The **last candle** in the forward window must show a reversal trend (e.g., be bearish after a BUY signal).
     *   **2. Strong Body:** The reversal candle's body must be strong enough, with its body-to-range ratio being >= `REVERSAL_BODY_RATIO_THRESHOLD`.
     *   **3. Volume Multiplier:** The reversal candle's volume multiplied by `REVERSAL_VOLUME_MULTIPLIER` must be greater than the maximum volume of all *other* candles in the forward window.
-    *   **4. Dominance Check (Optional):** If other candles with the same reversal trend exist in the forward window (excluding the first and last candle), the reversal candle must be dominant.
+    *   **4. Dominance Check (Mandatory):** The reversal candle must be dominant. This check requires at least one other candle in the window to compare against, and at least one of those must share the same reversal trend. If these conditions aren't met, the check fails.
         *   Its body size must be greater than or equal to the largest body of those same-trend candles.
         *   Its volume must be greater than or equal to the largest volume of those same-trend candles.
     *   **5. Valid Gap Price:** The gap between the previous candle's close and the reversal candle's open must be less than or equal to `GAP_PRICE`.

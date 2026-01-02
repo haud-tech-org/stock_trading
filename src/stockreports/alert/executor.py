@@ -165,27 +165,33 @@ class Executor(ABC):
                 return None
         self.logger.info(f"[{alert_candle_time}] Short-window Step 3 PASSED: Volume multiplier condition met.")
 
-        # 4. Dominance Check (Optional): Latest candle must have the largest body and volume 
-        # if other same-trend candles exist for comparison.
+        # 4. Dominance Check (Mandatory): Latest candle must have the largest body and volume 
+        # compared to other same-trend candles.
         other_candles_for_comparison = forward_window.iloc[1:-1]
 
-        if not other_candles_for_comparison.empty:
-            if reversal_is_bullish:
-                other_same_trend_candles = other_candles_for_comparison[other_candles_for_comparison['close'] > other_candles_for_comparison['open']]
-            else:
-                other_same_trend_candles = other_candles_for_comparison[other_candles_for_comparison['close'] < other_candles_for_comparison['open']]
+        if other_candles_for_comparison.empty:
+            self.logger.debug(f"[{alert_candle_time}] Short-window Step 4 FAILED: No other candles found for dominance comparison.")
+            return None
 
-            if not other_same_trend_candles.empty:
-                latest_candle_body = abs(latest_candle['close'] - latest_candle['open'])
-                is_largest_body = latest_candle_body >= other_same_trend_candles.apply(lambda x: abs(x['close'] - x['open']), axis=1).max()
-                is_largest_volume = latest_candle['volume'] >= other_same_trend_candles['volume'].max()
-                
-                if not (is_largest_body and is_largest_volume):
-                    self.logger.debug(f"[{alert_candle_time}] Short-wndow Step 4 FAILED: Latest candle not dominant. "
-                                      f"LargestBody: {is_largest_body}, LargestVol: {is_largest_volume}")
-                    return None
+        if reversal_is_bullish:
+            other_same_trend_candles = other_candles_for_comparison[other_candles_for_comparison['close'] > other_candles_for_comparison['open']]
+        else:
+            other_same_trend_candles = other_candles_for_comparison[other_candles_for_comparison['close'] < other_candles_for_comparison['open']]
+
+        if other_same_trend_candles.empty:
+            self.logger.debug(f"[{alert_candle_time}] Short-window Step 4 FAILED: No other same-trend candles found for dominance comparison.")
+            return None
+
+        latest_candle_body = abs(latest_candle['close'] - latest_candle['open'])
+        is_largest_body = latest_candle_body >= other_same_trend_candles.apply(lambda x: abs(x['close'] - x['open']), axis=1).max()
+        is_largest_volume = latest_candle['volume'] >= other_same_trend_candles['volume'].max()
         
-        self.logger.info(f"[{alert_candle_time}] Short-window Step 4 PASSED: Latest candle is dominant (or no comparison needed).")
+        if not (is_largest_body and is_largest_volume):
+            self.logger.debug(f"[{alert_candle_time}] Short-wndow Step 4 FAILED: Latest candle not dominant. "
+                                f"LargestBody: {is_largest_body}, LargestVol: {is_largest_volume}")
+            return None
+        
+        self.logger.info(f"[{alert_candle_time}] Short-window Step 4 PASSED: Latest candle is dominant.")
 
         return latest_candle
 
