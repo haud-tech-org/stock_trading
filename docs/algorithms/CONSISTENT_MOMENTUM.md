@@ -87,12 +87,16 @@ If the pre-filter is passed, the algorithm analyzes a forward-looking window (up
     *   **All** of the following conditions must be met in order:
     *   **1. Reversal Trend:** The **last candle** in the forward window must show a reversal trend (e.g., be bearish after a BUY signal).
     *   **2. Strong Body:** The reversal candle's body must be strong enough, with its body-to-range ratio being >= `REVERSAL_BODY_RATIO_THRESHOLD`.
-    *   **3. Volume Multiplier:** The reversal candle's volume multiplied by `REVERSAL_VOLUME_MULTIPLIER` must be greater than the maximum volume of all *other* candles in the forward window.
-    *   **4. Dominance Check (Mandatory):** The reversal candle must be dominant. This check requires at least one other candle in the window to compare against, and at least one of those must share the same reversal trend. If these conditions aren't met, the check fails.
-        *   Its body size must be greater than or equal to the largest body of those same-trend candles.
-        *   Its volume must be greater than or equal to the largest volume of those same-trend candles.
-    *   **5. Valid Gap Price:** The gap between the previous candle's close and the reversal candle's open must be less than or equal to `GAP_PRICE`.
-    *   If all five conditions pass, a reversal is confirmed at the last candle.
+    *   **3. Conditional Validation Logic:** After the trend and body are confirmed, the algorithm chooses one of two paths:
+        *   If other candles with the same reversal trend exist in the window, it performs a **Dominance Check**.
+        *   If no such candles exist, it performs a **Volume Multiplier Check** as a fallback.
+    *   **4. Dominance Check (Conditional):** This check is performed if other same-trend candles are available for comparison. It ensures the reversal candle's price action is decisively dominant.
+        *   For a **bullish reversal** (after a SELL signal), the reversal candle's `low` must be **higher** than the `max(low)` of all other bullish candles in the window.
+        *   For a **bearish reversal** (after a BUY signal), the reversal candle's `high` must be **lower** than the `min(high)` of all other bearish candles in the window.
+    *   **5. Volume Multiplier Check (Conditional Fallback):** This check is performed only if there are no other same-trend candles to compare against.
+        *   The reversal candle's volume multiplied by `REVERSAL_VOLUME_MULTIPLIER` must be greater than the maximum volume of all *other* candles in the forward window.
+    *   **6. Valid Gap Price:** The gap between the previous candle's close and the reversal candle's open must be less than or equal to `GAP_PRICE`.
+    *   If all relevant conditions pass, a reversal is confirmed at the last candle.
 
 3.  **Scenario B: Long-Window Reversal Logic**
     *   This logic applies to larger forward windows (at least 3 candles) and identifies a more complex, multi-candle reversal pattern.

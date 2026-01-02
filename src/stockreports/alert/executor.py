@@ -154,44 +154,50 @@ class Executor(ABC):
         if not self._is_strong_reversal_body(latest_candle, signal, alert_candle_time, "Short-window Step 2", settings):
             return None
 
-        # 3. Volume multiplier check
-        all_other_candles = forward_window.iloc[:-1]
-        if not all_other_candles.empty:
-            max_volume_others = all_other_candles['volume'].max()
-            is_volume_multiplied = (latest_candle['volume'] * settings.reversal_volume_multiplier) > max_volume_others
-            if not is_volume_multiplied:
-                self.logger.debug(f"[{alert_candle_time}] Short-window Step 3 FAILED: Volume multiplier not met. "
-                                  f"LatestVol: {latest_candle['volume']}, MaxOtherVol: {max_volume_others}, Multiplier: {settings.reversal_volume_multiplier}")
-                return None
-        self.logger.info(f"[{alert_candle_time}] Short-window Step 3 PASSED: Volume multiplier condition met.")
-
-        # 4. Dominance Check (Mandatory): Latest candle must have the largest body and volume 
-        # compared to other same-trend candles.
+        # Define comparison candles
         other_candles_for_comparison = forward_window.iloc[1:-1]
 
-        if other_candles_for_comparison.empty:
-            self.logger.debug(f"[{alert_candle_time}] Short-window Step 4 FAILED: No other candles found for dominance comparison.")
-            return None
-
+        # Find candles with the same trend as the reversal
         if reversal_is_bullish:
             other_same_trend_candles = other_candles_for_comparison[other_candles_for_comparison['close'] > other_candles_for_comparison['open']]
         else:
             other_same_trend_candles = other_candles_for_comparison[other_candles_for_comparison['close'] < other_candles_for_comparison['open']]
 
-        if other_same_trend_candles.empty:
-            self.logger.debug(f"[{alert_candle_time}] Short-window Step 4 FAILED: No other same-trend candles found for dominance comparison.")
-            return None
+        # Conditional Validation:
+        # If there are other same-trend candles, perform a dominance check.
+        # Otherwise, perform a volume multiplier check.
+        if not other_same_trend_candles.empty:
+            # 4. Dominance Check (Mandatory if same-trend candles exist)
+            is_dominant = False
+            if reversal_is_bullish:
+                # For a bullish reversal, the latest candle's low must be higher than the max low of other bullish candles.
+                max_low_others = other_same_trend_candles['low'].max()
+                is_dominant = latest_candle['low'] > max_low_others
+                if not is_dominant:
+                    self.logger.debug(f"[{alert_candle_time}] Short-window Step 4 FAILED: Bullish reversal not dominant. "
+                                      f"LatestLow: {latest_candle['low']:.2f}, MaxOtherLow: {max_low_others:.2f}")
+            else:  # reversal_is_bearish
+                # For a bearish reversal, the latest candle's high must be lower than the min high of other bearish candles.
+                min_high_others = other_same_trend_candles['high'].min()
+                is_dominant = latest_candle['high'] < min_high_others
+                if not is_dominant:
+                    self.logger.debug(f"[{alert_candle_time}] Short-window Step 4 FAILED: Bearish reversal not dominant. "
+                                      f"LatestHigh: {latest_candle['high']:.2f}, MinOtherHigh: {min_high_others:.2f}")
 
-        latest_candle_body = abs(latest_candle['close'] - latest_candle['open'])
-        is_largest_body = latest_candle_body >= other_same_trend_candles.apply(lambda x: abs(x['close'] - x['open']), axis=1).max()
-        is_largest_volume = latest_candle['volume'] >= other_same_trend_candles['volume'].max()
-        
-        if not (is_largest_body and is_largest_volume):
-            self.logger.debug(f"[{alert_candle_time}] Short-wndow Step 4 FAILED: Latest candle not dominant. "
-                                f"LargestBody: {is_largest_body}, LargestVol: {is_largest_volume}")
-            return None
-        
-        self.logger.info(f"[{alert_candle_time}] Short-window Step 4 PASSED: Latest candle is dominant.")
+            if not is_dominant:
+                return None
+            self.logger.info(f"[{alert_candle_time}] Short-window Step 4 PASSED: Latest candle is dominant.")
+        else:
+            # 3. Volume multiplier check (Fallback if no same-trend candles exist)
+            all_other_candles = forward_window.iloc[:-1]
+            if not all_other_candles.empty:
+                max_volume_others = all_other_candles['volume'].max()
+                is_volume_multiplied = (latest_candle['volume'] * settings.reversal_volume_multiplier) > max_volume_others
+                if not is_volume_multiplied:
+                    self.logger.debug(f"[{alert_candle_time}] Short-window Step 3 FAILED: Volume multiplier not met. "
+                                      f"LatestVol: {latest_candle['volume']}, MaxOtherVol: {max_volume_others}, Multiplier: {settings.reversal_volume_multiplier}")
+                    return None
+            self.logger.info(f"[{alert_candle_time}] Short-window Step 3 PASSED: Volume multiplier condition met.")
 
         return latest_candle
 
