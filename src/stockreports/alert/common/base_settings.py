@@ -29,7 +29,7 @@ class BaseSettings:
         self.gap_price = self.get('GAP_PRICE', 0.5)
         self.adjacent_gap_price = self.get('ADJACENT_GAP_PRICE', 0.5)
         self.reversal_volume_multiplier = self.get('REVERSAL_VOLUME_MULTIPLIER', 2.5)
-        self.reversal_body_ratio_threshold = self.get('REVERSAL_BODY_RATIO_THRESHOLD', 0.5)
+        self.reversal_body_ratio_threshold = self.get('REVERSAL_BODY_RATIO_THRESHOLD', 0.6)
         self.reversal_price_diff_threshold = self.get('REVERSAL_PRICE_DIFF_THRESHOLD', 2.0)
 
     def get(self, key, default=None):
