@@ -99,7 +99,11 @@ class Executor(ABC):
 
         # 2. Gap price check
         previous_candle = forward_window.iloc[-2]
-        if not self._validate_short_window_gap_price(latest_candle, previous_candle, signal, alert_candle_time, settings):
+        if not self._validate_reversal_gap_price(latest_candle, previous_candle, signal, alert_candle_time, settings, "Short-window Step 5"):
+            return None
+
+        # 3. Check for large gaps within the window
+        if not self._validate_no_large_gaps_in_window(forward_window, signal, alert_candle_time, settings, "Short-window Step 6"):
             return None
 
         # If all short-window conditions are met
@@ -107,7 +111,7 @@ class Executor(ABC):
         self.logger.info(f"[{latest_candle.name}] Confirmed short-window reversal from {signal} to {confirmed_signal}.")
         return latest_candle, confirmed_signal
 
-    def _validate_short_window_gap_price(self, latest_candle: pd.Series, previous_candle: pd.Series, signal: Signal, alert_candle_time, settings: BaseSettings) -> bool:
+    def _validate_reversal_gap_price(self, latest_candle: pd.Series, previous_candle: pd.Series, signal: Signal, alert_candle_time, settings: BaseSettings, context_message: str) -> bool:
         """
         Checks if the gap between the latest candle and the previous one is valid.
         """
@@ -123,9 +127,9 @@ class Executor(ABC):
                 gap_is_valid = True
         
         if not gap_is_valid:
-            self.logger.debug(f"[{alert_candle_time}] Short-window Step 5 FAILED: Gap price condition not met. Gap: {gap:.2f}, Threshold: {settings.gap_price}")
+            self.logger.debug(f"[{alert_candle_time}] {context_message} FAILED: Gap price condition not met. Gap: {gap:.2f}, Threshold: {settings.gap_price}")
             return False
-        self.logger.info(f"[{alert_candle_time}] Short-window Step 5 PASSED: Gap price condition met.")
+        self.logger.info(f"[{alert_candle_time}] {context_message} PASSED: Gap price condition met.")
         return True
 
     def _validate_short_window_reversal_pattern(self, forward_window: pd.DataFrame, signal: Signal, alert_candle_time, settings: BaseSettings) -> Optional[pd.Series]:
@@ -188,16 +192,9 @@ class Executor(ABC):
                 return None
             self.logger.info(f"[{alert_candle_time}] Short-window Step 4 PASSED: Latest candle is dominant.")
         else:
-            # 3. Volume multiplier check (Fallback if no same-trend candles exist)
-            all_other_candles = forward_window.iloc[:-1]
-            if not all_other_candles.empty:
-                max_volume_others = all_other_candles['volume'].max()
-                is_volume_multiplied = (latest_candle['volume'] * settings.reversal_volume_multiplier) > max_volume_others
-                if not is_volume_multiplied:
-                    self.logger.debug(f"[{alert_candle_time}] Short-window Step 3 FAILED: Volume multiplier not met. "
-                                      f"LatestVol: {latest_candle['volume']}, MaxOtherVol: {max_volume_others}, Multiplier: {settings.reversal_volume_multiplier}")
-                    return None
-            self.logger.info(f"[{alert_candle_time}] Short-window Step 3 PASSED: Volume multiplier condition met.")
+            # If no other same-trend candles exist, the pattern is not confirmed.
+            self.logger.debug(f"[{alert_candle_time}] Short-window Step 4 FAILED: No other same-trend candles found for dominance comparison.")
+            return None
 
         return latest_candle
 
@@ -206,6 +203,10 @@ class Executor(ABC):
         Identifies max and min volume candles and validates their volume and position.
         Returns True if the pattern is valid or skipped, False if it fails.
         """
+        if len(forward_window) < 2:
+            self.logger.debug(f"[{alert_candle_time}] Forward window has less than 2 candles, skipping reversal volume pattern validation.")
+            return False
+
         latest_candle = forward_window.iloc[-1]
         
         # 1. Reversal Trend Check
@@ -224,36 +225,36 @@ class Executor(ABC):
         if not self._is_strong_reversal_body(latest_candle, signal, alert_candle_time, "Long-window Step 2", settings):
             return False
 
-        # 3. The latest_candle must fail to make a new high (for SELL reversal) or a new low (for BUY reversal).
+        # 3. Gap price check
+        previous_candle = forward_window.iloc[-2]
+        if not self._validate_reversal_gap_price(latest_candle, previous_candle, signal, alert_candle_time, settings, "Long-window Step 3"):
+            return False
+
+        # 4. The latest_candle must fail to make a new high (for SELL reversal) or a new low (for BUY reversal).
         if not self._validate_reversal_structure(forward_window, signal, alert_candle_time):
             return False
 
-        # 4. Find all trend-consistent candles in the forward window
-        if signal == Signal.BUY:
-            trend_candles = forward_window[forward_window['close'] > forward_window['open']]
-        else:
-            trend_candles = forward_window[forward_window['close'] < forward_window['open']]
+        # 5. Check for large gaps within the window
+        if not self._validate_no_large_gaps_in_window(forward_window, signal, alert_candle_time, settings, "Long-window Step 5"):
+            return False
 
-        # If there are less than 2 trend candles, a max/min pair cannot exist.
-        if len(trend_candles) < 2:
-            self.logger.debug(f"[{alert_candle_time}] Not enough trend-consistent candles ({len(trend_candles)}) to find a volume pattern.")
-            # This is not a failure, just an optional pattern that wasn't found.
-            # We can proceed to the other checks.
-            return True
-            
-        # 5. Find the max and min volume candles from the trend-consistent set
-        max_volume_candle = trend_candles.loc[trend_candles['volume'].idxmax()]
-        min_volume_candle = trend_candles.loc[trend_candles['volume'].idxmin()]
+        # 6. Find the max and min volume candles from the entire forward window.
+        # If there are less than 2 candles, a max/min pair cannot exist.
+        max_volume_candle = forward_window.loc[forward_window['volume'].idxmax()]
+        min_volume_candle = forward_window.loc[forward_window['volume'].idxmin()]
 
-        # 6. Validate the positional requirement: max volume must be before min volume.
+        # Validate that the min volume candle is not the last candle in the window.
+        if min_volume_candle.name == latest_candle.name:
+            self.logger.debug(f"[{alert_candle_time}] Volume pattern check FAILED: The candle with the minimum volume is the last candle.")
+            return False
+
+        # 7. Validate the positional requirement: max volume must be before min volume.
         if not (max_volume_candle.name < min_volume_candle.name):
             self.logger.debug(f"[{alert_candle_time}] Positional check FAILED: Max volume candle at {max_volume_candle.name} does not appear before min volume candle at {min_volume_candle.name}.")
-            # This is not a failure of the overall reversal, but this specific volume pattern is not met.
-            # We can skip the volume ratio check and proceed.
-            return True
+            return False
         self.logger.info(f"[{alert_candle_time}] Positional check PASSED: Max volume candle is before min volume candle.")
 
-        # 7. Perform volume ratio check
+        # 8. Perform volume ratio check
         self.logger.info(f"[{alert_candle_time}] Potential reversal found. Max vol: {max_volume_candle.name}, Min vol: {min_volume_candle.name}, Reversal (latest): {latest_candle.name}")
 
         is_volume_ratio_met = max_volume_candle['volume'] >= min_volume_candle['volume'] * settings.reversal_volume_multiplier
@@ -264,6 +265,36 @@ class Executor(ABC):
             return False # A failed ratio is a hard failure of the pattern.
         self.logger.info(f"[{alert_candle_time}] Step 3 PASSED: Volume ratio met.")
         
+        return True
+
+    def _validate_no_large_gaps_in_window(self, forward_window: pd.DataFrame, signal: Signal, alert_candle_time, settings: BaseSettings, context_message: str) -> bool:
+        """
+        Checks for significant price gaps between consecutive candles that align with the expected reversal direction.
+        - For a BUY signal (expecting a SELL reversal), it looks for downward gaps.
+        - For a SELL signal (expecting a BUY reversal), it looks for upward gaps.
+        """
+        if len(forward_window) < 2:
+            return True # Not applicable for single candles or empty windows
+
+        for i in range(len(forward_window) - 1):
+            current_candle = forward_window.iloc[i]
+            next_candle = forward_window.iloc[i + 1]
+
+            gap = 0
+            # For a BUY signal, we are looking for a SELL reversal (gap down).
+            if signal == Signal.BUY:
+                if next_candle['open'] < current_candle['close']:
+                    gap = current_candle['close'] - next_candle['open']
+            # For a SELL signal, we are looking for a BUY reversal (gap up).
+            elif signal == Signal.SELL:
+                if next_candle['open'] > current_candle['close']:
+                    gap = next_candle['open'] - current_candle['close']
+
+            if gap > settings.adjacent_gap_price:
+                self.logger.debug(f"[{alert_candle_time}] {context_message} FAILED: Large gap ({gap:.2f}) detected between consecutive candles, exceeding threshold ({settings.adjacent_gap_price}).")
+                return False
+
+        self.logger.info(f"[{alert_candle_time}] {context_message} PASSED: No large gaps found in window.")
         return True
 
     def _validate_price_level_proximity(self, alert_candle: pd.Series, forward_window: pd.DataFrame, signal: Signal, alert_candle_time, settings: BaseSettings) -> bool:
