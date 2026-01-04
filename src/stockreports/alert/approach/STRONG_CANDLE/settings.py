@@ -1,15 +1,16 @@
-from src.stockreports.alert.common.base_settings import BaseSettings
+from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
 from src.stockreports.alert.common.constants import Approach
 from src.stockreports.config import loader
 
 signal_settings = loader.get_signal_settings()
 
-class StrongCandleSettings(BaseSettings):
+class StrongCandleSettings(ConfirmationSettings):
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.STRONG_CANDLE)
         
         self.confirmation_window = self.get("CONFIRMATION_WINDOW")
         self.min_alert_magnitude = self.get("MIN_ALERT_MAGNITUDE")
+        self.min_expected_profit_loss = self.get("MIN_EXPECTED_PROFIT_LOSS")
         
         self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION")
         self.use_last_candle_max_volume_confirmation = self.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION")

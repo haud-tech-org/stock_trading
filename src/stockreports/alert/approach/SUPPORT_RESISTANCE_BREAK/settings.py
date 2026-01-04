@@ -1,11 +1,11 @@
-from src.stockreports.alert.common.base_settings import BaseSettings
+from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
 from src.stockreports.alert.common.constants import Approach
 from src.stockreports.config import loader
 
 settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 
-class SupportResistanceBreakSettings(BaseSettings):
+class SupportResistanceBreakSettings(ConfirmationSettings):
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.SUPPORT_RESISTANCE_BREAK)
         

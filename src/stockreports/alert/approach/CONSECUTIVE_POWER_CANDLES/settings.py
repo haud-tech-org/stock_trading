@@ -1,7 +1,7 @@
-from src.stockreports.alert.common.base_settings import BaseSettings
+from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
 from src.stockreports.alert.common.constants import Approach
 
-class ConsecutivePowerCandlesSettings(BaseSettings):
+class ConsecutivePowerCandlesSettings(ConfirmationSettings):
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.CONSECUTIVE_POWER_CANDLES)
         
@@ -12,9 +12,4 @@ class ConsecutivePowerCandlesSettings(BaseSettings):
         self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION")
         self.use_last_candle_max_volume_confirmation = self.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION")
         
-        self.use_ma_confirmation = self.get("USE_MA_CONFIRMATION")
-        self.use_adx_confirmation = self.get("USE_ADX_CONFIRMATION")
-        
-        self.use_rsi_exhaustion_filter = self.get("USE_RSI_EXHAUSTION_FILTER")
-        self.rsi_oversold_threshold = self.get("RSI_OVERSOLD_THRESHOLD")
-        self.rsi_overbought_threshold = self.get("RSI_OVERBOUGHT_THRESHOLD")
+        self.use_rsi_exhaustion_filter = self.get("USE_RSI_CONFIRMATION")

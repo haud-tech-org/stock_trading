@@ -22,17 +22,6 @@ class BaseSettings:
         # All configurations are now flat structures.
         self.approach_settings = self.signal_settings.APPROACH_CONFIG.get(approach_name, {})
 
-        # --- Common Reversal Confirmation Settings ---
-        # These settings are used by the common reversal functions in the parent Executor.
-        # They can be overridden by specific approach configurations.
-        self.long_forward_window = self.get('LONG_FORWARD_WINDOW')
-        self.short_forward_window = self.get('SHORT_FORWARD_WINDOW')
-        self.gap_price = self.get('GAP_PRICE')
-        self.adjacent_gap_price = self.get('ADJACENT_GAP_PRICE')
-        self.reversal_volume_multiplier = self.get('REVERSAL_VOLUME_MULTIPLIER')
-        self.reversal_body_ratio_threshold = self.get('REVERSAL_BODY_RATIO_THRESHOLD')
-        self.reversal_price_diff_threshold = self.get('REVERSAL_PRICE_DIFF_THRESHOLD')
-
     def get(self, key: str):
         """
         Provides a generic getter to access any setting.

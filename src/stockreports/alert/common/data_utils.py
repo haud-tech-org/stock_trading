@@ -41,7 +41,7 @@ def get_min_data_for_indicator_confirmation(approach_name: str) -> int:
     if config.get("USE_MA_CONFIRMATION", False):
         required_periods.append(getattr(signal_settings, 'MA_LONG_PERIOD', 10))
 
-    if config.get("USE_LONG_TERM_MA_FILTER", False):
+    if config.get("USE_LONG_TERM_MA_CONFIRMATION"):
         required_periods.append(getattr(signal_settings, 'MA_LONG_TERM_PERIOD', 50))
 
     if config.get("USE_RSI_CONFIRMATION", False) or config.get("USE_RSI_EXHAUSTION_FILTER", False):

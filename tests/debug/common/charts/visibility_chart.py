@@ -50,7 +50,7 @@ class VisibilityChartGenerator:
             enabled_keys.append(PlotKeys.SHORT_MA)
         if self.approach_config.get("USE_MA_CONFIRMATION", False):
             enabled_keys.append(PlotKeys.LONG_MA)
-        if self.approach_config.get("USE_LONG_TERM_MA_FILTER", False):
+        if self.approach_config.get("USE_LONG_TERM_MA_CONFIRMATION", False):
             enabled_keys.append(PlotKeys.PRIMARY_MA)
         if self.approach_config.get("USE_RSI_CONFIRMATION", False):
             enabled_keys.append(PlotKeys.RSI)

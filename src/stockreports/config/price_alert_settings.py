@@ -6,23 +6,13 @@ ALLOW_REPEATED_LEVEL_ALERTS = False
 
 PRICE_ALERTS = {
     "VN30": {
-        "reference_price": 1899.93,
-        "fixed_levels": [1804.57, 1877.78, 1896.05, 1905.4],
+        "reference_price": 1978.76,
+        "fixed_levels": [1804.57, 1876.9, 1896.05, 1906.77, 1917.81, 1929.96],
         "absolute_interval": 9.0,
     },
     "VN30F2512": {
-        "reference_price": 1888.0,
-        "fixed_levels": [1847.27, 1877.45, 1894.25],
+        "reference_price": 1976.3,
+        "fixed_levels": [1847.27, 1877.45, 1894.25, 1903.67, 1913.9, 1929.8],
         "absolute_interval": 9.0,
     },
-    "VIC": {
-        "reference_price": 227.8,
-        "fixed_levels": [203.8],
-        "absolute_interval": 9.0,
-    },
-    "HPG": {
-        "reference_price": 27.35,
-        "fixed_levels": [25.99, 26.91, 27.12, 27.33],
-        "absolute_interval": 9.0,
-    }
 }

@@ -139,13 +139,13 @@ class StrongCandleExecutor(Executor):
                 is_strong_bullish = (
                     potential_signal == Signal.BUY and
                     candidate_strong_candle['close'] > candidate_strong_candle['open'] and
-                    candidate_strong_candle['body_size'] > self.validation_settings.MIN_EXPECTED_PROFIT_LOSS and
+                    candidate_strong_candle['body_size'] > self.settings.min_expected_profit_loss and
                     candidate_strong_candle['upper_wick'] < candidate_strong_candle['body_size'] * self.settings.trend_strength_strong_close_tail_ratio
                 )
                 is_strong_bearish = (
                     potential_signal == Signal.SELL and
                     candidate_strong_candle['close'] < candidate_strong_candle['open'] and
-                    candidate_strong_candle['body_size'] > self.validation_settings.MIN_EXPECTED_PROFIT_LOSS and
+                    candidate_strong_candle['body_size'] > self.settings.min_expected_profit_loss and
                     candidate_strong_candle['lower_wick'] < candidate_strong_candle['body_size'] * self.settings.trend_strength_strong_close_tail_ratio
                 )
 

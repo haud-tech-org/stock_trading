@@ -30,10 +30,10 @@ class IchimokuExecutor(Executor):
 
     def _calculate_ichimoku_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculates all necessary Ichimoku indicators."""
-        tenkan_period = self.settings.tenkan_period
-        kijun_period = self.settings.kijun_period
-        senkou_b_period = self.settings.senkou_b_period
-        chikou_lag = self.settings.chikou_lag
+        tenkan_period = self.settings.tenkan_sen_period
+        kijun_period = self.settings.kijun_sen_period
+        senkou_b_period = self.settings.senkou_span_b_period
+        chikou_lag = self.settings.chikou_span_period
 
         # Tenkan-sen (Conversion Line)
         high_tenkan = df['high'].rolling(window=tenkan_period).max()
@@ -93,10 +93,10 @@ class IchimokuExecutor(Executor):
 
         # Determine the minimum amount of data needed for one calculation
         required_lookback = max(
-            self.settings.tenkan_period,
-            self.settings.kijun_period,
-            self.settings.senkou_b_period
-        ) + self.settings.chikou_lag
+            self.settings.tenkan_sen_period,
+            self.settings.kijun_sen_period,
+            self.settings.senkou_span_b_period
+        ) + self.settings.chikou_span_period
         
         min_bars_between_alerts = self.settings.min_bars_between_alerts
         
@@ -164,7 +164,7 @@ class IchimokuExecutor(Executor):
         price_above_kumo = candle['close'] > candle['senkou_a'] and candle['close'] > candle['senkou_b']
         
         # Ensure the index for chikou lookup is valid
-        chikou_lookup_idx = i - self.settings.chikou_lag
+        chikou_lookup_idx = i - self.settings.chikou_span_period
         if chikou_lookup_idx < 0:
             return None
         chikou_above_price = candle['chikou'] > df_indexed['high'].iloc[chikou_lookup_idx]
@@ -178,7 +178,7 @@ class IchimokuExecutor(Executor):
             price_below_kumo = candle['close'] < candle['senkou_a'] and candle['close'] < candle['senkou_b']
             
             # Ensure the index for chikou lookup is valid
-            chikou_lookup_idx = i - self.settings.chikou_lag
+            chikou_lookup_idx = i - self.settings.chikou_span_period
             if chikou_lookup_idx < 0:
                 return None
             chikou_below_price = candle['chikou'] < df_indexed['low'].iloc[chikou_lookup_idx]

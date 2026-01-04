@@ -63,7 +63,7 @@ class ProminentPeakReversalExecutor(Executor):
         Finds alerts using a unified reverse loop for both DEPLOYMENT and DEVELOPMENT modes.
         """
         alerts = []
-        is_development_mode = self.global_settings.MODE == Mode.DEVELOPMENT
+        is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         
         required_lookback = self.settings.lookback_window
         if len(df) < required_lookback:

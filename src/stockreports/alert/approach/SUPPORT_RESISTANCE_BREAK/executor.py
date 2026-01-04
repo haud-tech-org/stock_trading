@@ -136,13 +136,13 @@ class SupportResistanceBreakExecutor(Executor):
                 continue
 
             candles_for_exhaustion_check = [break_candle]
-            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, self.settings.approach_settings):
+            if not _is_rsi_not_exhausted(candles_for_exhaustion_check, signal, self.settings):
                 continue
 
-            if not is_signal_confirmed(break_candle, signal, self.settings.approach_settings):
+            if not is_signal_confirmed(break_candle, signal, self.settings):
                 continue
             
-            use_volume = self.settings.approach_settings.get("USE_VOLUME_CONFIRMATION", False)
+            use_volume = self.settings.use_volume_confirmation
             if use_volume and not (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, break_candle_index)):
                 continue
 
@@ -155,8 +155,8 @@ class SupportResistanceBreakExecutor(Executor):
                 elif level_type == 'support' and self._is_breakdown_candle(conf_candle, level):
                     consistency_count += 1
             
-            use_increasing_volume = self.settings.approach_settings.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-            use_last_candle_max_volume = self.settings.approach_settings.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+            use_increasing_volume = self.settings.use_volume_increasing_confirmation
+            use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
 
             volume_increasing_confirmed = not use_increasing_volume or is_volume_increasing(confirmation_df.reset_index())
             last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(confirmation_df.reset_index())
