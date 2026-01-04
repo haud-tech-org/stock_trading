@@ -22,17 +22,19 @@ from src.stockreports.alert.common.volume import (
 )
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.utils.time_utils import to_iso8601_with_tz
+from src.stockreports.alert.confirmation.reversal_trend.executor import ReversalConfirmationExecutor
 from .settings import ConsistentMomentumSettings
 
 
-class ConsistentMomentumExecutor(Executor):
+class ConsistentMomentumExecutor(ReversalConfirmationExecutor):
     APPROACH_NAME = Approach.CONSISTENT_MOMENTUM
     LATEST_ACCEPTED_ALERT: Optional[AlertData] = None
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
         self.settings = ConsistentMomentumSettings(symbol)
         self.logger = logging.getLogger(__name__)
+        super().__init__(symbol, self.settings)
+
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -201,7 +203,7 @@ class ConsistentMomentumExecutor(Executor):
             return None
 
         # 2. Analyze the forward window for a reversal pattern
-        confirmation_result = self._confirm_reversal_in_forward_window(df_indexed, alert_candle_index, signal, self.settings)
+        confirmation_result = self._confirm_reversal_in_forward_window(df_indexed, alert_candle_index, signal)
         if confirmation_result is None:
             self.logger.debug(f"[{alert_candle_time}] No confirmation pattern was found in the forward window.")
             return None
