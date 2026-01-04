@@ -23,8 +23,8 @@ class MomentumExhaustionExecutor(Executor):
     APPROACH_NAME = Approach.MOMENTUM_EXHAUSTION
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
         self.settings = MomentumExhaustionSettings(symbol)
+        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:

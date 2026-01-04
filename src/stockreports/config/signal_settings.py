@@ -76,6 +76,7 @@ APPROACH_CONFIG = {
         "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
         "PEAK_BOTTOM_LOOKBACK_PERIOD": 30,
         "MIN_ALERT_MAGNITUDE": 2,
+        "USE_DIVERGENCE_CONFIRMATION": False,
         "USE_MA_CONFIRMATION": True,
         "USE_ADX_CONFIRMATION": True,
         "USE_RSI_EXHAUSTION_FILTER": False,
@@ -154,7 +155,8 @@ APPROACH_CONFIG = {
         "USE_VOLUME_SPIKE_CONFIRMATION": True,
         # The breakout candle's volume must be at least this many times greater than the
         # average volume of the consolidation window. (e.g., 1.3 = 1.3x or 30% higher).
-        "VOLUME_SPIKE_MULTIPLIER": 1.1, 
+        "VOLUME_SPIKE_MULTIPLIER": 1.1,
+        "MIN_VOLUME_SPIKE_CONFIRMATION_RATIO": 0.1,
 
         # --- General Indicator Confirmation ---
         # Master switch to enable the final signal confirmation step, which uses
@@ -173,7 +175,7 @@ APPROACH_CONFIG = {
         "REVERSAL_BODY_RATIO_THRESHOLD": 0.6,
         "SHORT_FORWARD_WINDOW": 6,
         "USE_VOLUME_CONFIRMATION": True,
-        "USE_INCREASING_VOLUME_CONFIRMATION": False,
+        "USE_VOLUME_INCREASING_CONFIRMATION": False,
         "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
         "REVERSAL_PRICE_DIFF_THRESHOLD": 3.0,
         "SIGNIFICANT_PRICE_CHANGE_THRESHOLD": 5.0,

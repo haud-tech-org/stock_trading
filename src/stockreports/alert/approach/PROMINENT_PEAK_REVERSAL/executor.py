@@ -13,8 +13,6 @@ from .confirmation import ProminentPeakReversalConfirmation
 from .settings import ProminentPeakReversalSignalSettings
 
 
-logger = logging.getLogger(__name__)
-
 class ProminentPeakReversalExecutor(Executor):
     """
     Executor for the Prominent Peak Reversal approach.
@@ -29,11 +27,10 @@ class ProminentPeakReversalExecutor(Executor):
         Args:
             symbol (str): The stock symbol.
         """
-        super().__init__(symbol)
         self.settings = ProminentPeakReversalSignalSettings(symbol)
-        self.confirmation = ProminentPeakReversalConfirmation(self.settings)
-        self.global_settings = loader.get_settings()
+        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
+        self.confirmation = ProminentPeakReversalConfirmation(self.settings)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """

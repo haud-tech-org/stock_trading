@@ -18,20 +18,17 @@ from src.stockreports.alert.common.volume import (
     can_apply_volume_confirmation
 )
 
-settings = loader.get_settings()
-logger = logging.getLogger(__name__)
-
 
 class ComparisonExecutor(Executor):
     APPROACH_NAME = Approach.COMPARISON
     LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
-        self.settings = loader.get_settings()
+        self.settings = ComparisonSignalSettings(symbol)
+        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
-    def run(self, df: pd.DataFrame, new_candle_count: int) -> AlertResult:
+    def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
         Entry point for the COMPARISON approach. It takes a DataFrame and returns an AlertResult.
         """
@@ -65,23 +62,22 @@ class ComparisonExecutor(Executor):
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
 
         # --- 1. Initial Setup & Config ---
-        approach_settings = ComparisonSignalSettings(self.symbol)
         
-        if self.symbol != approach_settings.primary_symbol:
-            self.logger.warning(f"Executor symbol '{self.symbol}' does not match settings primary symbol '{approach_settings.primary_symbol}'. Skipping.")
+        if self.symbol != self.settings.primary_symbol:
+            self.logger.warning(f"Executor symbol '{self.symbol}' does not match settings primary symbol '{self.settings.primary_symbol}'. Skipping.")
             return alerts
 
-        if not approach_settings.referenced_symbol:
+        if not self.settings.referenced_symbol:
             return alerts
 
         # --- 2. Data Loading from Cache ---
         start_time = df['time'].min()
         end_time = df['time'].max()
         
-        ref_data = get_historical_data(approach_settings.referenced_symbol, start_time=start_time, end_time=end_time)
+        ref_data = get_historical_data(self.settings.referenced_symbol, start_time=start_time, end_time=end_time)
 
         if ref_data is None or ref_data.empty:
-            self.logger.warning(f"Could not retrieve data for reference symbol '{approach_settings.referenced_symbol}' for the required time window. Skipping.")
+            self.logger.warning(f"Could not retrieve data for reference symbol '{self.settings.referenced_symbol}' for the required time window. Skipping.")
             return alerts
 
         main_data = df.set_index('time')
@@ -89,7 +85,7 @@ class ComparisonExecutor(Executor):
         aligned_main, aligned_ref = main_data.align(ref_data, join='inner', axis=0)
 
         # --- 3. Indicator Calculation ---
-        ma_period = approach_settings.ma_short_period
+        ma_period = self.settings.ma_short_period
         aligned_main[f'ma_{ma_period}'] = aligned_main['close'].rolling(window=ma_period).mean()
         aligned_ref[f'ma_{ma_period}'] = aligned_ref['close'].rolling(window=ma_period).mean()
         
@@ -100,11 +96,11 @@ class ComparisonExecutor(Executor):
             return alerts
 
         # --- 4. Unified Reverse Loop ---
-        confirmation_checker = ComparisonConfirmation(approach_settings)
-        cooldown_period_minutes = approach_settings.cooldown_period  # Use dedicated cooldown setting
+        confirmation_checker = ComparisonConfirmation(self.settings)
+        cooldown_period_minutes = self.settings.cooldown_period  # Use dedicated cooldown setting
         
         loop_end = len(final_main) - 1
-        min_scan_index = approach_settings.lookback_window - 1
+        min_scan_index = self.settings.lookback_window - 1
         
         if is_development_mode:
             loop_start = min_scan_index
@@ -126,7 +122,7 @@ class ComparisonExecutor(Executor):
 
             data_window = {
                 self.symbol: main_window,
-                approach_settings.referenced_symbol: ref_window
+                self.settings.referenced_symbol: ref_window
             }
 
             confirmation_result = confirmation_checker.confirm(data_window)
@@ -135,12 +131,12 @@ class ComparisonExecutor(Executor):
                 reversal_time = confirmation_result.reversal_time
                 
                 # --- Volume Confirmation ---
-                use_volume_spike = approach_settings.use_volume_confirmation
-                use_increasing_volume = approach_settings.use_increasing_volume_confirmation
-                use_last_candle_max_volume = approach_settings.use_last_candle_max_volume_confirmation
+                use_volume_spike = self.settings.use_volume_confirmation
+                use_increasing_volume = self.settings.use_increasing_volume_confirmation
+                use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
 
                 # Define the window for volume checks, typically the lookback window ending at the current candle
-                volume_check_window_df = main_window.iloc[-approach_settings.lookback_window:]
+                volume_check_window_df = main_window.iloc[-self.settings.lookback_window:]
 
                 volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(final_main) and is_volume_spike_confirmed(final_main.reset_index(), i))
                 volume_is_increasing = not use_increasing_volume or is_volume_increasing(volume_check_window_df)
@@ -155,8 +151,8 @@ class ComparisonExecutor(Executor):
                     alert_info=confirmation_result,
                     reversal_time=reversal_time,
                     reversal_price=main_window.loc[reversal_time]['open'] if reversal_time else main_window.iloc[-1]['open'],
-                    referenced_symbol=approach_settings.referenced_symbol,
-                    settings=approach_settings
+                    referenced_symbol=self.settings.referenced_symbol,
+                    settings=self.settings
                 )
                 alerts.append(alert)
                 

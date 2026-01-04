@@ -35,7 +35,7 @@ VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity 
 # A signal is "Success" if its best_profit >= threshold AND abs(worst_loss) <= threshold.
 # Guidance: This helps evaluate signal quality independently of the final trade outcome.
 # Range: Float > 0.
-VALIDATION_PRICE_THRESHOLD = 4.0
+VALIDATION_PRICE_THRESHOLD = 3.0
 
 
 # --- Data Source Configuration ---

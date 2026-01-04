@@ -17,8 +17,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
     LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
         self.settings = VolumeSpikeConfirmationSettings(symbol)
+        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:

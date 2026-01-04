@@ -13,6 +13,7 @@ class BaseSettings:
         # Load global settings
         self.settings = loader.get_settings()
         self.signal_settings = loader.get_signal_settings()
+        self.validation_settings = loader.get_validation_settings()
         
         # Expose common properties
         self.MODE = self.settings.MODE
@@ -24,16 +25,40 @@ class BaseSettings:
         # --- Common Reversal Confirmation Settings ---
         # These settings are used by the common reversal functions in the parent Executor.
         # They can be overridden by specific approach configurations.
-        self.long_forward_window = self.get('LONG_FORWARD_WINDOW', 9)
-        self.short_forward_window = self.get('SHORT_FORWARD_WINDOW', 6)
-        self.gap_price = self.get('GAP_PRICE', 0.5)
-        self.adjacent_gap_price = self.get('ADJACENT_GAP_PRICE', 0.5)
-        self.reversal_volume_multiplier = self.get('REVERSAL_VOLUME_MULTIPLIER', 2.5)
-        self.reversal_body_ratio_threshold = self.get('REVERSAL_BODY_RATIO_THRESHOLD', 0.6)
-        self.reversal_price_diff_threshold = self.get('REVERSAL_PRICE_DIFF_THRESHOLD', 2.0)
+        self.long_forward_window = self.get('LONG_FORWARD_WINDOW')
+        self.short_forward_window = self.get('SHORT_FORWARD_WINDOW')
+        self.gap_price = self.get('GAP_PRICE')
+        self.adjacent_gap_price = self.get('ADJACENT_GAP_PRICE')
+        self.reversal_volume_multiplier = self.get('REVERSAL_VOLUME_MULTIPLIER')
+        self.reversal_body_ratio_threshold = self.get('REVERSAL_BODY_RATIO_THRESHOLD')
+        self.reversal_price_diff_threshold = self.get('REVERSAL_PRICE_DIFF_THRESHOLD')
 
-    def get(self, key, default=None):
+    def get(self, key: str):
         """
-        Provides a generic getter to access any setting for this approach.
+        Provides a generic getter to access any setting.
+        It searches for the key in the following order of priority:
+        1. Approach-specific settings (`approach_settings`)
+        2. General signal settings (`signal_settings`)
+        3. Validation settings (`validation_settings`)
+        4. Global settings (`settings`)
+        
+        Raises a KeyError if the setting is not found in any of the configurations.
         """
-        return self.approach_settings.get(key, default)
+        # 1. Check approach-specific settings
+        if key in self.approach_settings:
+            return self.approach_settings[key]
+
+        # 2. Check general signal settings
+        if hasattr(self.signal_settings, key):
+            return getattr(self.signal_settings, key)
+
+        # 3. Check validation settings
+        if hasattr(self.validation_settings, key):
+            return getattr(self.validation_settings, key)
+
+        # 4. Check global settings
+        if hasattr(self.settings, key):
+            return getattr(self.settings, key)
+
+        # If not found anywhere, raise an error
+        raise KeyError(f"Setting '{key}' not found for approach '{self.approach_name}' in any configuration.")
