@@ -24,9 +24,8 @@ class StrongCandleExecutor(Executor):
     APPROACH_NAME = Approach.STRONG_CANDLE
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
         self.settings = StrongCandleSettings(symbol)
-        self.validation_settings = loader.get_validation_settings()
+        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:

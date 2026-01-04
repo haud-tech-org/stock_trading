@@ -25,8 +25,8 @@ class RcmExecutor(Executor):
     APPROACH_NAME = Approach.RCM
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
         self.settings = RcmSettings(symbol)
+        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:

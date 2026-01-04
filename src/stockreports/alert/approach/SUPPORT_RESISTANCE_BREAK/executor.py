@@ -23,8 +23,8 @@ class SupportResistanceBreakExecutor(Executor):
     APPROACH_NAME = Approach.SUPPORT_RESISTANCE_BREAK
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
         self.settings = SupportResistanceBreakSettings(symbol)
+        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:

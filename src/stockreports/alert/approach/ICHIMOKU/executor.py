@@ -24,8 +24,8 @@ class IchimokuExecutor(Executor):
     APPROACH_NAME = Approach.ICHIMOKU
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
         self.settings = IchimokuSettings(symbol)
+        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def _calculate_ichimoku_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
