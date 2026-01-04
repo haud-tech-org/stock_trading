@@ -1,10 +1,11 @@
-from src.stockreports.alert.common.base_settings import BaseSettings
+from src.stockreports.alert.confirmation.reversal_trend.settings import ReversalConfirmationSettings
+from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
 from src.stockreports.alert.common.constants import Approach
 from src.stockreports.config import loader
 
 signal_settings = loader.get_signal_settings()
 
-class ConsistentMomentumSettings(BaseSettings):
+class ConsistentMomentumSettings(ConfirmationSettings, ReversalConfirmationSettings):
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.CONSISTENT_MOMENTUM)
 

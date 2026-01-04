@@ -1,7 +1,7 @@
-from src.stockreports.alert.common.base_settings import BaseSettings
+from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
 from src.stockreports.alert.common.constants import Approach
 
-class RcmSettings(BaseSettings):
+class RcmSettings(ConfirmationSettings):
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.RCM)
         

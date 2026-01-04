@@ -177,8 +177,8 @@ def _is_rsi_not_exhausted(candles_to_check: list, signal: str, config: dict) -> 
     Checks if RSI is in an exhaustion zone for any of the provided candles.
     Returns False if the signal should be stopped, True otherwise.
     """
-    rsi_oversold = config.get("RSI_OVERSOLD_THRESHOLD", 30)
-    rsi_overbought = config.get("RSI_OVERBOUGHT_THRESHOLD", 70)
+    rsi_oversold = config.get("RSI_OVERSOLD_THRESHOLD")
+    rsi_overbought = config.get("RSI_OVERBOUGHT_THRESHOLD")
 
     for candle in candles_to_check:
         if candle is None or 'rsi' not in candle or pd.isna(candle['rsi']):
@@ -203,38 +203,48 @@ def is_signal_confirmed(confirmation_candle: pd.Series, signal: str, config: dic
     checks = []
     reasons = []
 
-    if config.get("USE_SHORT_TERM_MA_CONFIRMATION", False):
+    if config.get("USE_SHORT_TERM_MA_CONFIRMATION"):
         result = _is_short_term_ma_confirmed(confirmation_candle, signal)
         checks.append(result)
         if not result:
             reasons.append(f"Short-term MA check failed (Price: {confirmation_candle['close']:.2f}, MA: {confirmation_candle['ma_short']:.2f})")
 
-    if config.get("USE_MA_CONFIRMATION", False):
+    if config.get("USE_MA_CONFIRMATION"):
         result = _is_ma_confirmed(confirmation_candle, signal)
         checks.append(result)
         if not result:
             reasons.append(f"Long-term MA check failed (Price: {confirmation_candle['close']:.2f}, MA: {confirmation_candle['ma_long']:.2f})")
     
-    if config.get("USE_LONG_TERM_MA_FILTER", False):
+    # Check if the price is above/below the long-term MA
+    if config.get("USE_LONG_TERM_MA_CONFIRMATION"):
         result = _is_long_term_ma_confirmed(confirmation_candle, signal)
         checks.append(result)
         if not result:
             reasons.append(f"Primary trend MA filter failed (Price: {confirmation_candle['close']:.2f}, MA: {confirmation_candle['ma_long_term']:.2f})")
         
-    if config.get("USE_RSI_CONFIRMATION", False):
-        result = _is_rsi_confirmed(confirmation_candle, signal)
+    # --- RSI Exhaustion Check ---
+    # Check for RSI exhaustion
+    # This check is optional and controlled by the USE_RSI_CONFIRMATION setting.
+    if config.get("USE_RSI_CONFIRMATION"):
+        # By default, we check 1 candle. The setting can override this.
+        num_candles_for_rsi_check = config.get("NUM_CANDLES_FOR_RSI_CHECK")
+        
+        # Collect the candles to check for RSI exhaustion
+        candles_to_check = [confirmation_candle.shift(i) for i in range(1, num_candles_for_rsi_check + 1)]
+        
+        result = _is_rsi_not_exhausted(candles_to_check, signal, config)
         checks.append(result)
         if not result:
-            reasons.append(f"RSI check failed (RSI: {confirmation_candle['rsi']:.2f})")
+            reasons.append(f"RSI exhaustion check failed (RSI: {confirmation_candle['rsi']:.2f})")
 
-    if config.get("USE_MACD_CONFIRMATION", False):
+    if config.get("USE_MACD_CONFIRMATION"):
         result = _is_macd_confirmed(confirmation_candle, signal)
         checks.append(result)
         if not result:
             reasons.append("MACD check failed (MACD line not on correct side of signal line)")
     
     # ADX is direction-agnostic, so it's checked for both signals.
-    if config.get("USE_ADX_CONFIRMATION", False):
+    if config.get("USE_ADX_CONFIRMATION"):
         result = _is_adx_confirmed(confirmation_candle)
         checks.append(result)
         if not result:

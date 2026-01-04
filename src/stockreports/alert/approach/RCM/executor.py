@@ -125,10 +125,10 @@ class RcmExecutor(Executor):
                 if not signal:
                     continue
 
-                if not _is_rsi_not_exhausted([current_candle], signal, self.settings.approach_settings):
+                if not _is_rsi_not_exhausted([current_candle], signal, self.settings):
                     continue
 
-                if not is_signal_confirmed(current_candle, signal, self.settings.approach_settings):
+                if not is_signal_confirmed(current_candle, signal, self.settings):
                     continue
 
                 if lookback_period is not None:
@@ -145,9 +145,9 @@ class RcmExecutor(Executor):
                 if not is_sufficient:
                     continue
 
-                use_volume_spike = self.settings.approach_settings.get("USE_VOLUME_CONFIRMATION", False)
-                use_increasing_volume = self.settings.approach_settings.get("USE_INCREASING_VOLUME_CONFIRMATION", False)
-                use_last_candle_max_volume = self.settings.approach_settings.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION", False)
+                use_volume_spike = self.settings.use_volume_confirmation
+                use_increasing_volume = self.settings.use_volume_increasing_confirmation
+                use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
 
                 volume_spike_ok = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed, i))
                 volume_increasing_ok = not use_increasing_volume or is_volume_increasing(confirmation_df)
