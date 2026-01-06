@@ -9,9 +9,7 @@ class BaseSettings:
     def __init__(self, symbol: str, approach_name: str):
         self.symbol = symbol
         self.approach_name = approach_name
-        self.load_settings()
-
-    def load_settings(self):
+        
         # Load global settings
         self.global_settings = loader.get_settings()
         self.signal_settings = loader.get_signal_settings()
