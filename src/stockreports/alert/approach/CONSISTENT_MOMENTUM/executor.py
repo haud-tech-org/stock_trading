@@ -30,9 +30,9 @@ class ConsistentMomentumExecutor(ReversalConfirmationExecutor):
     APPROACH_NAME = Approach.CONSISTENT_MOMENTUM
     LATEST_ACCEPTED_ALERT: Optional[AlertData] = None
 
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str):        
+        super().__init__(symbol)
         self.settings = ConsistentMomentumSettings(symbol)
-        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
 
@@ -187,11 +187,13 @@ class ConsistentMomentumExecutor(ReversalConfirmationExecutor):
     def _get_forward_window_confirmation(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal) -> Optional[tuple[pd.Series, Signal]]:
         """
         Confirms a breakout or reversal by analyzing the backward and forward windows.
+        It first attempts to find a specific volume-climax reversal. If that fails,
+        it falls back to a more general reversal confirmation.
         Returns a tuple of (confirmation_candle, confirmed_signal) if confirmed, otherwise None.
         """
         alert_candle_time = df_indexed.index[alert_candle_index]
 
-        # 1. Analyze the backward window to get a breakout price and confirm the breakout
+        # 1. Analyze the backward window to confirm a breakout has occurred first.
         is_breakout_confirmed = self._confirm_breakout_price(
             df_indexed, 
             alert_candle_index, 
@@ -202,8 +204,24 @@ class ConsistentMomentumExecutor(ReversalConfirmationExecutor):
         if not is_breakout_confirmed:
             return None
 
-        # 2. Analyze the forward window for a reversal pattern
+        # 2. Primary Confirmation: Attempt to find a volume-climax reversal pattern first.
+        forward_window_size = self.settings.long_forward_window
+        forward_window_end = min(alert_candle_index + forward_window_size, len(df_indexed))
+        
+        # Attempt primary confirmation with the available forward data.
+        forward_window = df_indexed.iloc[alert_candle_index:forward_window_end]
+        reversal_candle = self._find_reversal_candle(forward_window, signal)
+
+        if reversal_candle is not None:
+            # Primary confirmation successful
+            final_signal = Signal.SELL if signal == Signal.BUY else Signal.BUY
+            self.logger.debug(f"[{alert_candle_time}] Confirmed reversal with _find_reversal_candle.")
+            return reversal_candle, final_signal
+        
+        # 3. Fallback Confirmation: If primary fails, use the general reversal confirmation.
+        self.logger.debug(f"[{alert_candle_time}] Primary confirmation failed, falling back to _confirm_reversal_in_forward_window.")
         confirmation_result = self._confirm_reversal_in_forward_window(df_indexed, alert_candle_index, signal)
+        
         if confirmation_result is None:
             self.logger.debug(f"[{alert_candle_time}] No confirmation pattern was found in the forward window.")
             return None

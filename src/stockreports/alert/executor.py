@@ -10,9 +10,10 @@ from src.stockreports.alert.common.base_settings import BaseSettings
 
 
 class Executor(ABC):
-    def __init__(self, symbol: str, settings: Optional[BaseSettings] = None):
+    def __init__(self, symbol: str):
         self.symbol = symbol
-        self.settings = settings
+        self.settings = BaseSettings()
+        
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _confirm_breakout_price(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal, lookback_period: int, prominence: float) -> bool:

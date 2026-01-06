@@ -15,3 +15,5 @@ class ReversalConfirmationSettings(BaseSettings):
         self.reversal_volume_multiplier = self.get('REVERSAL_VOLUME_MULTIPLIER')
         self.reversal_price_diff_threshold = self.get('REVERSAL_PRICE_DIFF_THRESHOLD')
         self.reversal_body_ratio_threshold = self.get('REVERSAL_BODY_RATIO_THRESHOLD')
+        self.min_reversal_body_size = self.get('MIN_REVERSAL_BODY_SIZE')
+        self.peak_trough_prominence = self.get('PEAK_TROUGH_PROMINENCE')

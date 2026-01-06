@@ -11,14 +11,15 @@ from src.stockreports.alert.common.constants import Approach, Mode, Signal
 from src.stockreports.alert.common.data_utils import can_apply_analysis
 from src.stockreports.utils.time_utils import to_iso8601_with_tz
 from .settings import VolumeSpikeConfirmationSettings
+from src.stockreports.alert.confirmation.reversal_trend.executor import ReversalConfirmationExecutor
 
-class VolumeSpikeConfirmationExecutor(Executor):
+class VolumeSpikeConfirmationExecutor(ReversalConfirmationExecutor):
     APPROACH_NAME = Approach.VOLUME_SPIKE_CONFIRMATION
     LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
 
     def __init__(self, symbol: str):
+        super().__init__(symbol)
         self.settings = VolumeSpikeConfirmationSettings(symbol)
-        super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
@@ -41,34 +42,6 @@ class VolumeSpikeConfirmationExecutor(Executor):
         except Exception as e:
             self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
             return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame(), status="FAILED", message=str(e))
-
-    def _find_reversal_candle(self, reversal_window: pd.DataFrame, expected_signal: Signal) -> Optional[pd.Series]:
-        """
-        Validates if the last candle in the window is a reversal candle.
-        """
-        if reversal_window.empty or len(reversal_window) < 2:
-            return None
-
-        candle = reversal_window.iloc[-1]
-        prev_candle = reversal_window.iloc[-2]
-        
-        body_size = abs(candle['close'] - candle['open'])
-        if body_size < self.settings.min_reversal_body_size:
-            return None
-
-        if expected_signal == Signal.BUY:
-            is_bullish = candle['close'] > candle['open']
-            is_price_reversing = candle['close'] > prev_candle['close']
-            if is_bullish and is_price_reversing:
-                return candle
-        
-        elif expected_signal == Signal.SELL:
-            is_bearish = candle['close'] < candle['open']
-            is_price_reversing = candle['close'] < prev_candle['close']
-            if is_bearish and is_price_reversing:
-                return candle
-        
-        return None
 
     def _validate_climax_event(self, lookback_window: pd.DataFrame) -> Optional[Tuple[pd.Series, Signal]]:
         """
@@ -101,8 +74,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
         
         # Check for BUY Signal (Downtrend before climax)
         if not self.settings.disable_buy_signal:
-            peak_args = {'prominence': self.settings.peak_trough_prominence} if self.settings.peak_trough_prominence is not None else {}
-            peaks, _ = find_peaks(trend_window['close'], **peak_args)
+            peaks, _ = find_peaks(trend_window['close'], prominence=self.settings.peak_trough_prominence)
             
             first_candle = trend_window.iloc[0]
             peak_prices = trend_window.iloc[peaks]['close'].tolist()
@@ -114,8 +86,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
 
         # Check for SELL Signal (Uptrend before climax)
         if not self.settings.disable_sell_signal:
-            trough_args = {'prominence': self.settings.peak_trough_prominence} if self.settings.peak_trough_prominence is not None else {}
-            troughs, _ = find_peaks(-trend_window['close'], **trough_args)
+            troughs, _ = find_peaks(-trend_window['close'], prominence=self.settings.peak_trough_prominence)
 
             first_candle = trend_window.iloc[0]
             trough_prices = trend_window.iloc[troughs]['close'].tolist()
@@ -176,25 +147,39 @@ class VolumeSpikeConfirmationExecutor(Executor):
             if not climax_result:
                 continue
 
-            max_vol_candle, expected_signal = climax_result
+            max_vol_candle, climax_signal = climax_result
             
             # Define the search space for the reversal candle (all candles after the climax)
             max_vol_candle_full_df_idx = df_indexed.index.get_loc(max_vol_candle.name)
-            reversal_search_space = df_indexed.iloc[max_vol_candle_full_df_idx:]
+            reversal_forward_window = df_indexed.iloc[max_vol_candle_full_df_idx:]
 
             # The forward search space must be within the max size and contain at least 2 candles
             # (the climax candle and at least one subsequent candle for reversal).
-            if len(reversal_search_space) > self.settings.max_forward_window_size or len(reversal_search_space) < 2:
+            if len(reversal_forward_window) > self.settings.max_forward_window_size or len(reversal_forward_window) < 2:
                 continue
 
-            reversal_candle = self._find_reversal_candle(reversal_search_space, expected_signal)
+            reversal_candle = self._find_reversal_candle(reversal_forward_window, climax_signal)
+            final_signal = None
 
             if reversal_candle is not None:
+                # The final alert signal is the OPPOSITE of the climax signal
+                final_signal = Signal.SELL if climax_signal == Signal.BUY else Signal.BUY
+            else:
+                # If the primary reversal check fails, try the inherited confirmation method
+                reversal_result = self._confirm_reversal_in_forward_window(
+                    df_indexed=df_indexed,
+                    alert_candle_index=max_vol_candle_full_df_idx,
+                    signal=climax_signal
+                )
+                if reversal_result:
+                    reversal_candle, final_signal = reversal_result
+
+            if reversal_candle is not None and final_signal is not None:
                 start_candle_of_window = df_indexed.iloc[window_start_index]
                 latest_candle_time = df_indexed.index[-1]
-                
+
                 details_dict = {
-                    "reason": f"Volume Climax Reversal ({expected_signal})",
+                    "reason": f"Volume Climax Reversal ({final_signal})",
                     "climax_time": to_iso8601_with_tz(max_vol_candle.name),
                     "processed_time": to_iso8601_with_tz(latest_candle_time)
                 }
@@ -204,7 +189,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
                     id=str(int(reversal_candle.name.tz_convert('UTC').timestamp())),
                     symbol=self.symbol,
                     alert_time=reversal_candle.name,
-                    signal=expected_signal,
+                    signal=final_signal,
                     alert_price=reversal_candle['close'],
                     start_price=start_candle_of_window['close'],
                     start_time=start_candle_of_window.name,
