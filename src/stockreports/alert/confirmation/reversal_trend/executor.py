@@ -12,9 +12,9 @@ from stockreports.alert.confirmation.reversal_trend.settings import ReversalConf
 
 
 class ReversalConfirmationExecutor(Executor, ABC):
-    def __init__(self, symbol: str):
-        super().__init__(symbol)
-        self.settings = ReversalConfirmationSettings(symbol)
+    def __init__(self, symbol: str, settings: ReversalConfirmationSettings):
+        super().__init__(symbol, settings)
+        self.settings = settings
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _confirm_reversal_in_forward_window(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal) -> Optional[tuple[pd.Series, Signal]]:

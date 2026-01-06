@@ -31,8 +31,8 @@ class ConsistentMomentumExecutor(ReversalConfirmationExecutor):
     LATEST_ACCEPTED_ALERT: Optional[AlertData] = None
 
     def __init__(self, symbol: str):        
-        super().__init__(symbol)
-        self.settings = ConsistentMomentumSettings(symbol)
+        settings = ConsistentMomentumSettings(symbol)
+        super().__init__(symbol, settings)
         self.logger = logging.getLogger(__name__)
 
 
