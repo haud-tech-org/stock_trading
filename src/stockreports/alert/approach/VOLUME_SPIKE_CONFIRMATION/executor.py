@@ -18,8 +18,8 @@ class VolumeSpikeConfirmationExecutor(ReversalConfirmationExecutor):
     LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
 
     def __init__(self, symbol: str):
-        super().__init__(symbol)
-        self.settings = VolumeSpikeConfirmationSettings(symbol)
+        settings = VolumeSpikeConfirmationSettings(symbol)
+        super().__init__(symbol, settings)
         self.logger = logging.getLogger(__name__)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
@@ -69,32 +69,19 @@ class VolumeSpikeConfirmationExecutor(ReversalConfirmationExecutor):
         if max_vol_candle['volume'] < self.settings.avg_volume_multiplier * avg_volume_window:
             return None
 
-        # --- Trend Confirmation (leading up to the climax candle) ---
-        trend_window = lookback_window.iloc[:max_vol_idx + 1]
+        # --- Trend Confirmation: Determine the trend based on the max volume candle ---
+        is_bullish_climax = max_vol_candle['close'] > max_vol_candle['open']
+        is_bearish_climax = max_vol_candle['close'] < max_vol_candle['open']
+
+        # A bullish climax (uptrend) suggests a future SELL reversal. The climax signal is BUY.
+        if is_bullish_climax:
+            self.logger.debug(f"[{max_vol_candle.name}] Bullish climax candle detected. Expecting SELL reversal.")
+            return max_vol_candle, Signal.BUY
         
-        # Check for BUY Signal (Downtrend before climax)
-        if not self.settings.disable_buy_signal:
-            peaks, _ = find_peaks(trend_window['close'], prominence=self.settings.peak_trough_prominence)
-            
-            first_candle = trend_window.iloc[0]
-            peak_prices = trend_window.iloc[peaks]['close'].tolist()
-            trend_prices_sequence = [first_candle['close']] + peak_prices + [max_vol_candle['close']]
-            
-            is_downtrend = all(trend_prices_sequence[i] >= trend_prices_sequence[i+1] for i in range(len(trend_prices_sequence)-1))
-            if is_downtrend:
-                return max_vol_candle, Signal.BUY
-
-        # Check for SELL Signal (Uptrend before climax)
-        if not self.settings.disable_sell_signal:
-            troughs, _ = find_peaks(-trend_window['close'], prominence=self.settings.peak_trough_prominence)
-
-            first_candle = trend_window.iloc[0]
-            trough_prices = trend_window.iloc[troughs]['close'].tolist()
-            trend_prices_sequence = [first_candle['close']] + trough_prices + [max_vol_candle['close']]
-
-            is_uptrend = all(trend_prices_sequence[i] <= trend_prices_sequence[i+1] for i in range(len(trend_prices_sequence)-1))
-            if is_uptrend:
-                return max_vol_candle, Signal.SELL
+        # A bearish climax (downtrend) suggests a future BUY reversal. The climax signal is SELL.
+        if is_bearish_climax:
+            self.logger.debug(f"[{max_vol_candle.name}] Bearish climax candle detected. Expecting BUY reversal.")
+            return max_vol_candle, Signal.SELL
         
         return None
 
