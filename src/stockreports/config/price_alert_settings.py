@@ -17,9 +17,16 @@ PRICE_ALERTS = {
     }
 }
 
+# If True, the 'calculate_suggested_price' function will use the performance-based
+# offsets defined below. If False, it will use the fallback logic.
+USE_PERFORMANCE_BY_APPROACH = False
+
 PERFORMANCE_BY_APPROACH = {
-    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.8},
-    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 1.7},
-    'ICHIMOKU': {'avg_worst_loss_price': 0.8},
-    'STRONG_CANDLE': {'avg_worst_loss_price': 7.75}
+    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.53},
+    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 6.45},
+    'STRONG_CANDLE': {'avg_worst_loss_price': 3.6077},
+    'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 5.2},
+    'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 1.1286},
+    'RCM': {'avg_worst_loss_price': 4.4},
+    'PRICE_GAP': {'avg_worst_loss_price': 4.0}
 }

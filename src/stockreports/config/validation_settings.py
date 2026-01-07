@@ -30,12 +30,17 @@ VALIDATION_PRICE_DROP_THRESHOLD = 3.0
 VALIDATION_TIME_WINDOW_MINUTES = 10
 VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity in validation scripts
 
-# Validation Price Threshold
-# Meaning: The absolute value used to determine if a signal was successful based on its potential profit and loss.
-# A signal is "Success" if its best_profit >= threshold AND abs(worst_loss) <= threshold.
-# Guidance: This helps evaluate signal quality independently of the final trade outcome.
+# Validation Price Threshold for Take-Profit
+# Meaning: The price difference from the entry point that triggers a "Success" (take-profit) exit.
+# Guidance: Defines the reward target for a trade.
 # Range: Float > 0.
-VALIDATION_PRICE_THRESHOLD = 2.5
+VALIDATION_PRICE_THRESHOLD_PROFIT = 5.0
+
+# Validation Price Threshold for Stop-Loss
+# Meaning: The price difference from the entry point that triggers a "Failed" (stop-loss) exit.
+# Guidance: Defines the risk tolerance for a trade.
+# Range: Float > 0.
+VALIDATION_PRICE_THRESHOLD_LOSS = 3.0
 
 
 # --- Data Source Configuration ---

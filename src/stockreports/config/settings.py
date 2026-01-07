@@ -17,7 +17,8 @@ notifications, and market-specific details.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
-SYMBOLS = ["VN30", "41I1G1000"]
+# Always include the derivative symbol is the FIRST symbol
+SYMBOLS = ["41I1G1000", "VN30"]
 
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
@@ -159,7 +160,7 @@ TRADING_HOURS = {
         "timezone": "Asia/Ho_Chi_Minh",
         "sessions": {
             "morning": {"start": "09:00", "end": "11:30"},
-            "afternoon": {"start": "13:00", "end": "14:35"},
+            "afternoon": {"start": "13:00", "end": "14:29"},
         }
     },
     # Example for another market:
