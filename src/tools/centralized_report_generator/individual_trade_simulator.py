@@ -7,6 +7,11 @@ import logging
 import glob
 import pytz
 from dataclasses import asdict
+import sys
+
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, project_root)
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -33,17 +38,21 @@ def calculate_performance_by_approach(trades: list) -> dict:
     if 'entry_approach' not in trades_df.columns or trades_df.empty:
         return {}
 
-    # Group by entry approach and calculate stats
-    performance_summary = trades_df.groupby('entry_approach')['synthetic_profit_loss'].agg(
-        min_profit_loss='min',
-        max_profit_loss='max',
-        avg_profit_loss='mean',
-        total_trades='count'
+    # Group by entry approach and calculate stats using named aggregation
+    performance_summary = trades_df.groupby('entry_approach').agg(
+        min_profit_loss=('synthetic_profit_loss', 'min'),
+        max_profit_loss=('synthetic_profit_loss', 'max'),
+        avg_profit_loss=('synthetic_profit_loss', 'mean'),
+        min_worst_loss_price=('worst_loss_price', 'min'),
+        max_worst_loss_price=('worst_loss_price', 'max'),
+        avg_worst_loss_price=('worst_loss_price', 'mean'),
+        total_trades=('entry_approach', 'count')
     ).to_dict(orient='index')
 
-    # Round the avg_profit_loss for cleaner output
+    # Round the averages for cleaner output
     for approach, stats in performance_summary.items():
-        stats['avg_profit_loss'] = round(stats['avg_profit_loss'], 4)
+        stats['avg_profit_loss'] = round(stats.get('avg_profit_loss', 0), 4)
+        stats['avg_worst_loss_price'] = round(stats.get('avg_worst_loss_price', 0), 4)
 
     return performance_summary
 
@@ -124,6 +133,20 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
         if validation_window_df.empty:
             logging.warning(f"No data found in validation window for alert at {entry_time}. Skipping.")
             continue
+
+        # --- Best Possible Entry Price & Worst Loss Calculation ---
+        best_possible_entry_price = None
+        if entry_signal == 'BUY':
+            # For a BUY, the best possible entry is the lowest price in the window.
+            best_possible_entry_price = validation_window_df['low'].min()
+        elif entry_signal == 'SELL':
+            # For a SELL, the best possible entry is the highest price in the window.
+            best_possible_entry_price = validation_window_df['high'].max()
+
+        worst_loss_price = None
+        if best_possible_entry_price is not None:
+            worst_loss_price = abs(entry_price - best_possible_entry_price)
+        # --- End of Calculation ---
 
         # --- New "Take-Profit or Timeout" Exit Logic ---
         target_reached = False
@@ -225,7 +248,9 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
             exit_worst_loss=exit_worst_loss,
             entry_signal_status=status,
             exit_signal_status='N/A',
-            improvement_suggestion='N/A'
+            improvement_suggestion='N/A',
+            best_possible_entry_price=best_possible_entry_price,
+            worst_loss_price=worst_loss_price
         )
         trades.append(trade)
 
@@ -254,12 +279,13 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
     )
 
 
-def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, date_str: str):
+def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, date_str: str, mode: str = 'deployment'):
     """
     Runs a profitability simulation using individual alerts to execute trades
     on a single target symbol.
     """
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    # Correctly define project_root by navigating up from the current file's location
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     reports_dir = os.path.join(project_root, "reports")
     
     # --- 1. Load and Combine Alerts ---
@@ -267,7 +293,14 @@ def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, 
     date_file_str = date_str.replace('-', '')
     
     for source_symbol in alert_sources:
-        source_dir = os.path.join(reports_dir, source_symbol, "deployment")
+        # Construct the path to the specific mode directory (deployment or development)
+        source_dir = os.path.join(reports_dir, source_symbol, mode)
+        
+        # Check if the specific mode directory exists before searching for alerts
+        if not os.path.isdir(source_dir):
+            logging.warning(f"Directory not found for source '{source_symbol}' with mode '{mode}': {source_dir}. Skipping.")
+            continue
+
         glob_pattern = os.path.join(source_dir, "**", f"alert_notification_{date_file_str}.json")
         alert_files = glob.glob(glob_pattern, recursive=True)
         
@@ -279,15 +312,33 @@ def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, 
             if os.path.exists(alert_file_path):
                 try:
                     with open(alert_file_path, 'r') as f:
-                        alerts = json.load(f)
-                        # --- Fix: Inject the source symbol into each alert ---
+                        content = json.load(f)
+                        
+                        # The alerts might be under a key (e.g., 'alerts') or be the root object
+                        alerts = []
+                        if isinstance(content, dict) and 'alerts' in content and isinstance(content['alerts'], list):
+                            alerts = content['alerts']
+                        elif isinstance(content, list):
+                            alerts = content
+                        else:
+                            logging.warning(f"Alerts in {alert_file_path} are not in a recognized list format. Skipping file.")
+                            continue
+
+                        # --- Fix: Inject the source symbol and approach into each alert ---
+                        # Extract approach from the file path (e.g., .../strong_candle/alert.json -> strong_candle)
+                        parent_dir_name = os.path.basename(os.path.dirname(alert_file_path))
+
                         for alert in alerts:
                             alert['source_symbol'] = source_symbol
+                            if 'approach' not in alert or not alert['approach']:
+                                alert['approach'] = parent_dir_name
                         # --- End of Fix ---
                         all_alerts.extend(alerts)
                         logging.info(f"Loaded {len(alerts)} alerts from {alert_file_path}")
                 except json.JSONDecodeError:
                     logging.warning(f"Could not decode JSON from {alert_file_path}. Skipping.")
+                except Exception as e:
+                    logging.error(f"An unexpected error occurred while processing {alert_file_path}: {e}")
 
     if not all_alerts:
         logging.error("No alerts found for any of the specified sources. Aborting simulation.")
@@ -420,8 +471,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--date",
         type=str,
-        required=True,
-        help="The date to process in YYYY-MM-DD format (e.g., '2025-10-27')."
+        default=datetime.now().strftime('%Y-%m-%d'),
+        help="The date for which to run the simulation in YYYY-MM-DD format. Defaults to today."
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=['development', 'deployment'],
+        default='deployment',
+        help="The run mode ('development' or 'deployment'). Defaults to 'deployment'."
     )
 
     args = parser.parse_args()
@@ -429,5 +487,6 @@ if __name__ == "__main__":
     run_individual_trade_simulation(
         execution_symbol=args.execution_symbol,
         alert_sources=args.alert_sources,
-        date_str=args.date
+        date_str=args.date,
+        mode=args.mode
     )

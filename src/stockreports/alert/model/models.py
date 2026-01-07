@@ -122,6 +122,8 @@ class Trade:
     entry_signal_status: Optional[str] = None
     exit_signal_status: Optional[str] = None
     improvement_suggestion: Optional[str] = None
+    best_possible_entry_price: Optional[float] = None
+    worst_loss_price: Optional[float] = None
 
 @dataclass
 class ProfitabilityReport:
