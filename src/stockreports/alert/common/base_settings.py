@@ -11,16 +11,16 @@ class BaseSettings:
         self.approach_name = approach_name
         
         # Load global settings
-        self.settings = loader.get_settings()
+        self.global_settings = loader.get_settings()
         self.signal_settings = loader.get_signal_settings()
         self.validation_settings = loader.get_validation_settings()
         
         # Expose common properties
-        self.MODE = self.settings.MODE
+        self.MODE = self.global_settings.MODE
         
         # Load approach-specific configuration
         # All configurations are now flat structures.
-        self.approach_settings = self.signal_settings.APPROACH_CONFIG.get(approach_name, {})
+        self.approach_settings = self.signal_settings.APPROACH_CONFIG.get(self.approach_name, {})
 
     def get(self, key: str):
         """
@@ -29,7 +29,7 @@ class BaseSettings:
         1. Approach-specific settings (`approach_settings`)
         2. General signal settings (`signal_settings`)
         3. Validation settings (`validation_settings`)
-        4. Global settings (`settings`)
+        4. Global settings (`global_settings`)
         
         Raises a KeyError if the setting is not found in any of the configurations.
         """
@@ -46,8 +46,8 @@ class BaseSettings:
             return getattr(self.validation_settings, key)
 
         # 4. Check global settings
-        if hasattr(self.settings, key):
-            return getattr(self.settings, key)
+        if hasattr(self.global_settings, key):
+            return getattr(self.global_settings, key)
 
         # If not found anywhere, raise an error
         raise KeyError(f"Setting '{key}' not found for approach '{self.approach_name}' in any configuration.")

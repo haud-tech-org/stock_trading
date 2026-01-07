@@ -2,6 +2,7 @@ from abc import ABC
 from typing import Optional
 import pandas as pd
 import logging
+from scipy.signal import find_peaks
 
 from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.model.models import AlertData
@@ -11,9 +12,86 @@ from src.stockreports.alert.common.base_settings import BaseSettings
 
 class ReversalConfirmationExecutor(Executor, ABC):
     def __init__(self, symbol: str, settings: BaseSettings):
-        super().__init__(symbol)
-        self.settings = settings
+        super().__init__(symbol, settings)
         self.logger = logging.getLogger(self.__class__.__name__)
+
+    def _find_reversal_candle(self, reversal_window: pd.DataFrame, original_signal: Signal) -> Optional[pd.Series]:
+        """
+        Validates if the last candle in the window is a reversal candle based on volume climax logic.
+        A reversal is confirmed if:
+        1. The last candle has a body size greater than the minimum threshold.
+        2. The last candle's direction is opposite to the original signal's trend.
+        3. A significant peak (for SELL) or trough (for BUY) is found in the reversal window.
+        4. The volume of that single most prominent peak/trough is greater than all subsequent candle volumes.
+        """
+        if reversal_window.empty or len(reversal_window) < 2:
+            return None
+
+        last_candle = reversal_window.iloc[-1]
+
+        # Condition 1: Check body size
+        body_size = abs(last_candle['close'] - last_candle['open'])
+        if body_size < self.settings.min_reversal_body_size:
+            return None
+
+        # Conditions 2, 3 & 4: Check for reversal trend, max peak/trough, and volume confirmation
+        if original_signal == Signal.BUY:
+            # Original trend was UP (BUY climax), so reversal is DOWN (bearish candle)
+            if not (last_candle['close'] < last_candle['open']):
+                return None
+
+            # Find all peaks
+            peaks_indices, _ = find_peaks(reversal_window['close'], prominence=self.settings.peak_trough_prominence)
+            if len(peaks_indices) == 0:
+                return None
+
+            # Get the most prominent peak (highest price)
+            prices_at_peaks = reversal_window.iloc[peaks_indices]['close']
+            if prices_at_peaks.empty:
+                return None
+            max_peak_idx = prices_at_peaks.idxmax()
+            max_peak_local_idx = reversal_window.index.get_loc(max_peak_idx)
+
+            # Ensure there's at least one candle after the peak
+            if max_peak_local_idx >= len(reversal_window) - 1:
+                return None
+
+            peak_candle = reversal_window.loc[max_peak_idx]
+            candles_after_peak = reversal_window.iloc[max_peak_local_idx + 1:]
+
+            # Volume of the peak must be greater than all subsequent volumes
+            if (peak_candle['volume'] > candles_after_peak['volume']).all():
+                return last_candle
+
+        elif original_signal == Signal.SELL:
+            # Original trend was DOWN (SELL climax), so reversal is UP (bullish candle)
+            if not (last_candle['close'] > last_candle['open']):
+                return None
+
+            # Find all troughs
+            troughs_indices, _ = find_peaks(-reversal_window['close'], prominence=self.settings.peak_trough_prominence)
+            if len(troughs_indices) == 0:
+                return None
+
+            # Get the most prominent trough (lowest price)
+            prices_at_troughs = reversal_window.iloc[troughs_indices]['close']
+            if prices_at_troughs.empty:
+                return None
+            max_trough_idx = prices_at_troughs.idxmin()
+            max_trough_local_idx = reversal_window.index.get_loc(max_trough_idx)
+
+            # Ensure there's at least one candle after the trough
+            if max_trough_local_idx >= len(reversal_window) - 1:
+                return None
+
+            trough_candle = reversal_window.loc[max_trough_idx]
+            candles_after_trough = reversal_window.iloc[max_trough_local_idx + 1:]
+
+            # Volume of the trough must be greater than all subsequent volumes
+            if (trough_candle['volume'] > candles_after_trough['volume']).all():
+                return last_candle
+
+        return None
 
     def _confirm_reversal_in_forward_window(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal) -> Optional[tuple[pd.Series, Signal]]:
         """

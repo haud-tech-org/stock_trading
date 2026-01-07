@@ -13,6 +13,7 @@ class Executor(ABC):
     def __init__(self, symbol: str, settings: Optional[BaseSettings] = None):
         self.symbol = symbol
         self.settings = settings
+
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _confirm_breakout_price(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal, lookback_period: int, prominence: float) -> bool:

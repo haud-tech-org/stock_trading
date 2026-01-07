@@ -194,7 +194,10 @@ APPROACH_CONFIG = {
         "USE_LONG_TERM_MA_CONFIRMATION": False,
         "USE_MACD_CONFIRMATION": False,
         "NUM_CANDLES_FOR_RSI_CHECK": 1,
-        "COOLDOWN_PERIOD": 3
+        "COOLDOWN_PERIOD": 3,
+
+        # --- Reversal Confirmation Conditions ---
+        "MIN_REVERSAL_BODY_SIZE": 0.3
     },
     "SUPPORT_RESISTANCE_BREAK": {
         "LOOKBACK_PERIOD": 50,
@@ -247,7 +250,7 @@ APPROACH_CONFIG = {
         "CONFIRMATION_WINDOW": 1,
         "USE_VOLUME_CONFIRMATION": True,
         "USE_VOLUME_INCREASING_CONFIRMATION": False,
-        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
+        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": False,
         "MIN_ALERT_MAGNITUDE": 0.5,
         "USE_MA_CONFIRMATION": True,
         "USE_ADX_CONFIRMATION": True,
@@ -263,7 +266,7 @@ APPROACH_CONFIG = {
         "DIVERGENCE_RSI_PERIOD": 14,
         "DIVERGENCE_PRICE_PROMINENCE": 10,
         "DIVERGENCE_RSI_PROMINENCE": 10,
-        "MIN_EXPECTED_PROFIT_LOSS": 2.0,
+        "MIN_EXPECTED_PROFIT_LOSS": 2.5,
     },
     "MOMENTUM_EXHAUSTION": {
         "MOMENTUM_CANDLE_COUNT": 2,
@@ -302,8 +305,8 @@ APPROACH_CONFIG = {
         "USE_BREAKOUT_CONFIRMATION": True,
         "LOOKBACK_PERIOD": 20,
         "CONFIRMATION_FORWARD_WINDOW": 3,
-        "MIN_CONFIRMATION_BODY_SIZE": 1.0,
-        "COOLDOWN_WINDOW": 10
+        "MIN_CONFIRMATION_BODY_SIZE": 0.4,
+        "COOLDOWN_WINDOW": 5
     },
     "COMPARISON": {
         "PRIMARY_SYMBOL": "VN30F2512",
@@ -345,6 +348,15 @@ APPROACH_CONFIG = {
 
         # --- Reversal Confirmation Conditions ---
         "MIN_REVERSAL_BODY_SIZE": 0.3,
+
+        # --- Inherited from ReversalConfirmationSettings ---
+        "LONG_FORWARD_WINDOW": 9,
+        "SHORT_FORWARD_WINDOW": 6,
+        "GAP_PRICE": 0.5,
+        "ADJACENT_GAP_PRICE": 0.5,
+        "REVERSAL_VOLUME_MULTIPLIER": 2.5,
+        "REVERSAL_PRICE_DIFF_THRESHOLD": 3.0,
+        "REVERSAL_BODY_RATIO_THRESHOLD": 0.6,
 
         # --- Optional Signal Disabling ---
         "DISABLE_BUY_SIGNAL": False,
