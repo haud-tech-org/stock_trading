@@ -36,14 +36,14 @@ from datetime import datetime
 import pandas as pd
 
 # Add the project root to the Python path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, project_root)
 
 
-from src.stockreports.utils.historical_data_manager import _get_historical_data_with_resolution
+from src.stockreports.utils.data_utils import TIMEZONE_STR
 from src.stockreports.config import loader
-from src.stockreports.utils.time_utils import TIMEZONE_STR
 from src.stockreports.config import price_alert_settings
+from src.stockreports.utils.historical_data_manager import _get_historical_data_with_resolution
 import importlib
 import pprint
 
@@ -110,6 +110,65 @@ def find_support_resistance(data: pd.DataFrame, window: int = 10, tolerance_perc
     significant_levels = [round(level, 2) for level in significant_levels]
     
     return sorted(list(set(significant_levels)))
+
+
+def run_sr_detection_for_symbols(
+    symbols: list,
+    start_time: str,
+    end_time: str,
+    resolution: int = 15,
+    window: int = 10,
+    tolerance_percent: float = 0.5,
+    min_touches: int = 3,
+    update_settings: bool = False
+):
+    """
+    A callable function to run the S/R detection logic for a list of symbols.
+    """
+    try:
+        # Convert to datetime and make them timezone-aware
+        start_dt = pd.to_datetime(start_time).tz_localize(TIMEZONE_STR)
+        end_dt = pd.to_datetime(end_time).tz_localize(TIMEZONE_STR)
+    except Exception as e:
+        logging.error(f"Invalid date format or timezone issue: {e}. Please use 'YYYY-MM-DD HH:MM:SS'.")
+        return
+
+    for symbol in symbols:
+        logging.info(f"--- Processing symbol: {symbol} ---")
+        logging.info(f"Starting support/resistance analysis with resolution '{resolution or 'default'}'.")
+        logging.info(f"Fetching data from {start_time} to {end_time}...")
+        
+        df = _get_historical_data_with_resolution(
+            symbol=symbol,
+            start_time=start_dt,
+            end_time=end_dt,
+            resolution=resolution
+        )
+
+        if df is None or df.empty:
+            logging.error(f"Failed to fetch data for {symbol} or no data returned. Skipping.")
+            continue
+
+        # --- Find Levels ---
+        levels = find_support_resistance(
+            df,
+            window=window,
+            tolerance_percent=tolerance_percent,
+            min_touches=min_touches
+        )
+
+        if levels:
+            logging.info(f"Identified Support/Resistance Levels for {symbol}:")
+            clean_levels = [float(level) for level in levels]
+            print(f'"{symbol}": {clean_levels}')
+
+            # --- Update Settings File (if requested) ---
+            if update_settings:
+                last_close = df['close'].iloc[-1]
+                update_price_alert_settings(symbol, clean_levels, last_close)
+
+        else:
+            logging.info(f"No significant support or resistance levels were found for {symbol} in the given time range.")
 
 
 def update_price_alert_settings(symbol: str, levels: list, reference_price: float):
@@ -180,7 +239,7 @@ def update_price_alert_settings(symbol: str, levels: list, reference_price: floa
 
 def main():
     """
-    Main function to run the support/resistance detection script.
+    Main function to run the support/resistance detection script from the command line.
     """
     parser = argparse.ArgumentParser(description="Detect support and resistance levels for given stock symbols.")
     parser.add_argument("--symbols", type=str, nargs='+', default=['VN30', '41I1G1000', 'VIC', 'HPG'], help="One or more stock symbols.")
@@ -196,50 +255,17 @@ def main():
     # --- Handle default arguments ---
     end_time_str = args.end_time if args.end_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    try:
-        # Convert to datetime and make them timezone-aware
-        start_dt = pd.to_datetime(args.start_time).tz_localize(TIMEZONE_STR)
-        end_dt = pd.to_datetime(end_time_str).tz_localize(TIMEZONE_STR)
-    except Exception as e:
-        logging.error(f"Invalid date format or timezone issue: {e}. Please use 'YYYY-MM-DD HH:MM:SS'.")
-        return
+    run_sr_detection_for_symbols(
+        symbols=args.symbols,
+        start_time=args.start_time,
+        end_time=end_time_str,
+        resolution=args.resolution,
+        window=args.window,
+        tolerance_percent=args.tolerance_percent,
+        min_touches=args.min_touches,
+        update_settings=args.update_settings
+    )
 
-    for symbol in args.symbols:
-        logging.info(f"--- Processing symbol: {symbol} ---")
-        logging.info(f"Starting support/resistance analysis with resolution '{args.resolution or 'default'}'.")
-        logging.info(f"Fetching data from {args.start_time} to {end_time_str}...")
-        
-        df = _get_historical_data_with_resolution(
-            symbol=symbol,
-            start_time=start_dt,
-            end_time=end_dt,
-            resolution=args.resolution
-        )
-
-        if df is None or df.empty:
-            logging.error(f"Failed to fetch data for {symbol} or no data returned. Skipping.")
-            continue
-
-        # --- Find Levels ---
-        levels = find_support_resistance(
-            df,
-            window=args.window,
-            tolerance_percent=args.tolerance_percent,
-            min_touches=args.min_touches
-        )
-
-        if levels:
-            logging.info(f"Identified Support/Resistance Levels for {symbol}:")
-            clean_levels = [float(level) for level in levels]
-            print(f'"{symbol}": {clean_levels}')
-
-            # --- Update Settings File (if requested) ---
-            if args.update_settings:
-                last_close = df['close'].iloc[-1]
-                update_price_alert_settings(symbol, clean_levels, last_close)
-
-        else:
-            logging.info(f"No significant support or resistance levels were found for {symbol} in the given time range.")
 
 if __name__ == "__main__":
     main()

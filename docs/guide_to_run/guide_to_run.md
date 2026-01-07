@@ -15,15 +15,15 @@ python3 -m src.tools.consolidated_profitability_simulator \
 
 ## Individual simulation reports
 ```sh
-python3 -m src.tools.individual_trade_simulator \
-  --execution-symbol 41I1FB000 \
-  --alert-sources VN30 41I1FB000 \
-  --date 2025-11-03
+python3 -m src.tools.centralized_report_generator.individual_trade_simulator \
+  --execution-symbol 41I1G1000 \
+  --alert-sources VN30 41I1G1000 \
+  --date 2026-01-06
 ```
 
 ## Consolidate simulation reports categorized by approach
 ```sh
-python3 src/tools/consolidate_reports.py --symbol 41I1FB000 --mode deployment --from-date 2025-11-11 --to-date 2025-11-11
+python3 src/tools/centralized_report_generator/consolidate_reports.py --symbol 41I1FB000 --mode deployment --from-date 2025-12-22 --to-date 2026-01-07
 ```
 
 ## Extract historical data
@@ -40,7 +40,13 @@ python3 src/tools/extract_period_data.py \
 
 ### Command:
 ```sh
-python3 src/tools/support_resistance_detector.py --symbols VN30 41I1G1000 --start-time "2025-11-01 09:00:00" --end-time "2025-12-18 14:30:00" --resolution 15 --min-touches 3 --update-settings
+python3 src/tools/centralized_report_generator/support_resistance_detector.py --symbols VN30 41I1G1000 --start-time "2025-11-01 09:00:00" --end-time "2025-12-31 14:30:00" --resolution 15 --min-touches 3 --update-settings
+```
+
+## Centralized report generator
+### Command
+```sh
+python3 -m src.tools.centralized_report_generator.centralized_report_generator   --execution-symbol 41I1G1000   --alert-sources VN30 41I1G1000   --from-date 2026-01-06   --to-date 2026-01-07   --mode deployment   --run-sr-detector   --sr-start-time "2025-11-01 09:00:00"   --sr-end-time "2025-12-31 14:30:00"
 ```
 
 

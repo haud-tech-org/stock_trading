@@ -5,16 +5,117 @@ import glob
 from datetime import datetime
 from collections import defaultdict
 import logging
+import importlib
+import sys
+
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, project_root)
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def update_price_alert_settings(performance_data: dict, settings_file_path: str):
+    """
+    Safely updates the price_alert_settings.py file with the latest
+    performance data, preserving the exact human-readable format.
+    """
+    logging.info(f"Starting update of settings file: {settings_file_path}")
+
+    # 1. Prepare the data to be inserted
+    performance_update = {}
+    for approach, data in performance_data.items():
+        if 'avg_worst_loss_price' in data:
+            # Use .upper() as requested for the key
+            performance_update[approach.upper()] = {
+                'avg_worst_loss_price': data['avg_worst_loss_price']
+            }
+
+    if not performance_update:
+        logging.warning("No performance data with 'avg_worst_loss_price' found. Skipping settings file update.")
+        return
+
+    # It's crucial to reload the module to get the most recent version of other dictionaries
+    try:
+        from src.stockreports.config import price_alert_settings
+        importlib.reload(price_alert_settings)
+        # Safely get existing data, default to empty dict if not found
+        current_data = getattr(price_alert_settings, 'PERFORMANCE_BY_APPROACH', {})
+    except (ImportError, AttributeError):
+        current_data = {}
+        logging.info("'PERFORMANCE_BY_APPROACH' not found in current settings, will create it.")
+
+    # Merge new data into existing data
+    current_data.update(performance_update)
+
+    # 2. Manually format the dictionary string to the exact desired style
+    new_perf_str = "PERFORMANCE_BY_APPROACH = {\n"
+    
+    items = list(current_data.items())
+    for i, (key, value) in enumerate(items):
+        # Format the inner dictionary on a single line
+        inner_dict_str = f"{{'avg_worst_loss_price': {value['avg_worst_loss_price']}}}"
+        # Add the line with 4-space indentation
+        new_perf_str += f"    '{key}': {inner_dict_str}"
+        # Add a comma and newline for all but the last item
+        if i < len(items) - 1:
+            new_perf_str += ",\n"
+        else:
+            new_perf_str += "\n"
+            
+    new_perf_str += "}\n"
+
+    try:
+        with open(settings_file_path, 'r') as f:
+            lines = f.readlines()
+    except IOError as e:
+        logging.error(f"Could not read settings file {settings_file_path}: {e}")
+        return
+
+    # 3. Find the start and end of the old PERFORMANCE_BY_APPROACH dictionary
+    start_index, end_index = -1, -1
+    in_dict = False
+    brace_count = 0
+    for i, line in enumerate(lines):
+        if line.strip().startswith("PERFORMANCE_BY_APPROACH = {"):
+            start_index = i
+            in_dict = True
+        if in_dict:
+            brace_count += line.count('{')
+            brace_count -= line.count('}')
+            if brace_count == 0 and start_index != -1:
+                end_index = i
+                break
+    
+    # 4. Replace the old block or append if not found
+    if start_index != -1 and end_index != -1:
+        logging.info("Found existing 'PERFORMANCE_BY_APPROACH' block. Replacing it.")
+        new_lines = lines[:start_index] + [new_perf_str] + lines[end_index+1:]
+    else:
+        logging.info("'PERFORMANCE_BY_APPROACH' block not found. Appending to the end of the file.")
+        new_lines = lines
+        if new_lines and not new_lines[-1].endswith('\n'):
+            new_lines.append('\n') # Add a newline if the file doesn't end with one
+        new_lines.append('\n' + new_perf_str)
+
+    # 5. Write the updated content back to the file
+    try:
+        with open(settings_file_path, 'w') as f:
+            f.writelines(new_lines)
+        logging.info(f"Successfully updated {settings_file_path} with new performance data.")
+    except IOError as e:
+        logging.error(f"Failed to write updated settings to {settings_file_path}: {e}")
+
 
 def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str: str):
     """
     Aggregates individual trade simulation reports into a single summary file
     for a given symbol, mode, and date range.
     """
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    # Correctly define project_root by navigating up from the current file's location
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    
+    # The reports to be consolidated are in the symbol's own directory, under the specified mode
     reports_dir = os.path.join(project_root, "reports", "consolidated", mode)
 
     if not os.path.exists(reports_dir):
@@ -68,7 +169,8 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         "total_synthetic_profit_loss": 0.0,
         "total_actual_profit_loss": 0.0,
         "synthetic_profit_loss_values": [],
-        "actual_profit_loss_values": []
+        "actual_profit_loss_values": [],
+        "worst_loss_price_values": []
     })
 
     all_trades = []
@@ -107,6 +209,11 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         stats["synthetic_profit_loss_values"].append(trade.get("synthetic_profit_loss", 0.0))
         stats["actual_profit_loss_values"].append(trade.get("actual_profit_loss", 0.0))
         
+        # --- New: Aggregate worst_loss_price ---
+        if trade.get("worst_loss_price") is not None:
+            stats["worst_loss_price_values"].append(trade.get("worst_loss_price"))
+        # --- End New ---
+
         if trade.get("status") == "Success":
             stats["successful_trades"] += 1
         elif trade.get("status") == "Failed":
@@ -118,6 +225,7 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         total_trades = stats["total_trades"]
         synthetic_profit_loss_values = stats.pop("synthetic_profit_loss_values")
         actual_profit_loss_values = stats.pop("actual_profit_loss_values")
+        worst_loss_price_values = stats.pop("worst_loss_price_values")
 
         final_performance_by_approach[approach] = {
             "total_trades": total_trades,
@@ -132,6 +240,9 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
             "average_actual_profit_loss": round(stats["total_actual_profit_loss"] / total_trades, 4) if total_trades > 0 else 0.0,
             "best_actual_profit": round(max(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
             "worst_actual_loss": round(min(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
+            "min_worst_loss_price": round(min(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
+            "max_worst_loss_price": round(max(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
+            "avg_worst_loss_price": round(sum(worst_loss_price_values) / len(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
         }
 
     # --- 4. Generate and Save Master Summary File ---
@@ -169,6 +280,11 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         logging.info(f"Successfully saved consolidated performance summary to: {output_path}")
     except IOError as e:
         logging.error(f"Failed to write summary report to {output_path}: {e}")
+        return # Do not proceed if saving the report fails
+
+    # --- 5. Update Price Alert Settings File ---
+    settings_file_path = os.path.join(project_root, "src", "stockreports", "config", "price_alert_settings.py")
+    update_price_alert_settings(final_performance_by_approach, settings_file_path)
 
 
 if __name__ == "__main__":

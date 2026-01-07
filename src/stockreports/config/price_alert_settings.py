@@ -5,14 +5,21 @@
 ALLOW_REPEATED_LEVEL_ALERTS = False
 
 PRICE_ALERTS = {
+    "41I1G1000": {
+        "reference_price": 2033.7,
+        "fixed_levels": [1916.65, 1930.55, 1981.27],
+        "absolute_interval": 9.0,
+    },
     "VN30": {
-        "reference_price": 1978.76,
-        "fixed_levels": [1804.57, 1876.9, 1896.05, 1906.77, 1917.81, 1929.96],
+        "reference_price": 2029.28,
+        "fixed_levels": [1804.57, 1846.13, 1877.78, 1902.37, 1913.03, 1923.6, 1943.18, 1977.31, 1995.91],
         "absolute_interval": 9.0,
-    },
-    "VN30F2512": {
-        "reference_price": 1976.3,
-        "fixed_levels": [1847.27, 1877.45, 1894.25, 1903.67, 1913.9, 1929.8],
-        "absolute_interval": 9.0,
-    },
+    }
+}
+
+PERFORMANCE_BY_APPROACH = {
+    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.8},
+    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 1.7},
+    'ICHIMOKU': {'avg_worst_loss_price': 0.8},
+    'STRONG_CANDLE': {'avg_worst_loss_price': 7.75}
 }

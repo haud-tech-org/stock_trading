@@ -27,7 +27,7 @@ VALIDATION_PRICE_DROP_THRESHOLD = 3.0
 # Guidance: This sets the time horizon for your trade's success. A shorter window (e.g., 15) tests for immediate performance, while a longer window (e.g., 60) allows more time for the price to move.
 # Range: Integer > 0.
 # Example: `VALIDATION_TIME_WINDOW_MINUTES = 15`
-VALIDATION_TIME_WINDOW_MINUTES = 5
+VALIDATION_TIME_WINDOW_MINUTES = 10
 VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity in validation scripts
 
 # Validation Price Threshold
