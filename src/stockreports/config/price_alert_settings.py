@@ -22,13 +22,13 @@ PRICE_ALERTS = {
 USE_PERFORMANCE_BY_APPROACH = False
 
 PERFORMANCE_BY_APPROACH = {
-    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.1091},
-    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 3.8667},
-    'STRONG_CANDLE': {'avg_worst_loss_price': 3.25},
-    'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 7.45},
-    'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 1.4333},
-    'RCM': {'avg_worst_loss_price': 2.0},
-    'PRICE_GAP': {'avg_worst_loss_price': 1.9}
+    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.2667},
+    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 4.85},
+    'STRONG_CANDLE': {'avg_worst_loss_price': 3.3188},
+    'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 7.85},
+    'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 2.65},
+    'RCM': {'avg_worst_loss_price': 2.4},
+    'PRICE_GAP': {'avg_worst_loss_price': 1.7667}
 }
 
-STRUCTURAL_PRICE_LEVEL_OFFSET = 0.2
+STRUCTURAL_PRICE_LEVEL_OFFSET = 0.0
