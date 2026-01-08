@@ -32,15 +32,13 @@ sys.path.insert(0, project_root)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 from src.stockreports.config import price_alert_settings
+from src.stockreports.utils.alert_utils import adjust_price_by_signal
 
 def update_alert_field(field_name: str, from_date_str: str, to_date_str: str):
     """
     Scans for alert files within a date range and updates a specific numeric field
     for each alert by adding a price level from the configuration.
     """
-    price_level = getattr(price_alert_settings, 'STRUCTURAL_PRICE_LEVEL_OFFSET', 0.0)
-    logging.info(f"Using STRUCTURAL_PRICE_LEVEL_OFFSET from settings: {price_level}")
-
     reports_dir = os.path.join(project_root, "reports")
     logging.info(f"Scanning for alert files in {reports_dir} from {from_date_str} to {to_date_str}")
 
@@ -86,10 +84,8 @@ def update_alert_field(field_name: str, from_date_str: str, to_date_str: str):
         for alert in alerts:
             if field_name in alert and isinstance(alert[field_name], (int, float)):
                 signal = alert.get('signal', '').upper()
-                if signal == 'BUY':
-                    alert[field_name] -= price_level
-                else:
-                    alert[field_name] += price_level
+                original_price = alert[field_name]
+                alert[field_name] = adjust_price_by_signal(original_price, signal)
                 
                 updated = True
                 logging.info(f"Updated '{field_name}' for signal '{signal}' in alert for symbol {alert.get('symbol')} in {file_path}")

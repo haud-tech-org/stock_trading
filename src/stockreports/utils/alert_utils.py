@@ -80,6 +80,10 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
                 structural_price = round(max(float(open_t1), float(low_t)), 1)
             elif signal.upper() == 'SELL':
                 structural_price = round(min(float(open_t1), float(high_t)), 1)
+            
+            if structural_price is not None:
+                structural_price = adjust_price_by_signal(structural_price, signal)
+
             logger.info(f"Calculated structural price: {structural_price}")
         else:
             logger.warning("Not enough data for structural price (needs T-1 candle).")
@@ -114,3 +118,24 @@ def get_primary_suggested_price(alert_row: pd.Series) -> Optional[float]:
             return structural_price
     else:
         return structural_price
+
+
+def adjust_price_by_signal(price: float, signal: str) -> float:
+    """
+    Adjusts a price based on the signal (BUY or SELL) using a configured offset.
+
+    The offset is retrieved from `price_alert_settings.STRUCTURAL_PRICE_LEVEL_OFFSET`.
+    For 'BUY' signals, the offset is subtracted.
+    For 'SELL' signals (or any other signal), the offset is added.
+
+    Args:
+        price (float): The initial price to adjust.
+        signal (str): The signal ('BUY' or 'SELL').
+
+    Returns:
+        float: The adjusted price.
+    """
+    price_level = getattr(price_alert_settings, 'STRUCTURAL_PRICE_LEVEL_OFFSET', 0.0)
+    if signal.upper() == 'BUY':
+        return price - price_level
+    return price + price_level
