@@ -48,12 +48,18 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
     if approach:
         importlib.reload(price_alert_settings)
         performance_config = getattr(price_alert_settings, 'PERFORMANCE_BY_APPROACH', {})
+        max_offset = getattr(price_alert_settings, 'MAX_PERF_PRICE_LEVEL_OFFSET', 1.5)
+        min_offset = getattr(price_alert_settings, 'MIN_PRICE_ADJUSTMENT_OFFSET')
         approach_perf = performance_config.get(approach.upper())
 
         if approach_perf and 'avg_worst_loss_price' in approach_perf:
             try:
                 current_candle = market_data.set_index('time').loc[alert_time]
+                
+                # Clamp the adjustment between the min and max offsets
                 adjustment = approach_perf['avg_worst_loss_price']
+                adjustment = max(min(adjustment, max_offset), min_offset)
+
                 close_price = current_candle['close']
                 
                 if signal.upper() == 'BUY':
@@ -79,7 +85,7 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
 
             # Reload settings to get the latest offset value
             importlib.reload(price_alert_settings)
-            min_offset = getattr(price_alert_settings, 'MIN_STRUCTURAL_PRICE_OFFSET')
+            min_offset = getattr(price_alert_settings, 'MIN_PRICE_ADJUSTMENT_OFFSET')
 
             if signal.upper() == 'BUY':
                 # Initial structural price based on support levels

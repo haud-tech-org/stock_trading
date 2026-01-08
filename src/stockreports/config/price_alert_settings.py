@@ -31,10 +31,12 @@ PERFORMANCE_BY_APPROACH = {
     'PRICE_GAP': {'avg_worst_loss_price': 1.7667}
 }
 
+MAX_PERF_PRICE_LEVEL_OFFSET = 1.5
+
 # An offset to adjust the structural price.
 # For BUY signals, this offset is subtracted from the calculated structural price.
 # For SELL signals, it's added.
-STRUCTURAL_PRICE_LEVEL_OFFSET = 0.0
+STRUCTURAL_PRICE_LEVEL_OFFSET = 0.4
 
-# The minimum required difference between the structural suggested price and the close price.
-MIN_STRUCTURAL_PRICE_OFFSET = 0.5
+# The minimum required difference between the suggested price and the close price.
+MIN_PRICE_ADJUSTMENT_OFFSET = 0.5
