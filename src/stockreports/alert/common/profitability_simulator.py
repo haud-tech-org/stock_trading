@@ -4,7 +4,7 @@ import pytz
 from datetime import timedelta
 from src.stockreports.utils.time_utils import get_market_timezone_str
 from src.stockreports.alert.model.models import Trade, ProfitabilityReport
-from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD
+from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD_PROFIT
 
 TIMEZONE = pytz.timezone(get_market_timezone_str())
 
@@ -57,7 +57,7 @@ def calculate_trade_metrics(trade: Dict[str, Any], trade_data: pd.DataFrame) -> 
             entry_best_profit = entry_price - min_price_in_entry_window
             entry_worst_loss = entry_price - max_price_in_entry_window
         
-        if entry_best_profit is not None and entry_best_profit >= VALIDATION_PRICE_THRESHOLD:
+        if entry_best_profit is not None and entry_best_profit >= VALIDATION_PRICE_THRESHOLD_PROFIT:
             entry_signal_status = "Success"
         else:
             entry_signal_status = "Failed"
@@ -82,7 +82,7 @@ def calculate_trade_metrics(trade: Dict[str, Any], trade_data: pd.DataFrame) -> 
             exit_best_profit = max_price_in_exit_window - exit_price
             exit_worst_loss = min_price_in_exit_window - exit_price
 
-        if exit_best_profit is not None and exit_best_profit >= VALIDATION_PRICE_THRESHOLD:
+        if exit_best_profit is not None and exit_best_profit >= VALIDATION_PRICE_THRESHOLD_PROFIT:
             exit_signal_status = "Success"
         else:
             exit_signal_status = "Failed"

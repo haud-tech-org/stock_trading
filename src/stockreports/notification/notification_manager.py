@@ -8,7 +8,7 @@ from src.stockreports.alert.model.models import AlertNotification, AlertResult
 from src.stockreports.utils.notification.email_utils import send_email, format_email_subject, format_email_body
 from src.stockreports.utils.notification.sms_utils import send_sms, format_sms_body
 from src.stockreports.utils.notification.ntfy_utils import send_ntfy_notification
-from src.stockreports.utils.alert_utils import calculate_suggested_price
+from src.stockreports.utils.alert_utils import get_primary_suggested_price
 from src.stockreports.notification.close_position_scheduler import update_latest_signal
 from src.stockreports.alert.common.constants import Approach
 
@@ -24,10 +24,11 @@ class NotificationManager:
         self.logger = logging.getLogger(__name__)
         self.alerts_sent_in_session = set()
 
-    def process_and_notify(self, result: AlertResult, symbol: str, market_data: pd.DataFrame):
+    def process_and_notify(self, result: AlertResult, symbol: str):
         """
         Processes the latest alert from a result and sends notifications if applicable.
         This method checks for duplicates before sending and does not modify the input result.
+        The 'suggested_price' is expected to be pre-calculated in the result.
         """
         if not result.has_alerts:
             return
@@ -48,12 +49,8 @@ class NotificationManager:
             except json.JSONDecodeError:
                 self.logger.warning(f"Could not decode details JSON: {latest_alert_row['details']}")
 
-        # Calculate suggested price for the latest alert only
-        suggested_price = calculate_suggested_price(
-            signal=latest_alert_row['signal'],
-            alert_time=latest_alert_row['alert_time'],
-            market_data=market_data
-        )
+        # Use the new utility function to get the single, correct price for the notification.
+        suggested_price = get_primary_suggested_price(latest_alert_row)
 
         # Ensure alert_time is a datetime object before creating the notification
         alert_time_obj = pd.to_datetime(latest_alert_row['alert_time'])

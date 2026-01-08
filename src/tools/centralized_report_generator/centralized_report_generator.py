@@ -34,13 +34,12 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, project_root)
 
-# --- Project Imports ---
-from src.tools.centralized_report_generator.individual_trade_simulator import run_individual_trade_simulation
+from src.stockreports.utils.time_utils import get_market_timezone
 from src.tools.centralized_report_generator.consolidate_reports import consolidate_reports
+from src.tools.centralized_report_generator.individual_trade_simulator import run_individual_trade_simulation
 from src.tools.centralized_report_generator.support_resistance_detector import run_sr_detection_for_symbols
+from src.tools.centralized_report_generator.update_alert_files_with_suggestion import update_alerts_with_suggested_prices
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def generate_reports_for_period(
     execution_symbol: str, 
@@ -52,11 +51,40 @@ def generate_reports_for_period(
     sr_start_time: str,
     sr_end_time: str,
     sr_resolution: int,
-    sr_min_touches: int
+    sr_min_touches: int,
+    update_suggestions: bool,
+    override_suggestions: bool
 ):
     """
     Orchestrates the generation of daily and consolidated reports.
+
+    This script performs a series of actions for a given date range:
+    1.  Runs an individual trade simulator for each day to generate daily trade reports.
+    2.  Consolidates the daily reports into a single summary report.
+    3.  Optionally, runs a support and resistance level detector.
+    4.  Optionally, updates all alert notification files within the date range
+        with performance and structural suggested prices.
+
+    Args:
+        from_date_str (str): The start date in YYYY-MM-DD format.
+        to_date_str (str): The end date in YYYY-MM-DD format.
+        execution_symbol (str): The primary symbol for execution reports.
+        alert_sources (list): A list of symbols to use as alert sources.
+        mode (str): The simulation mode ('backtest' or 'deployment').
+        run_sr_detector (bool): Whether to run the S/R detector.
+        sr_start_time (str): Start time for S/R analysis.
+        sr_end_time (str): End time for S/R analysis.
+        sr_resolution (int): Time resolution for S/R analysis in minutes.
+        sr_min_touches (int): Minimum touches for a significant S/R level.
+        update_suggestions (bool): If True, runs the process to update alert
+                                   files with suggested entry prices.
+        override_suggestions (bool): If True (and update_suggestions is True),
+                                     it will overwrite existing suggested prices.
     """
+    logging.info(f"--- Starting centralized report generation from {from_date_str} to {to_date_str} ---")
+
+    # --- 1. Run Individual Trade Simulator for each day ---
+    logging.info("--- Step 1: Running Individual Trade Simulator for each day. ---")
     try:
         from_date = datetime.strptime(from_date_str, '%Y-%m-%d').date()
         to_date = datetime.strptime(to_date_str, '%Y-%m-%d').date()
@@ -64,8 +92,6 @@ def generate_reports_for_period(
         logging.error("Invalid date format. Please use YYYY-MM-DD.")
         return
 
-    # --- 1. Generate Individual Daily Reports ---
-    logging.info(f"--- Starting generation of individual daily reports from {from_date_str} to {to_date_str} ---")
     date_range = pd.date_range(start=from_date, end=to_date)
 
     for current_date in date_range:
@@ -125,6 +151,19 @@ def generate_reports_for_period(
             logging.info("--- Successfully ran the Support/Resistance detector. ---")
         except Exception as e:
             logging.error(f"Support/Resistance detector failed. Error: {e}")
+
+    # --- 4. Update Alert Files with Suggested Prices (if requested) ---
+    if update_suggestions:
+        logging.info("--- Starting update of alert files with suggested prices. ---")
+        try:
+            update_alerts_with_suggested_prices(
+                from_date_str=from_date_str,
+                to_date_str=to_date_str,
+                override=override_suggestions
+            )
+            logging.info("--- Successfully updated alert files with suggested prices. ---")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred while updating suggested prices: {e}", exc_info=True)
 
     logging.info("--- Centralized report generation process finished. ---")
 
@@ -192,6 +231,17 @@ if __name__ == "__main__":
         default=3,
         help="Minimum touches for a significant S/R level."
     )
+    # --- New arguments for Suggested Price Update ---
+    parser.add_argument(
+        "--update-suggestions",
+        action='store_true',
+        help="If set, run the script to update alert files with suggested prices."
+    )
+    parser.add_argument(
+        "--override-suggestions",
+        action='store_true',
+        help="If set, override existing suggested prices in alert files."
+    )
 
     args = parser.parse_args()
 
@@ -205,5 +255,7 @@ if __name__ == "__main__":
         sr_start_time=args.sr_start_time,
         sr_end_time=args.sr_end_time,
         sr_resolution=args.sr_resolution,
-        sr_min_touches=args.sr_min_touches
+        sr_min_touches=args.sr_min_touches,
+        update_suggestions=args.update_suggestions,
+        override_suggestions=args.override_suggestions
     )

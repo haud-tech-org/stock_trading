@@ -25,10 +25,10 @@ def update_price_alert_settings(performance_data: dict, settings_file_path: str)
     # 1. Prepare the data to be inserted
     performance_update = {}
     for approach, data in performance_data.items():
-        if 'avg_worst_loss_price' in data:
-            # Use .upper() as requested for the key
+        if 'avg_worst_loss_price' in data and data['avg_worst_loss_price'] is not None:
+            # Use .upper() as requested for the key and ensure the value is positive
             performance_update[approach.upper()] = {
-                'avg_worst_loss_price': data['avg_worst_loss_price']
+                'avg_worst_loss_price': abs(data['avg_worst_loss_price'])
             }
 
     if not performance_update:
@@ -53,15 +53,18 @@ def update_price_alert_settings(performance_data: dict, settings_file_path: str)
     
     items = list(current_data.items())
     for i, (key, value) in enumerate(items):
-        # Format the inner dictionary on a single line
-        inner_dict_str = f"{{'avg_worst_loss_price': {value['avg_worst_loss_price']}}}"
-        # Add the line with 4-space indentation
-        new_perf_str += f"    '{key}': {inner_dict_str}"
-        # Add a comma and newline for all but the last item
-        if i < len(items) - 1:
-            new_perf_str += ",\n"
-        else:
-            new_perf_str += "\n"
+        # --- FIX: Check if the key exists before accessing it ---
+        if 'avg_worst_loss_price' in value:
+            # Format the inner dictionary on a single line
+            inner_dict_str = f"{{'avg_worst_loss_price': {value['avg_worst_loss_price']}}}"
+            # Add the line with 4-space indentation
+            new_perf_str += f"    '{key}': {inner_dict_str}"
+            # Add a comma and newline for all but the last item
+            if i < len(items) - 1:
+                new_perf_str += ",\n"
+            else:
+                new_perf_str += "\n"
+        # --- END FIX ---
             
     new_perf_str += "}\n"
 
@@ -157,8 +160,10 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         "total_trades": 0,
         "successful_trades": 0,
         "failed_trades": 0,
-        "total_synthetic_profit_loss": 0.0,
+        "ignored_trades": 0,
         "total_actual_profit_loss": 0.0,
+        "total_best_profit_price": 0.0,
+        "total_worst_loss_price": 0.0,
     }
 
     # Use defaultdict to easily initialize stats for new approaches
@@ -166,11 +171,10 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         "total_trades": 0,
         "successful_trades": 0,
         "failed_trades": 0,
-        "total_synthetic_profit_loss": 0.0,
         "total_actual_profit_loss": 0.0,
-        "synthetic_profit_loss_values": [],
         "actual_profit_loss_values": [],
-        "worst_loss_price_values": []
+        "worst_loss_price_values": [],
+        "best_profit_price_values": []
     })
 
     all_trades = []
@@ -183,8 +187,10 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
                 overall_summary["total_trades"] += data.get("total_trades", 0)
                 overall_summary["successful_trades"] += data.get("successful_trades", 0)
                 overall_summary["failed_trades"] += data.get("failed_trades", 0)
-                overall_summary["total_synthetic_profit_loss"] += data.get("total_synthetic_profit_loss", 0.0)
+                overall_summary["ignored_trades"] += data.get("ignored_trades", 0)
                 overall_summary["total_actual_profit_loss"] += data.get("total_actual_profit_loss", 0.0)
+                overall_summary["total_best_profit_price"] += data.get("total_best_profit_price", 0.0)
+                overall_summary["total_worst_loss_price"] += data.get("total_worst_loss_price", 0.0)
 
                 trades = data.get("trades", [])
                 all_trades.extend(trades)
@@ -204,15 +210,15 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
 
         stats = performance_by_approach[approach]
         stats["total_trades"] += 1
-        stats["total_synthetic_profit_loss"] += trade.get("synthetic_profit_loss", 0.0)
         stats["total_actual_profit_loss"] += trade.get("actual_profit_loss", 0.0)
-        stats["synthetic_profit_loss_values"].append(trade.get("synthetic_profit_loss", 0.0))
         stats["actual_profit_loss_values"].append(trade.get("actual_profit_loss", 0.0))
         
-        # --- New: Aggregate worst_loss_price ---
+        # --- Aggregate worst_loss_price and best_profit_price ---
         if trade.get("worst_loss_price") is not None:
             stats["worst_loss_price_values"].append(trade.get("worst_loss_price"))
-        # --- End New ---
+        if trade.get("best_profit_price") is not None:
+            stats["best_profit_price_values"].append(trade.get("best_profit_price"))
+        # --- End Aggregation ---
 
         if trade.get("status") == "Success":
             stats["successful_trades"] += 1
@@ -223,19 +229,15 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
     final_performance_by_approach = {}
     for approach, stats in performance_by_approach.items():
         total_trades = stats["total_trades"]
-        synthetic_profit_loss_values = stats.pop("synthetic_profit_loss_values")
         actual_profit_loss_values = stats.pop("actual_profit_loss_values")
         worst_loss_price_values = stats.pop("worst_loss_price_values")
+        best_profit_price_values = stats.pop("best_profit_price_values")
 
         final_performance_by_approach[approach] = {
             "total_trades": total_trades,
             "successful_trades": stats["successful_trades"],
             "failed_trades": stats["failed_trades"],
             "success_rate": f"{(stats['successful_trades'] / total_trades * 100):.2f}%" if total_trades > 0 else "0.00%",
-            "total_synthetic_profit_loss": round(stats["total_synthetic_profit_loss"], 4),
-            "average_synthetic_profit_loss": round(stats["total_synthetic_profit_loss"] / total_trades, 4) if total_trades > 0 else 0.0,
-            "best_synthetic_profit": round(max(synthetic_profit_loss_values), 4) if synthetic_profit_loss_values else 0.0,
-            "worst_synthetic_loss": round(min(synthetic_profit_loss_values), 4) if synthetic_profit_loss_values else 0.0,
             "total_actual_profit_loss": round(stats["total_actual_profit_loss"], 4),
             "average_actual_profit_loss": round(stats["total_actual_profit_loss"] / total_trades, 4) if total_trades > 0 else 0.0,
             "best_actual_profit": round(max(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
@@ -243,6 +245,9 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
             "min_worst_loss_price": round(min(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
             "max_worst_loss_price": round(max(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
             "avg_worst_loss_price": round(sum(worst_loss_price_values) / len(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
+            "min_best_profit_price": round(min(best_profit_price_values), 4) if best_profit_price_values else 0.0,
+            "max_best_profit_price": round(max(best_profit_price_values), 4) if best_profit_price_values else 0.0,
+            "avg_best_profit_price": round(sum(best_profit_price_values) / len(best_profit_price_values), 4) if best_profit_price_values else 0.0,
         }
 
     # --- 4. Generate and Save Master Summary File ---
@@ -250,25 +255,30 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
     total_trades_overall = overall_summary["total_trades"]
     overall_summary["success_rate"] = f"{(overall_summary['successful_trades'] / total_trades_overall * 100):.2f}%" if total_trades_overall > 0 else "0.00%"
     overall_summary["failure_rate"] = f"{(overall_summary['failed_trades'] / total_trades_overall * 100):.2f}%" if total_trades_overall > 0 else "0.00%"
-    overall_summary["total_synthetic_profit_loss"] = round(overall_summary["total_synthetic_profit_loss"], 4)
     overall_summary["total_actual_profit_loss"] = round(overall_summary["total_actual_profit_loss"], 4)
+    overall_summary["total_best_profit_price"] = round(overall_summary["total_best_profit_price"], 4)
+    overall_summary["total_worst_loss_price"] = round(overall_summary["total_worst_loss_price"], 4)
 
-    # --- New: Get app_config from the first available report ---
+
+    # --- New: Get app_config and validation_config from the first available report ---
     app_config = None
+    validation_config = None
     if filtered_files:
         try:
             with open(filtered_files[0], 'r') as f:
                 first_report_data = json.load(f)
                 app_config = first_report_data.get("app_config")
+                validation_config = first_report_data.get("validation_config")
         except (json.JSONDecodeError, IOError) as e:
-            logging.warning(f"Could not read app_config from {filtered_files[0]}: {e}")
+            logging.warning(f"Could not read config from {filtered_files[0]}: {e}")
     # --- End New ---
 
     # Combine into a single output object
     final_report = {
         "overall_summary": overall_summary,
         "performance_by_approach": final_performance_by_approach,
-        "app_config": app_config  # Add the config to the final report
+        "app_config": app_config,
+        "validation_config": validation_config
     }
 
     output_filename = f"{symbol}_overall_performance_{from_date_str}_to_{to_date_str}.json"

@@ -42,7 +42,7 @@ from src.stockreports.alert.common.validation.validation import calculate_alert_
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
 from src.stockreports.alert.common.profitability_simulator import simulate_profitability
 from src.stockreports.utils.report_utils import save_profitability_report, save_alert_report, update_alert_summary
-from src.stockreports.utils.alert_utils import calculate_suggested_price
+from src.stockreports.utils.alert_utils import calculate_suggested_prices
 from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
 from src.stockreports.alert.common.requirements import get_min_required_len
 
@@ -116,24 +116,11 @@ class SymbolAlerter:
             self._run_deployment_mode()
         self.logger.info(f"Execution finished for symbol: {self.symbol}.")
 
-    def _enrich_and_save_reports(self, result: AlertResult, market_data: pd.DataFrame, processing_date: str):
+    def _enrich_and_save_reports(self, result: AlertResult, processing_date: str):
         """
         Enriches the alert result with suggested prices and saves all relevant reports.
         """
-        # Calculate suggested prices for all alerts in the result
-        suggested_prices = []
-        for _, alert_row in result.alerts.iterrows():
-            price = calculate_suggested_price(
-                signal=alert_row['signal'],
-                alert_time=alert_row['alert_time'],
-                market_data=market_data
-            )
-            suggested_prices.append(price)
-        
-        # Add the list of prices as a new column to the DataFrame
-        result.alerts['suggested_price'] = suggested_prices
-
-        # Save the reports using the now-enriched result object
+        # This function now only saves the report, enrichment is done prior.
         save_alert_report(result, self.symbol, processing_date)
         if settings.MODE == "DEVELOPMENT":
             update_alert_summary(result, self.symbol, processing_date)
@@ -281,7 +268,9 @@ class SymbolAlerter:
                     alerts=pd.DataFrame(price_alerts_data),
                     approach_name="PriceMovement"
                 )
-                self.notification_manager.process_and_notify(price_alert_result, self.symbol, master_df)
+                # The 'suggested_price' is not calculated for simple price movement alerts.
+                # The extra 'master_df' argument is removed to match the new function signature.
+                self.notification_manager.process_and_notify(price_alert_result, self.symbol)
 
 
             # --- Standard Approach Alerter ---
@@ -310,10 +299,27 @@ class SymbolAlerter:
                 # Pass the full master_df to the executor's run method.
                 result = executor.run(df=master_df.copy(), new_candle_count=new_candle_count)
                 if result.has_alerts:
-                    # Send notification immediately for low latency.
-                    self.notification_manager.process_and_notify(result, self.symbol, master_df)
-                    # Then, enrich data and save the report.
-                    self._enrich_and_save_reports(result, master_df, time_simulator.processing_date)
+                    # Step 1: Enrich the result with both suggested prices.
+                    perf_prices = []
+                    struct_prices = []
+                    for _, alert_row in result.alerts.iterrows():
+                        alert_time_obj = pd.to_datetime(alert_row['alert_time'])
+                        perf_price, struct_price = calculate_suggested_prices(
+                            signal=alert_row['signal'],
+                            alert_time=alert_time_obj,
+                            approach=alert_row['approach']
+                        )
+                        perf_prices.append(perf_price)
+                        struct_prices.append(struct_price)
+                    
+                    result.alerts['performance_suggested_price'] = perf_prices
+                    result.alerts['structural_suggested_price'] = struct_prices
+
+                    # Step 2: Send notification with the now-enriched data.
+                    self.notification_manager.process_and_notify(result, self.symbol)
+                    
+                    # Step 3: Save the enriched report.
+                    self._enrich_and_save_reports(result, time_simulator.processing_date)
             
             self.logger.info(f"Interval finished. Advancing time...")
             time_simulator.advance()
@@ -364,10 +370,26 @@ class SymbolAlerter:
             result = executor.run(df=daily_df.copy(), new_candle_count=len(daily_df))
             
             if result.has_alerts:
-                # Step 1: Send notifications (fire-and-forget)
-                self.notification_manager.process_and_notify(result, self.symbol, daily_df)
+                # Step 1: Enrich the result with both suggested prices.
+                perf_prices = []
+                struct_prices = []
+                for _, alert_row in result.alerts.iterrows():
+                    alert_time_obj = pd.to_datetime(alert_row['alert_time'])
+                    perf_price, struct_price = calculate_suggested_prices(
+                        signal=alert_row['signal'],
+                        alert_time=alert_time_obj,
+                        approach=alert_row['approach']
+                    )
+                    perf_prices.append(perf_price)
+                    struct_prices.append(struct_price)
+                
+                result.alerts['performance_suggested_price'] = perf_prices
+                result.alerts['structural_suggested_price'] = struct_prices
 
-                # Step 2: Enrich data and save reports
+                # Step 2: Send notifications (fire-and-forget)
+                self.notification_manager.process_and_notify(result, self.symbol)
+
+                # Step 3: Further enrich with validation data and save reports
                 if settings.MODE == "DEVELOPMENT":
                     validated_alerts = []
                     for _, alert_row in result.alerts.iterrows():
@@ -377,7 +399,7 @@ class SymbolAlerter:
                         validated_alerts.append(validated_alert.to_dict())
                     result.alerts = pd.DataFrame(validated_alerts)
                 
-                self._enrich_and_save_reports(result, daily_df, processing_date)
+                self._enrich_and_save_reports(result, processing_date)
                 
                 # Collect alerts for end-of-day profitability simulation
                 all_alerts_for_day.extend(result.alerts.to_dict('records'))

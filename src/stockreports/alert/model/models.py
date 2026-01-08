@@ -108,22 +108,17 @@ class Trade:
     exit_price: float
     exit_timestamp: str
     exit_approach: str
-    synthetic_profit_loss: float
     actual_profit_loss: float
     status: str
-    entry_source_symbol: Optional[str] = None  # New field for entry source
-    exit_source_symbol: Optional[str] = None   # New field for exit source
-    entry_suggested_price: Optional[float] = None # New field for entry suggested price
-    exit_suggested_price: Optional[float] = None # New field for exit suggested price
-    entry_best_profit: Optional[float] = None
-    entry_worst_loss: Optional[float] = None
-    exit_best_profit: Optional[float] = None
-    exit_worst_loss: Optional[float] = None
-    entry_signal_status: Optional[str] = None
-    exit_signal_status: Optional[str] = None
-    improvement_suggestion: Optional[str] = None
-    best_possible_entry_price: Optional[float] = None
-    worst_loss_price: Optional[float] = None
+    entry_source_symbol: str
+    exit_source_symbol: str
+    entry_signal_status: str
+    exit_signal_status: str
+    improvement_suggestion: str
+    best_possible_entry_price: float
+    best_possible_exit_price: float
+    worst_loss_price: float
+    best_profit_price: float
 
 @dataclass
 class ProfitabilityReport:
@@ -131,10 +126,12 @@ class ProfitabilityReport:
     total_trades: int
     successful_trades: int
     failed_trades: int
+    ignored_trades: int
     success_rate: str
     failure_rate: str
-    total_synthetic_profit_loss: float
     total_actual_profit_loss: float
+    total_best_profit_price: float
+    total_worst_loss_price: float
     trades: List[Trade]
 
     def to_dict(self):

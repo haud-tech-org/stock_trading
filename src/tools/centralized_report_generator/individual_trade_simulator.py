@@ -20,9 +20,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR, SESSIONS
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
-from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD
+from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD_PROFIT, VALIDATION_PRICE_THRESHOLD_LOSS
 from src.stockreports.alert.model.models import ProfitabilityReport, Trade
-from src.stockreports.utils.alert_utils import calculate_suggested_price
+from src.stockreports.utils.alert_utils import calculate_suggested_prices, get_primary_suggested_price
 
 
 def calculate_performance_by_approach(trades: list) -> dict:
@@ -40,9 +40,9 @@ def calculate_performance_by_approach(trades: list) -> dict:
 
     # Group by entry approach and calculate stats using named aggregation
     performance_summary = trades_df.groupby('entry_approach').agg(
-        min_profit_loss=('synthetic_profit_loss', 'min'),
-        max_profit_loss=('synthetic_profit_loss', 'max'),
-        avg_profit_loss=('synthetic_profit_loss', 'mean'),
+        min_profit_loss=('actual_profit_loss', 'min'),
+        max_profit_loss=('actual_profit_loss', 'max'),
+        avg_profit_loss=('actual_profit_loss', 'mean'),
         min_worst_loss_price=('worst_loss_price', 'min'),
         max_worst_loss_price=('worst_loss_price', 'max'),
         avg_worst_loss_price=('worst_loss_price', 'mean'),
@@ -63,10 +63,12 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
     and evaluating its outcome within a fixed validation window.
     """
     trades = []
-    total_synthetic_profit_loss = 0
     total_actual_profit_loss = 0
+    total_best_profit_price = 0
+    total_worst_loss_price = 0
     successful_trades = 0
     failed_trades = 0
+    ignored_trades = 0
     trade_counter = 0
 
     last_trade_end_time = pd.Timestamp.min.tz_localize('UTC')
@@ -95,28 +97,35 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
             continue
 
         # --- Definitive Entry Price & Suggested Price Logic ---
-        # 1. Set the actual entry_price for the trade.
-        #    Priority: Use 'alert_price' from alert data if it exists AND the source symbol matches the execution symbol.
-        #    Otherwise (e.g. cross-symbol alert or missing price), use the candle 'close' price of the execution symbol.
-        if alert.get('source_symbol') == execution_symbol and 'alert_price' in alert and alert['alert_price'] is not None:
-            entry_price = alert['alert_price']
+        
+        # 1. Determine the definitive entry price for the simulation.
+        # This logic handles alerts from both old and new file formats.
+        entry_price = None
+        if 'performance_suggested_price' in alert and 'structural_suggested_price' in alert:
+            # New format: two price fields exist. Use the primary selection logic.
+            entry_price = get_primary_suggested_price(alert)
+            logging.info(f"Using primary suggested price for entry: {entry_price}")
+        elif 'suggested_price' in alert and alert['suggested_price'] is not None:
+            # Old format: only the 'suggested_price' field exists. Use it directly.
+            entry_price = alert['suggested_price']
+            logging.info(f"Using legacy 'suggested_price' for entry: {entry_price}")
         else:
-            # Case: Alert source != Execution symbol (or missing alert_price).
-            # We simulate the trade using the 'close' price of the execution symbol at the alert time.
-            entry_price = entry_candle['close']
+            # Fallback: if no price info exists, calculate it dynamically.
+            logging.warning(f"No suggested price found for alert at {entry_time}. Calculating dynamically.")
+            perf_price, struct_price = calculate_suggested_prices(entry_signal, entry_time, alert.get('approach'))
+            # Create a temporary series to use the selection logic
+            temp_alert_row = pd.Series({
+                'performance_suggested_price': perf_price,
+                'structural_suggested_price': struct_price
+            })
+            entry_price = get_primary_suggested_price(temp_alert_row)
+            logging.info(f"Using dynamically calculated primary price for entry: {entry_price}")
 
-        # 2. Determine the entry_suggested_price for analysis.
-        #    Priority: Use 'suggested_price' from alert data if symbols match.
-        #    Fallback: Calculate it dynamically.
-        if alert.get('source_symbol') == execution_symbol and 'suggested_price' in alert and alert['suggested_price'] is not None:
-            calculated_entry_suggested_price = alert['suggested_price']
-        else:
-            # Fallback to dynamic calculation
-            calculated_entry_suggested_price = calculate_suggested_price(entry_signal, entry_time, trade_data.reset_index())
+        # If no entry price could be determined, ignore the trade.
+        if entry_price is None:
+            logging.warning(f"Could not determine a valid entry price for alert at {entry_time}. Ignoring trade.")
+            continue
 
-        if calculated_entry_suggested_price is None:
-            # If suggestion calculation fails or wasn't available, log it.
-            logging.warning(f"Could not determine suggested entry price for alert at {entry_time}. It will be null in the report.")
         # --- End of Definitive Entry Logic ---
 
         # Define the validation window
@@ -124,104 +133,129 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
         validation_end_time = validation_start_time + pd.Timedelta(minutes=VALIDATION_PERIOD_MINUTES)
 
         # --- This is the new logic to prevent overlapping trades ---
-        # Set the cooldown period. No new trades can start before this time.
-        last_trade_end_time = validation_end_time
-        # --- End of new logic ---
 
-        validation_window_df = trade_data.loc[validation_start_time:validation_end_time]
+        initial_validation_window_df = trade_data.loc[validation_start_time:validation_end_time]
 
-        if validation_window_df.empty:
-            logging.warning(f"No data found in validation window for alert at {entry_time}. Skipping.")
+        if initial_validation_window_df.empty:
+            logging.warning(f"No data found in initial validation window for alert at {entry_time}. Skipping.")
             continue
 
-        # --- Best Possible Entry Price & Worst Loss Calculation ---
+        # --- New: Find the exact trigger time and adjust the validation window ---
+        across_time = None
+        if entry_signal == 'BUY':
+            # Find the first candle where the low was at or below the entry price
+            triggered_candles = initial_validation_window_df[initial_validation_window_df['low'] <= entry_price]
+            if not triggered_candles.empty:
+                across_time = triggered_candles.index[0]
+        elif entry_signal == 'SELL':
+            # Find the first candle where the high was at or above the entry price
+            triggered_candles = initial_validation_window_df[initial_validation_window_df['high'] >= entry_price]
+            if not triggered_candles.empty:
+                across_time = triggered_candles.index[0]
+
+        if across_time is None:
+            logging.info(f"Trade at {entry_time} for {entry_signal} was IGNORED. Entry price {entry_price} not met in validation window.")
+            ignored_trades += 1
+            continue
+        
+        logging.info(f"Trade triggered at {across_time}. Adjusting validation window.")
+        # The new validation window starts from the moment the price was crossed
+        validation_window_df = initial_validation_window_df.loc[across_time:]
+        # --- End of Trigger Time and Window Adjustment ---
+
+        # --- Best Possible Entry/Exit Price & Worst Loss Calculation ---
         best_possible_entry_price = None
+        best_possible_exit_price = None
         if entry_signal == 'BUY':
             # For a BUY, the best possible entry is the lowest price in the window.
             best_possible_entry_price = validation_window_df['low'].min()
+            # The best possible exit is the highest price in the window.
+            best_possible_exit_price = validation_window_df['high'].max()
         elif entry_signal == 'SELL':
             # For a SELL, the best possible entry is the highest price in the window.
             best_possible_entry_price = validation_window_df['high'].max()
+            # The best possible exit is the lowest price in the window.
+            best_possible_exit_price = validation_window_df['low'].min()
 
         worst_loss_price = None
         if best_possible_entry_price is not None:
-            worst_loss_price = abs(entry_price - best_possible_entry_price)
+            # This represents the potential loss if the entry was mistimed.
+            # It should always be a negative value.
+            worst_loss_price = -abs(entry_price - best_possible_entry_price)
+        
+        best_profit_price = None
+        if best_possible_exit_price is not None:
+            if entry_signal == 'BUY':
+                best_profit_price = best_possible_exit_price - entry_price
+            else: # SELL
+                best_profit_price = entry_price - best_possible_exit_price
         # --- End of Calculation ---
 
-        # --- New "Take-Profit or Timeout" Exit Logic ---
-        target_reached = False
-        if entry_signal == 'BUY':
-            if validation_window_df['high'].max() >= entry_price + VALIDATION_PRICE_THRESHOLD:
-                target_reached = True
-        elif entry_signal == 'SELL':
-            if validation_window_df['low'].min() <= entry_price - VALIDATION_PRICE_THRESHOLD:
-                target_reached = True
+        # --- New "Take-Profit or Stop-Loss" Exit Logic ---
+        exit_time = None
+        exit_price = None
+        status = "Failed"  # Default to Failed, will be updated if profit target is hit
 
-        if target_reached:
-            # If the target was met, exit at the BEST price in the window
-            status = "Success"
-            if entry_signal == 'BUY':
-                exit_candle = validation_window_df.loc[validation_window_df['high'].idxmax()]
-                exit_price = exit_candle['high']
-                exit_time = exit_candle.name
-            else:  # SELL
-                exit_candle = validation_window_df.loc[validation_window_df['low'].idxmin()]
-                exit_price = exit_candle['low']
-                exit_time = exit_candle.name
-        else:
-            # If the target was NOT met, exit at the close of the last candle (timeout)
-            status = "Failed"
+        if entry_signal == 'BUY':
+            profit_target = entry_price + VALIDATION_PRICE_THRESHOLD_PROFIT
+            loss_target = entry_price - VALIDATION_PRICE_THRESHOLD_LOSS
+            
+            # Find the first candle to hit either target
+            for time, candle in validation_window_df.iterrows():
+                # Check for loss first
+                if candle['low'] <= loss_target:
+                    exit_time = time
+                    exit_price = loss_target # Exit at the target price
+                    status = "Failed"
+                    break # Exit the loop
+                # Check for profit
+                if candle['high'] >= profit_target:
+                    exit_time = time
+                    exit_price = profit_target # Exit at the target price
+                    status = "Success"
+                    break # Exit the loop
+
+        elif entry_signal == 'SELL':
+            profit_target = entry_price - VALIDATION_PRICE_THRESHOLD_PROFIT
+            loss_target = entry_price + VALIDATION_PRICE_THRESHOLD_LOSS
+
+            # Find the first candle to hit either target
+            for time, candle in validation_window_df.iterrows():
+                # Check for loss first
+                if candle['high'] >= loss_target:
+                    exit_time = time
+                    exit_price = loss_target # Exit at the target price
+                    status = "Failed"
+                    break # Exit the loop
+                # Check for profit
+                if candle['low'] <= profit_target:
+                    exit_time = time
+                    exit_price = profit_target # Exit at the target price
+                    status = "Success"
+                    break # Exit the loop
+
+        # If no target was hit, the trade times out and exits at the last candle's close
+        if exit_time is None:
             exit_candle = validation_window_df.iloc[-1]
             exit_price = exit_candle['close']
             exit_time = exit_candle.name
+            status = "Failed" # It remains a failed trade
+            logging.info(f"Trade timed out at {exit_time}. Exiting at close price {exit_price}.")
+        else:
+            logging.info(f"Trade exited at {exit_time} with status '{status}' at price {exit_price}.")
         
+        # We need the exit_candle for later calculations
+        exit_candle = trade_data.asof(exit_time)
         # --- End of New Exit Logic ---
 
         # --- Definitive Exit Suggested Price Logic ---
         exit_signal = 'SELL' if entry_signal == 'BUY' else 'BUY'
-        calculated_exit_suggested_price = calculate_suggested_price(exit_signal, exit_time, trade_data.reset_index())
-        if calculated_exit_suggested_price is None:
-            # If calculation fails, use the actual exit price as the suggested one
-            calculated_exit_suggested_price = exit_price
-        # --- End of Definitive Exit Suggested Price Logic ---
 
         # Calculate final profit/loss based on the determined exit
         if entry_signal == 'BUY':
-            synthetic_profit_loss = exit_price - entry_price
+            actual_profit_loss = exit_price - entry_price
         else: # SELL
-            synthetic_profit_loss = entry_price - exit_price
-
-        # --- New: Calculate Actual Profit/Loss ---
-        if status == "Success":
-            actual_profit_loss = VALIDATION_PRICE_THRESHOLD
-        else: # Failed
-            actual_profit_loss = synthetic_profit_loss
-        # --- End New Calculation ---
-
-        # --- `entry_best_profit` and `entry_worst_loss` on the entry candle ---
-        if entry_signal == 'BUY':
-            # Best profit is how much it went down (potential for cheaper buy)
-            entry_best_profit = entry_price - entry_candle['low']
-            # Worst loss is how much it went up against you
-            entry_worst_loss = entry_price - entry_candle['high']
-        else:  # SELL
-            # Best profit is how much it went up (potential for more expensive sell)
-            entry_best_profit = entry_candle['high'] - entry_price
-            # Worst loss is how much it went down against you
-            entry_worst_loss = entry_candle['low'] - entry_price
-        
-        # --- `exit_best_profit` and `exit_worst_loss` on the exit candle ---
-        if exit_signal == 'SELL': # Exiting a BUY trade
-            # Best profit is how much it went up (potential for more expensive sell)
-            exit_best_profit = exit_candle['high'] - exit_price
-            # Worst loss is how much it went down against you
-            exit_worst_loss = exit_candle['low'] - exit_price
-        else: # BUY (Exiting a SELL trade)
-            # Best profit is how much it went down (potential for cheaper buy)
-            exit_best_profit = exit_price - exit_candle['low']
-            # Worst loss is how much it went up against you
-            exit_worst_loss = exit_price - exit_candle['high']
-        # --- End of New Calculation ---
+            actual_profit_loss = entry_price - exit_price
         
         trade_counter += 1
         # Create and append the trade object
@@ -235,35 +269,39 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
             exit_price=exit_price,
             exit_timestamp=exit_time.isoformat(),
             exit_approach='VALIDATION_EXIT',
-            synthetic_profit_loss=synthetic_profit_loss,
             actual_profit_loss=actual_profit_loss,
             status=status,
             entry_source_symbol=alert.get('source_symbol'),
             exit_source_symbol='SYNTHETIC',
-            entry_suggested_price=calculated_entry_suggested_price,
-            exit_suggested_price=calculated_exit_suggested_price,
-            entry_best_profit=entry_best_profit,
-            entry_worst_loss=entry_worst_loss,
-            exit_best_profit=exit_best_profit,
-            exit_worst_loss=exit_worst_loss,
             entry_signal_status=status,
             exit_signal_status='N/A',
             improvement_suggestion='N/A',
             best_possible_entry_price=best_possible_entry_price,
-            worst_loss_price=worst_loss_price
+            best_possible_exit_price=best_possible_exit_price,
+            worst_loss_price=worst_loss_price,
+            best_profit_price=best_profit_price
         )
         trades.append(trade)
 
         # --- Aggregate Results ---
-        total_synthetic_profit_loss += synthetic_profit_loss
         total_actual_profit_loss += actual_profit_loss
+        if best_profit_price is not None:
+            total_best_profit_price += best_profit_price
+        if worst_loss_price is not None:
+            total_worst_loss_price += worst_loss_price
+            
         if status == "Success":
             successful_trades += 1
         elif status == "Failed":
             failed_trades += 1
         # --- End Aggregation ---
 
-    total_trades = len(trades)
+        # --- New: Update the cooldown period based on the actual exit time ---
+        if exit_time:
+            last_trade_end_time = exit_time
+        # --- End of New Cooldown Logic ---
+
+    total_trades = successful_trades + failed_trades # Only count triggered trades
     success_rate = f"{(successful_trades / total_trades * 100):.2f}%" if total_trades > 0 else "0.00%"
     failure_rate = f"{(failed_trades / total_trades * 100):.2f}%" if total_trades > 0 else "0.00%"
 
@@ -271,10 +309,12 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
         total_trades=total_trades,
         successful_trades=successful_trades,
         failed_trades=failed_trades,
+        ignored_trades=ignored_trades,
         success_rate=success_rate,
         failure_rate=failure_rate,
-        total_synthetic_profit_loss=total_synthetic_profit_loss,
         total_actual_profit_loss=total_actual_profit_loss,
+        total_best_profit_price=total_best_profit_price,
+        total_worst_loss_price=total_worst_loss_price,
         trades=trades
     )
 
@@ -443,7 +483,8 @@ def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, 
             summary_dict['app_config'] = APPROACH_CONFIG
             validation_config = {
                 "VALIDATION_PERIOD_MINUTES": VALIDATION_PERIOD_MINUTES,
-                "VALIDATION_PRICE_THRESHOLD": VALIDATION_PRICE_THRESHOLD
+                "VALIDATION_PRICE_THRESHOLD_PROFIT": VALIDATION_PRICE_THRESHOLD_PROFIT,
+                "VALIDATION_PRICE_THRESHOLD_LOSS": VALIDATION_PRICE_THRESHOLD_LOSS
             }
             summary_dict['validation_config'] = validation_config
             json.dump(summary_dict, f, indent=4, default=str) # Use default=str to handle datetime
