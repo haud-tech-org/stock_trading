@@ -43,6 +43,22 @@ python3 src/tools/extract_period_data.py \
 python3 src/tools/centralized_report_generator/support_resistance_detector.py --symbols VN30 41I1G1000 --start-time "2025-11-01 09:00:00" --end-time "2025-12-31 14:30:00" --resolution 15 --min-touches 3 --update-settings
 ```
 
+## Update suggested price for alert notification files
+### Command
+```sh
+python3 src/tools/maintenance/update_alert_field.py \
+    --field performance_suggested_price \
+    --from_date 2026-01-05 \
+    --to_date 2026-01-08
+```
+
+```sh
+py \
+    --field structural_suggested_price \
+    --from_date 2026-01-05 \
+    --to_date 2026-01-08
+```
+
 ## Centralized report generator
 ### Command for all tasks
 ```sh
