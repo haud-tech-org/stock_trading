@@ -1,3 +1,30 @@
+"""
+A maintenance script to backfill or update suggested prices in existing alert files.
+
+Purpose:
+This script iterates through alert notification JSON files within a specified date range
+and calculates and populates the 'performance_suggested_price' and/or 
+'structural_suggested_price' fields for each alert.
+
+It is useful for backfilling data after changes to the price suggestion logic or for
+populating these fields in older alert files that lack them.
+
+Usage Examples:
+1. Update only the performance suggested price for alerts from a specific date:
+   python3 -m src.tools.centralized_report_generator.update_alert_files_with_suggestion \\
+       --from-date 2026-01-08 --to-date 2026-01-08 \\
+       --suggestion-type performance
+
+2. Update only the structural suggested price for a range of dates:
+   python3 -m src.tools.centralized_report_generator.update_alert_files_with_suggestion \\
+       --from-date 2026-01-05 --to-date 2026-01-08 \\
+       --suggestion-type structural
+
+3. Update both performance and structural prices:
+   python3 -m src.tools.centralized_report_generator.update_alert_files_with_suggestion \\
+       --from-date 2026-01-08 --to-date 2026-01-08 \\
+       --suggestion-type all
+"""
 import argparse
 import json
 import os
@@ -15,7 +42,7 @@ sys.path.insert(0, project_root)
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-from src.stockreports.utils.alert_utils import calculate_suggested_prices
+from src.stockreports.utils.alert_utils import calculate_suggested_prices, _apply_price_offset
 from src.stockreports.utils.time_utils import get_market_timezone
 from dateutil import parser as date_parser
 # Import settings for fallback calculation
@@ -37,15 +64,16 @@ def _calculate_performance_fallback(signal: str, approach: str, alert_price: flo
         performance_config = getattr(price_alert_settings, 'PERFORMANCE_BY_APPROACH', {})
         approach_perf = performance_config.get(approach.upper())
 
+        # Get min/max offsets for clamping
+        max_offset = getattr(price_alert_settings, 'MAX_PRICE_ADJUSTMENT_OFFSET')
+        min_offset = getattr(price_alert_settings, 'MIN_PRICE_ADJUSTMENT_OFFSET')
+
         if approach_perf and 'avg_worst_loss_price' in approach_perf:
-            adjustment = approach_perf['avg_worst_loss_price']
+            # Ensure adjustment is always positive, _apply_price_offset handles direction
+            adjustment = abs(approach_perf['avg_worst_loss_price'])
             
-            if signal.upper() == 'BUY':
-                fallback_price = round(alert_price - adjustment, 1)
-            elif signal.upper() == 'SELL':
-                fallback_price = round(alert_price + adjustment, 1)
-            else:
-                return None
+            # Use the centralized offset function
+            fallback_price = _apply_price_offset(alert_price, adjustment, signal, min_offset, max_offset)
             
             logging.info(f"Calculated performance price for '{approach}' using FALLBACK logic: {fallback_price}")
             return fallback_price
@@ -57,11 +85,25 @@ def _calculate_performance_fallback(signal: str, approach: str, alert_price: flo
         return None
 
 
-def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, override: bool = False):
+def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, suggestion_type: Optional[str] = None):
     """
-    Scans for alert files within a date range and updates each alert
-    with performance and structural suggested prices.
+    Scans alert notification files and updates them with suggested prices.
+
+    This function finds all `alert_notification_*.json` files within the given
+    date range and calculates suggested prices for each alert inside. The behavior
+    is controlled by the `suggestion_type` parameter. If `suggestion_type` is not
+    provided, the function will exit without making changes.
+
+    Args:
+        from_date_str (str): The start date in 'YYYY-MM-DD' format.
+        to_date_str (str): The end date in 'YYYY-MM-DD' format.
+        suggestion_type (Optional[str]): The type of price to update.
+            Can be 'performance', 'structural', or 'all'. If None, no action is taken.
     """
+    if not suggestion_type:
+        logging.info("No --suggestion-type provided. Exiting without updating any prices.")
+        return
+
     reports_dir = os.path.join(project_root, "reports")
     logging.info(f"Scanning for alert files in {reports_dir} from {from_date_str} to {to_date_str}")
 
@@ -122,10 +164,6 @@ def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, ov
         updated_count = 0
         for alert in alerts:
             try:
-                # Check if we should skip this alert based on the override flag
-                if not override and alert.get('performance_suggested_price') is not None:
-                    continue
-
                 alert_time_str = alert['alert_time']
                 # Parse the timestamp. If it's naive, localize it to the market timezone.
                 # If it's aware, it will be handled correctly, then converted to UTC.
@@ -141,25 +179,32 @@ def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, ov
                     logging.warning(f"Skipping alert due to missing 'signal': {alert}")
                     continue
 
-                # Calculate the suggested prices using the localized market timestamp
-                perf_price, struct_price = calculate_suggested_prices(signal, alert_time, approach)
+                perf_price, struct_price = None, None
+                # Calculate prices once, then use the results conditionally.
+                if suggestion_type in ['performance', 'structural', 'all']:
+                    perf_price, struct_price = calculate_suggested_prices(signal, alert_time, approach)
 
-                # If performance price could not be calculated (e.g., due to missing data),
-                # try the fallback method using the alert_price.
-                if perf_price is None:
-                    alert_price = alert.get('alert_price')
-                    logging.warning(f"Primary performance price calculation failed for alert at {alert_time}. Attempting fallback.")
-                    perf_price = _calculate_performance_fallback(signal, approach, alert_price)
+                # Fallback logic should only run if performance price was requested and failed.
+                if suggestion_type in ['performance', 'all']:
+                    if perf_price is None:
+                        alert_price = alert.get('alert_price')
+                        logging.warning(f"Primary performance price calculation failed for alert at {alert_time}. Attempting fallback.")
+                        perf_price = _calculate_performance_fallback(signal, approach, alert_price)
 
                 # Update the alert object if the prices are not None
                 price_updated = False
-                if perf_price is not None:
+                if suggestion_type in ['performance', 'all'] and perf_price is not None:
                     alert['performance_suggested_price'] = perf_price
                     price_updated = True
                 
-                if struct_price is not None:
-                    alert['structural_suggested_price'] = struct_price
-                    price_updated = True
+                if suggestion_type in ['structural', 'all']:
+                    if struct_price is not None:
+                        alert['structural_suggested_price'] = struct_price
+                        price_updated = True
+                    elif perf_price is not None:
+                        logging.info(f"Structural price calculation failed. Using performance price ({perf_price}) as fallback.")
+                        alert['structural_suggested_price'] = perf_price
+                        price_updated = True
 
                 if price_updated:
                     updated_count += 1
@@ -186,7 +231,8 @@ def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, ov
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Update existing alert notification files with performance and structural suggested prices."
+        description="A tool to backfill or update suggested prices in alert notification files.",
+        formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--from-date",
@@ -198,18 +244,23 @@ if __name__ == "__main__":
         "--to-date",
         type=str,
         required=True,
-        help="The end date for updating alerts in YYYY-MM-DD format."
+        help="The end date for the scan, in YYYY-MM-DD format."
     )
     parser.add_argument(
-        "--override",
-        action='store_true',
-        help="If set, override existing suggested prices. Otherwise, only update if they are missing."
+        "--suggestion-type",
+        type=str,
+        choices=['performance', 'structural', 'all'],
+        default=None,
+        help="Specify which suggested price to update:\n"
+             "'performance': Update performance_suggested_price only.\n"
+             "'structural': Update structural_suggested_price only.\n"
+             "'all': Update both.\n"
+             "If not provided, the script will not update any prices."
     )
 
     args = parser.parse_args()
-
     update_alerts_with_suggested_prices(
         from_date_str=args.from_date,
         to_date_str=args.to_date,
-        override=args.override
+        suggestion_type=args.suggestion_type
     )

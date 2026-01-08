@@ -44,9 +44,31 @@ python3 src/tools/centralized_report_generator/support_resistance_detector.py --
 ```
 
 ## Centralized report generator
-### Command
+### Command for all tasks
 ```sh
-python3 -m src.tools.centralized_report_generator.centralized_report_generator   --execution-symbol 41I1G1000   --alert-sources VN30 41I1G1000   --from-date 2025-12-22   --to-date 2026-01-07   --mode deployment   --run-sr-detector   --sr-start-time "2025-11-01 09:00:00"   --sr-end-time "2025-12-31 14:30:00" --update-suggestions --override-suggestions
+python3 -m src.tools.centralized_report_generator.centralized_report_generator \
+    --execution-symbol 41I1G1000 \
+    --alert-sources VN30 41I1G1000 \
+    --from-date 2026-01-05 \
+    --to-date 2026-01-08 \
+    --mode deployment \
+    --run-sr-detector \
+    --sr-start-time "2026-01-01 09:00:00" \
+    --sr-end-time "2026-01-08 15:00:00" \
+    --sr-resolution 15 \
+    --sr-min-touches 3 \
+    --suggestion-type all \
+    --update-price-alert-settings
+```
+
+### Only report generators
+```sh
+python3 -m src.tools.centralized_report_generator.centralized_report_generator \
+    --execution-symbol 41I1G1000 \
+    --alert-sources VN30 41I1G1000 \
+    --from-date 2026-01-05 \
+    --to-date 2026-01-08 \
+    --mode deployment
 ```
 
 
