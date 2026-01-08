@@ -72,17 +72,36 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
             current_candle = df_indexed.iloc[current_candle_index]
             prev_candle = df_indexed.iloc[current_candle_index - 1]
             
+            close_price = current_candle['close']
             open_t1 = prev_candle['open']
             low_t = current_candle['low']
             high_t = current_candle['high']
 
+            # Reload settings to get the latest offset value
+            importlib.reload(price_alert_settings)
+            min_offset = getattr(price_alert_settings, 'MIN_STRUCTURAL_PRICE_OFFSET')
+
             if signal.upper() == 'BUY':
+                # Initial structural price based on support levels
                 structural_price = round(max(float(open_t1), float(low_t)), 1)
             elif signal.upper() == 'SELL':
+                # Initial structural price based on resistance levels
                 structural_price = round(min(float(open_t1), float(high_t)), 1)
             
             if structural_price is not None:
+                # Adjust price first
                 structural_price = adjust_price_by_signal(structural_price, signal)
+
+                # Then, ensure the final price meets the minimum offset
+                if signal.upper() == 'BUY':
+                    if close_price - structural_price < min_offset:
+                        structural_price = round(close_price - min_offset, 1)
+                        logger.info(f"Adjusted BUY structural price to meet min_offset. New price: {structural_price}")
+                elif signal.upper() == 'SELL':
+                    if structural_price - close_price < min_offset:
+                        structural_price = round(close_price + min_offset, 1)
+                        logger.info(f"Adjusted SELL structural price to meet min_offset. New price: {structural_price}")
+
 
             logger.info(f"Calculated structural price: {structural_price}")
         else:
