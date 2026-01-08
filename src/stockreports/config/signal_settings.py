@@ -301,7 +301,7 @@ APPROACH_CONFIG = {
         "NUM_CANDLES_FOR_RSI_CHECK": 1
     },
     "PRICE_GAP": {
-        "MIN_GAP_SIZE": 1.1,
+        "MIN_GAP_SIZE": 1.5,
         "USE_BREAKOUT_CONFIRMATION": True,
         "LOOKBACK_PERIOD": 20,
         "CONFIRMATION_FORWARD_WINDOW": 3,
