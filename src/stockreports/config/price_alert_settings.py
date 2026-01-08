@@ -30,3 +30,5 @@ PERFORMANCE_BY_APPROACH = {
     'RCM': {'avg_worst_loss_price': 4.4},
     'PRICE_GAP': {'avg_worst_loss_price': 4.0}
 }
+
+STRUCTURAL_PRICE_LEVEL_OFFSET = 1.0
