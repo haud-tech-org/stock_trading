@@ -46,17 +46,31 @@ import pandas as pd
 import sys
 import os
 from typing import Optional
+import glob
 
 # Add the project root to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, project_root)
 
 from src.stockreports.config.validation_settings import VALIDATION_PRICE_THRESHOLD_PROFIT, VALIDATION_PRICE_THRESHOLD_LOSS
+from src.stockreports.utils.file_utils import clear_files_in_directory
+from src.stockreports.utils.report_utils import get_consolidated_scenario_directory
 from src.stockreports.utils.time_utils import get_market_timezone
 from src.tools.centralized_report_generator.consolidate_reports import consolidate_reports
 from src.tools.centralized_report_generator.individual_trade_simulator import run_individual_trade_simulation
 from src.tools.centralized_report_generator.support_resistance_detector import run_sr_detection_for_symbols
 from src.tools.centralized_report_generator.update_alert_files_with_suggestion import update_alerts_with_suggested_prices
+
+
+def _clear_scenario_reports(mode: str, profit_threshold: float, loss_threshold: float):
+    """A helper to clear old reports for a specific scenario."""
+    logging.info(f"--- Clearing old reports for scenario Profit: {profit_threshold}, Loss: {loss_threshold} ---")
+    scenario_dir = get_consolidated_scenario_directory(
+        mode=mode,
+        profit_threshold=profit_threshold,
+        loss_threshold=loss_threshold
+    )
+    clear_files_in_directory(scenario_dir)
 
 
 def generate_reports_for_period(
@@ -104,6 +118,9 @@ def generate_reports_for_period(
             if profit_threshold <= loss_threshold:
                 logging.info(f"--- Skipping simulation for Profit: {profit_threshold}, Loss: {loss_threshold} (profit <= loss) ---")
                 continue
+
+            # Clear old reports for the current scenario before running
+            _clear_scenario_reports(mode, profit_threshold, loss_threshold)
 
             logging.info(f"--- Running simulation for Profit: {profit_threshold}, Loss: {loss_threshold} ---")
 

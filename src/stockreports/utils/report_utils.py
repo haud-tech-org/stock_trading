@@ -13,6 +13,7 @@ from datetime import datetime
 from src.stockreports.config import loader
 from src.stockreports.alert.model.models import AlertResult, AlertSummary, ProfitabilityReport
 from src.stockreports.utils.time_utils import get_market_timezone_str
+from src.stockreports.utils.file_utils import save_json_report
 
 # --- Settings & Logger ---
 settings = loader.get_settings()
@@ -147,25 +148,24 @@ def find_all_alert_files(
     return filtered_files
 
 
-def _save_json_report(data: Any, filepath: str, logger_instance: logging.Logger):
+def get_consolidated_scenario_directory(
+    mode: str,
+    profit_threshold: float,
+    loss_threshold: float
+) -> str:
     """
-    A generic utility to save data to a JSON file. It creates the directory if it doesn't exist.
-
-    Args:
-        data (Any): The data to save (can be a list, dict, or pandas DataFrame).
-        filepath (str): The full path to the file.
-        logger_instance (logging.Logger): The logger to use for output.
+    Constructs the directory path for a specific consolidated report scenario.
     """
-    try:
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, 'w') as f:
-            if isinstance(data, pd.DataFrame):
-                data.to_json(f, orient='records', indent=4)
-            else:
-                json.dump(data, f, indent=4)
-        logger_instance.info(f"Successfully saved report to {filepath}")
-    except Exception as e:
-        logger_instance.error(f"Failed to save report to {filepath}: {e}")
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    base_reports_dir = os.path.join(project_root, "reports")
+    
+    return get_report_directory(
+        base_dir=base_reports_dir,
+        report_type="consolidated",
+        mode=mode,
+        profit_threshold=profit_threshold,
+        loss_threshold=loss_threshold
+    )
 
 
 def save_alert_report(result: AlertResult, symbol: str, date_str: str):
@@ -222,7 +222,7 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
             alerts_to_save[col] = pd.to_datetime(alerts_to_save[col], errors='coerce', utc=True)
             alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
 
-    _save_json_report(alerts_to_save, filepath, logger)
+    save_json_report(alerts_to_save, filepath, logger)
 
 
 def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
@@ -281,7 +281,7 @@ def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
     all_summaries.append(new_summary.to_dict())
     all_summaries.sort(key=lambda x: x.get('date', ''))
     
-    _save_json_report(all_summaries, filepath, logger)
+    save_json_report(all_summaries, filepath, logger)
 
 
 def save_profitability_report(summary_data: ProfitabilityReport, symbol: str, date_str: str, logger_instance: logging.Logger):
@@ -294,4 +294,12 @@ def save_profitability_report(summary_data: ProfitabilityReport, symbol: str, da
     filename = f"profitability_summary_{date_str.replace('-', '')}.json"
     filepath = os.path.join(report_dir, filename)
     
-    _save_json_report(summary_data.to_dict(), filepath, logger_instance)
+    save_json_report(summary_data.to_dict(), filepath, logger_instance)
+
+
+def find_overall_performance_files(root_dir: str) -> list[str]:
+    """
+    Recursively finds all overall performance JSON files in a directory.
+    """
+    glob_pattern = os.path.join(root_dir, "**", "*_overall_performance_*.json")
+    return glob.glob(glob_pattern, recursive=True)

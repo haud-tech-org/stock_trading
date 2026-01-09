@@ -278,6 +278,10 @@ def consolidate_reports(
         return
 
     # --- 3. Calculate Overall Performance Statistics ---
+    # --- New: Gather all unique source symbols from trades ---
+    source_symbols = sorted(list(set(trade.get('entry_source_symbol') for trade in all_trades if 'entry_source_symbol' in trade)))
+    # --- End New ---
+
     for trade in all_trades:
         approach = trade.get("entry_approach")
         if not approach:
@@ -333,6 +337,7 @@ def consolidate_reports(
     overall_summary["total_actual_profit_loss"] = round(overall_summary["total_actual_profit_loss"], 4)
     overall_summary["total_best_profit_price"] = round(overall_summary["total_best_profit_price"], 4)
     overall_summary["total_worst_loss_price"] = round(overall_summary["total_worst_loss_price"], 4)
+    overall_summary["source_symbols"] = source_symbols
 
 
     # --- New: Get app_config and validation_config from the first available report ---
@@ -351,6 +356,9 @@ def consolidate_reports(
 
     # Combine into a single output object
     final_report = {
+        "execution_symbol": symbol,
+        "start_date": from_date_str,
+        "end_date": to_date_str,
         "overall_summary": overall_summary,
         "performance_by_approach": final_performance_by_approach,
         "app_config": app_config,
