@@ -10,7 +10,7 @@ Configuration settings for all alert notification channels (Email, ntfy, etc.).
 # Guidance: Set to `False` to quickly turn off all emails without removing your credentials.
 # Range: `True` or `False`.
 # Example: `EMAIL_ENABLED = True`
-EMAIL_ENABLED = True
+EMAIL_ENABLED = False
 
 # Email SMTP Server / Port
 # Meaning: The server and port for your email provider's SMTP service.

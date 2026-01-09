@@ -2,26 +2,37 @@
 Centralized Summary Report Generator
 
 Purpose:
-This script automates the process of generating individual daily trade simulation
-reports and then creating a single consolidated performance summary over a specified
-date range. It orchestrates the execution of `individual_trade_simulator.py` for
-each day and then runs `consolidate_reports.py` for the entire period.
+This script is the main orchestrator for generating comprehensive trading reports
+and updating related configurations. It can perform several key tasks in sequence:
 
-As a final optional step, it can also trigger the `support_resistance_detector.py`
-script to update the price alert levels based on a longer historical period.
+1.  **Individual Trade Simulation**: For each day in a given date range, it
+    simulates trades based on generated alerts.
+2.  **Consolidated Reporting**: It aggregates the results of the daily simulations
+    into a single performance summary. It can optionally update the main
+    price alert configuration file with new performance metrics.
+3.  **Support/Resistance Detection**: Optionally, it can run a historical analysis
+    to detect and update significant support and resistance price levels.
+4.  **Suggested Price Backfilling**: Optionally, it can trigger a maintenance
+    script to backfill or update suggested entry prices in existing alert files.
 
-Command to run:
-python3 -m src.tools.centralized_report_generator \\
-    --execution-symbol <SYMBOL> \\
-    --alert-sources <SOURCE_1> <SOURCE_2> ... \\
-    --from-date <YYYY-MM-DD> \\
-    --to-date <YYYY-MM-DD> \\
-    --mode <development|deployment> \\
-    [--run-sr-detector] \\
-    [--sr-start-time "YYYY-MM-DD HH:MM:SS"] \\
-    [--sr-end-time "YYYY-MM-DD HH:MM:SS"] \\
-    [--sr-resolution <MINUTES>] \\
-    [--sr-min-touches <TOUCHES>]
+Usage Examples:
+1. Generate standard daily and consolidated reports for a date range:
+   python3 -m src.tools.centralized_report_generator.centralized_report_generator \\
+       --execution-symbol 41I1G1000 \\
+       --alert-sources VN30 41I1G1000 \\
+       --from-date 2026-01-05 --to-date 2026-01-08 \\
+       --mode deployment
+
+2. Run the full process, including S/R detection, suggested price backfilling,
+   and updating the price alert configuration from the consolidated report:
+   python3 -m src.tools.centralized_report_generator.centralized_report_generator \\
+       --execution-symbol 41I1G1000 \\
+       --alert-sources VN30 \\
+       --from-date 2026-01-08 --to-date 2026-01-08 \\
+       --mode deployment \\
+       --run-sr-detector --sr-start-time "2026-01-01 09:00:00" \\
+       --suggestion-type all \\
+       --update-price-alert-settings
 """
 import argparse
 import logging
@@ -29,6 +40,7 @@ from datetime import datetime
 import pandas as pd
 import sys
 import os
+from typing import Optional
 
 # Add the project root to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -52,34 +64,29 @@ def generate_reports_for_period(
     sr_end_time: str,
     sr_resolution: int,
     sr_min_touches: int,
-    update_suggestions: bool,
-    override_suggestions: bool
+    suggestion_type: Optional[str],
+    update_price_alert_settings: bool
 ):
     """
-    Orchestrates the generation of daily and consolidated reports.
-
-    This script performs a series of actions for a given date range:
-    1.  Runs an individual trade simulator for each day to generate daily trade reports.
-    2.  Consolidates the daily reports into a single summary report.
-    3.  Optionally, runs a support and resistance level detector.
-    4.  Optionally, updates all alert notification files within the date range
-        with performance and structural suggested prices.
+    Orchestrates the generation of daily reports, consolidated summaries,
+    and optional maintenance tasks like S/R detection and suggested price updates.
 
     Args:
-        from_date_str (str): The start date in YYYY-MM-DD format.
-        to_date_str (str): The end date in YYYY-MM-DD format.
         execution_symbol (str): The primary symbol for execution reports.
         alert_sources (list): A list of symbols to use as alert sources.
-        mode (str): The simulation mode ('backtest' or 'deployment').
-        run_sr_detector (bool): Whether to run the S/R detector.
+        from_date_str (str): The start date in YYYY-MM-DD format.
+        to_date_str (str): The end date in YYYY-MM-DD format.
+        mode (str): The simulation mode ('development' or 'deployment').
+        run_sr (bool): If True, runs the support and resistance detector.
         sr_start_time (str): Start time for S/R analysis.
         sr_end_time (str): End time for S/R analysis.
         sr_resolution (int): Time resolution for S/R analysis in minutes.
         sr_min_touches (int): Minimum touches for a significant S/R level.
-        update_suggestions (bool): If True, runs the process to update alert
-                                   files with suggested entry prices.
-        override_suggestions (bool): If True (and update_suggestions is True),
-                                     it will overwrite existing suggested prices.
+        suggestion_type (Optional[str]): If provided, runs the process to update
+            alert files with the specified type of suggested price ('performance',
+            'structural', or 'all').
+        update_price_alert_settings (bool): If True, the consolidation step will
+            update the 'price_alert_settings.py' file with new performance data.
     """
     logging.info(f"--- Starting centralized report generation from {from_date_str} to {to_date_str} ---")
 
@@ -118,7 +125,8 @@ def generate_reports_for_period(
             symbol=execution_symbol,
             mode=mode,
             from_date_str=from_date_str,
-            to_date_str=to_date_str
+            to_date_str=to_date_str,
+            update_price_alert_settings=update_price_alert_settings
         )
         logging.info("--- Successfully generated the consolidated report. ---")
     except Exception as e:
@@ -153,13 +161,13 @@ def generate_reports_for_period(
             logging.error(f"Support/Resistance detector failed. Error: {e}")
 
     # --- 4. Update Alert Files with Suggested Prices (if requested) ---
-    if update_suggestions:
+    if suggestion_type:
         logging.info("--- Starting update of alert files with suggested prices. ---")
         try:
             update_alerts_with_suggested_prices(
                 from_date_str=from_date_str,
                 to_date_str=to_date_str,
-                override=override_suggestions
+                suggestion_type=suggestion_type
             )
             logging.info("--- Successfully updated alert files with suggested prices. ---")
         except Exception as e:
@@ -170,7 +178,8 @@ def generate_reports_for_period(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Run a centralized report generation process for a given period."
+        description="Run a centralized report generation process for a given period.",
+        formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--execution-symbol",
@@ -233,14 +242,16 @@ if __name__ == "__main__":
     )
     # --- New arguments for Suggested Price Update ---
     parser.add_argument(
-        "--update-suggestions",
-        action='store_true',
-        help="If set, run the script to update alert files with suggested prices."
+        "--suggestion-type",
+        type=str,
+        choices=['performance', 'structural', 'all'],
+        default=None,
+        help="If provided, runs the suggestion updater for the specified price type."
     )
     parser.add_argument(
-        "--override-suggestions",
+        "--update-price-alert-settings",
         action='store_true',
-        help="If set, override existing suggested prices in alert files."
+        help="If set, the consolidated report step will update 'price_alert_settings.py'."
     )
 
     args = parser.parse_args()
@@ -256,6 +267,6 @@ if __name__ == "__main__":
         sr_end_time=args.sr_end_time,
         sr_resolution=args.sr_resolution,
         sr_min_touches=args.sr_min_touches,
-        update_suggestions=args.update_suggestions,
-        override_suggestions=args.override_suggestions
+        suggestion_type=args.suggestion_type,
+        update_price_alert_settings=args.update_price_alert_settings
     )

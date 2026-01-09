@@ -9,6 +9,31 @@ import importlib
 
 logger = logging.getLogger(__name__)
 
+def _apply_price_offset(base_price: float, adjustment: float, signal: str, min_offset: float, max_offset: float) -> float:
+    """
+    Clamps a positive adjustment value and applies it to the base price based on the signal.
+    """
+    # Get the additional fixed offset and add it to the adjustment
+    fixed_offset = getattr(price_alert_settings, 'PRICE_LEVEL_OFFSET_FIXED', 0.0)
+    total_adjustment = adjustment + fixed_offset
+
+    # Clamp the total adjustment between the min and max offsets
+    clamped_adjustment = max(min(total_adjustment, max_offset), min_offset)
+    
+    if signal.upper() == 'BUY':
+        # For BUY, subtract the adjustment for a lower, safer entry price
+        suggested_price = base_price - clamped_adjustment
+        # Ensure the final price is not higher than the base price
+        final_price = min(suggested_price, base_price)
+    else: # For 'SELL'
+        # For SELL, add the adjustment for a higher, safer entry price
+        suggested_price = base_price + clamped_adjustment
+        # Ensure the final price is not lower than the base price
+        final_price = max(suggested_price, base_price)
+
+    return round(final_price, 1)
+
+
 def get_execution_symbol() -> str:
     """
     Retrieves the primary execution symbol from the settings.
@@ -36,7 +61,7 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
     # --- Unified Data Fetch ---
     # Fetch a single, wider window that covers both performance (T) and structural (T, T-1) needs.
     start_fetch_time = alert_time - pd.Timedelta(minutes=5)
-    end_fetch_time = alert_time + pd.Timedelta(minutes=1)
+    end_fetch_time = alert_time + pd.Timedelta(minutes=2)
     market_data = get_historical_data(execution_symbol, start_fetch_time, end_fetch_time)
 
     # If no data is fetched, we can't proceed with either calculation.
@@ -44,49 +69,59 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
         logger.warning(f"Could not get market data for any price calculation at {alert_time}.")
         return None, None
 
+    # --- Common Settings ---
+    importlib.reload(price_alert_settings)
+    max_offset = getattr(price_alert_settings, 'MAX_PRICE_ADJUSTMENT_OFFSET')
+    min_offset = getattr(price_alert_settings, 'MIN_PRICE_ADJUSTMENT_OFFSET')
+
     # --- Performance-Based Logic ---
     if approach:
-        importlib.reload(price_alert_settings)
         performance_config = getattr(price_alert_settings, 'PERFORMANCE_BY_APPROACH', {})
         approach_perf = performance_config.get(approach.upper())
 
         if approach_perf and 'avg_worst_loss_price' in approach_perf:
             try:
                 current_candle = market_data.set_index('time').loc[alert_time]
-                adjustment = approach_perf['avg_worst_loss_price']
                 close_price = current_candle['close']
+                # Ensure adjustment is always positive, _apply_price_offset handles direction
+                adjustment = abs(approach_perf['avg_worst_loss_price'])
                 
-                if signal.upper() == 'BUY':
-                    performance_price = round(close_price - adjustment, 1)
-                elif signal.upper() == 'SELL':
-                    performance_price = round(close_price + adjustment, 1)
+                performance_price = _apply_price_offset(close_price, adjustment, signal, min_offset, max_offset)
                 logger.info(f"Calculated performance price for '{approach}': {performance_price}")
+
             except Exception as e:
                 logger.error(f"Error during performance price calculation: {e}", exc_info=True)
 
-    # --- Structural Logic (Formerly Fallback) ---
+    # --- Structural Logic ---
     try:
         df_indexed = market_data.set_index('time')
         current_candle_index = df_indexed.index.get_loc(alert_time)
-        if current_candle_index > 0:
+        
+        # We need at least 3 candles for the new logic (current + 2 previous)
+        if current_candle_index >= 2:
             current_candle = df_indexed.iloc[current_candle_index]
-            prev_candle = df_indexed.iloc[current_candle_index - 1]
-            
-            open_t1 = prev_candle['open']
-            low_t = current_candle['low']
-            high_t = current_candle['high']
+            close_price = current_candle['close']
 
+            # Get the last 3 candles (T-2, T-1, T)
+            last_3_candles = df_indexed.iloc[current_candle_index - 2 : current_candle_index + 1]
+
+            # The 'adjustment' for structural price is based on the last 3 candles' range.
             if signal.upper() == 'BUY':
-                structural_price = round(max(float(open_t1), float(low_t)), 1)
+                # For BUY, find the lowest point in the last 3 candles as support
+                lowest_low = last_3_candles['low'].min()
+                adjustment = abs(close_price - lowest_low)
             elif signal.upper() == 'SELL':
-                structural_price = round(min(float(open_t1), float(high_t)), 1)
-            
-            if structural_price is not None:
-                structural_price = adjust_price_by_signal(structural_price, signal)
+                # For SELL, find the highest point in the last 3 candles as resistance
+                highest_high = last_3_candles['high'].max()
+                adjustment = abs(highest_high - close_price)
+            else:
+                adjustment = 0
 
+            # Apply the same offset logic as the performance price
+            structural_price = _apply_price_offset(close_price, adjustment, signal, min_offset, max_offset)
             logger.info(f"Calculated structural price: {structural_price}")
         else:
-            logger.warning("Not enough data for structural price (needs T-1 candle).")
+            logger.warning("Not enough data for structural price (needs at least 3 candles).")
     except Exception as e:
         logger.error(f"Error during structural price calculation: {e}", exc_info=True)
 
@@ -124,7 +159,7 @@ def adjust_price_by_signal(price: float, signal: str) -> float:
     """
     Adjusts a price based on the signal (BUY or SELL) using a configured offset.
 
-    The offset is retrieved from `price_alert_settings.STRUCTURAL_PRICE_LEVEL_OFFSET`.
+    The offset is retrieved from `price_alert_settings.PRICE_LEVEL_OFFSET_FIXED`.
     For 'BUY' signals, the offset is subtracted.
     For 'SELL' signals (or any other signal), the offset is added.
 
@@ -135,7 +170,7 @@ def adjust_price_by_signal(price: float, signal: str) -> float:
     Returns:
         float: The adjusted price.
     """
-    price_level = getattr(price_alert_settings, 'STRUCTURAL_PRICE_LEVEL_OFFSET', 0.0)
+    price_level = getattr(price_alert_settings, 'PRICE_LEVEL_OFFSET_FIXED', 0.0)
     if signal.upper() == 'BUY':
         return price - price_level
     return price + price_level

@@ -194,5 +194,5 @@ CONSOLIDATED_PROFITABILITY = {
 # Meaning: The specific date and time to start replaying historical data in DEVELOPMENT mode.
 # Guidance: This is useful for testing how the system would have behaved in the past. Set this to a time within the `DEV_DATA_DATE_RANGE`.
 # Format: "YYYY-MM-DD HH:MM:SS"
-# Example: `DEBUG_REPLAY_START_TIME = "2025-10-23 09:30:00"`
+# Example: `DEBUG_REPLAY_START_TIME = "2026-01-08 09:05:00"`
 DEBUG_REPLAY_START_TIME = None

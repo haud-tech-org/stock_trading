@@ -1,3 +1,30 @@
+"""
+A tool to aggregate individual trade simulation reports into a consolidated summary.
+
+Purpose:
+This script scans for individual simulation reports (e.g., 'simulation_summary_individual_trade_*.json')
+for a specific symbol within a given date range and mode. It then aggregates the data from these
+reports into a single, comprehensive summary file (e.g., 'SYMBOL_overall_performance_YYYY-MM-DD_to_YYYY-MM-DD.json').
+
+Optionally, it can also update the 'price_alert_settings.py' configuration file with the newly
+calculated performance metrics, specifically the 'avg_worst_loss_price' for each trading approach.
+
+Usage Examples:
+1. Consolidate reports for a symbol in development mode without updating settings:
+   python3 -m src.tools.centralized_report_generator.consolidate_reports \\
+       --symbol 41I1G1000 \\
+       --mode development \\
+       --from-date 2026-01-05 \\
+       --to-date 2026-01-08
+
+2. Consolidate reports and update the price alert settings file:
+   python3 -m src.tools.centralized_report_generator.consolidate_reports \\
+       --symbol 41I1G1000 \\
+       --mode deployment \\
+       --from-date 2026-01-05 \\
+       --to-date 2026-01-08 \\
+       --update-price-alert-settings
+"""
 import argparse
 import json
 import os
@@ -15,7 +42,7 @@ sys.path.insert(0, project_root)
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def update_price_alert_settings(performance_data: dict, settings_file_path: str):
+def _run_update_price_alert_settings(performance_data: dict, settings_file_path: str):
     """
     Safely updates the price_alert_settings.py file with the latest
     performance data, preserving the exact human-readable format.
@@ -110,10 +137,24 @@ def update_price_alert_settings(performance_data: dict, settings_file_path: str)
         logging.error(f"Failed to write updated settings to {settings_file_path}: {e}")
 
 
-def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str: str):
+def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str: str, update_price_alert_settings: bool = False):
     """
-    Aggregates individual trade simulation reports into a single summary file
-    for a given symbol, mode, and date range.
+    Aggregates individual trade simulation reports and optionally updates settings.
+
+    This function finds all individual simulation reports for a given symbol and mode
+    within the specified date range. It calculates overall performance metrics and
+    performance by approach, then saves the results to a consolidated JSON file.
+
+    If `update_price_alert_settings` is True, it will also update the
+    'PERFORMANCE_BY_APPROACH' dictionary in the 'price_alert_settings.py' file
+    with the latest 'avg_worst_loss_price' for each approach.
+
+    Args:
+        symbol (str): The stock symbol to process.
+        mode (str): The run mode ('development' or 'deployment').
+        from_date_str (str): The start date for aggregation in 'YYYY-MM-DD' format.
+        to_date_str (str): The end date for aggregation in 'YYYY-MM-DD' format.
+        update_price_alert_settings (bool): If True, update the price alert settings file.
     """
     # Correctly define project_root by navigating up from the current file's location
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -293,13 +334,15 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         return # Do not proceed if saving the report fails
 
     # --- 5. Update Price Alert Settings File ---
-    settings_file_path = os.path.join(project_root, "src", "stockreports", "config", "price_alert_settings.py")
-    update_price_alert_settings(final_performance_by_approach, settings_file_path)
+    if update_price_alert_settings:
+        settings_file_path = os.path.join(project_root, "src", "stockreports", "config", "price_alert_settings.py")
+        _run_update_price_alert_settings(final_performance_by_approach, settings_file_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Consolidate individual trade simulation reports into a single summary."
+        description="Consolidate individual trade simulation reports into a single summary.",
+        formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--symbol",
@@ -326,6 +369,11 @@ if __name__ == "__main__":
         required=True,
         help="The end date for the aggregation in YYYY-MM-DD format."
     )
+    parser.add_argument(
+        "--update-price-alert-settings",
+        action='store_true',
+        help="If set, the script will update 'price_alert_settings.py' with the new performance data."
+    )
 
     args = parser.parse_args()
 
@@ -333,5 +381,6 @@ if __name__ == "__main__":
         symbol=args.symbol,
         mode=args.mode,
         from_date_str=args.from_date,
-        to_date_str=args.to_date
+        to_date_str=args.to_date,
+        update_price_alert_settings=args.update_price_alert_settings
     )

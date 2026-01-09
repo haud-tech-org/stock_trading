@@ -17,18 +17,28 @@ PRICE_ALERTS = {
     }
 }
 
-# If True, the 'calculate_suggested_price' function will use the performance-based
-# offsets defined below. If False, it will use the fallback logic.
-USE_PERFORMANCE_BY_APPROACH = False
+# This flag determines whether to use the performance-based suggested price (if available)
+# or default to the structural price.
+USE_PERFORMANCE_BY_APPROACH = True
 
 PERFORMANCE_BY_APPROACH = {
-    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.2667},
-    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 4.85},
-    'STRONG_CANDLE': {'avg_worst_loss_price': 3.3188},
-    'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 7.85},
-    'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 2.65},
+    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 0.9125},
+    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 3.5667},
+    'STRONG_CANDLE': {'avg_worst_loss_price': 3.675},
+    'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 10.0},
+    'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 2.5},
     'RCM': {'avg_worst_loss_price': 2.4},
-    'PRICE_GAP': {'avg_worst_loss_price': 1.7667}
+    'PRICE_GAP': {'avg_worst_loss_price': 0.4}
 }
 
-STRUCTURAL_PRICE_LEVEL_OFFSET = 0.0
+# A fixed offset added to all suggested price calculations to provide an extra buffer.
+# For BUY signals, this offset is subtracted from the calculated structural price.
+# For SELL signals, it's added.
+PRICE_LEVEL_OFFSET_FIXED = 0.1
+
+# The maximum and minimum required difference between the suggested price and the close price.
+MAX_PRICE_ADJUSTMENT_OFFSET = 1.5
+MIN_PRICE_ADJUSTMENT_OFFSET = 0.2
+# ==============================================================================
+# PERFORMANCE-BASED SUGGESTED PRICE SETTINGS
+# ==============================================================================
