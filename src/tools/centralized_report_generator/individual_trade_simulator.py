@@ -8,6 +8,7 @@ import glob
 import pytz
 from dataclasses import asdict
 import sys
+from typing import Optional
 
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -20,7 +21,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR, SESSIONS
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
-from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD_PROFIT, VALIDATION_PRICE_THRESHOLD_LOSS
+from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES
+from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
 from src.stockreports.alert.model.models import ProfitabilityReport, Trade
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, get_primary_suggested_price
 
@@ -57,7 +59,12 @@ def calculate_performance_by_approach(trades: list) -> dict:
     return performance_summary
 
 
-def simulate_individual_profitability(execution_symbol: str, alerts: list, trade_data: pd.DataFrame) -> ProfitabilityReport:
+def simulate_individual_profitability(
+    alerts: list, 
+    trade_data: pd.DataFrame,
+    profit_threshold: float,
+    loss_threshold: float
+) -> ProfitabilityReport:
     """
     Simulates profitability by treating each alert as an independent trade
     and evaluating its outcome within a fixed validation window.
@@ -197,8 +204,8 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
         status = "Failed"  # Default to Failed, will be updated if profit target is hit
 
         if entry_signal == 'BUY':
-            profit_target = entry_price + VALIDATION_PRICE_THRESHOLD_PROFIT
-            loss_target = entry_price - VALIDATION_PRICE_THRESHOLD_LOSS
+            profit_target = entry_price + profit_threshold
+            loss_target = entry_price - loss_threshold
             
             # Find the first candle to hit either target
             for time, candle in validation_window_df.iterrows():
@@ -216,8 +223,8 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
                     break # Exit the loop
 
         elif entry_signal == 'SELL':
-            profit_target = entry_price - VALIDATION_PRICE_THRESHOLD_PROFIT
-            loss_target = entry_price + VALIDATION_PRICE_THRESHOLD_LOSS
+            profit_target = entry_price - profit_threshold
+            loss_target = entry_price + loss_threshold
 
             # Find the first candle to hit either target
             for time, candle in validation_window_df.iterrows():
@@ -319,14 +326,51 @@ def simulate_individual_profitability(execution_symbol: str, alerts: list, trade
     )
 
 
-def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, date_str: str, mode: str = 'deployment'):
+def run_individual_trade_simulation(
+    execution_symbol: str, 
+    alert_sources: list, 
+    date_str: str, 
+    mode: str = 'deployment',
+    profit_threshold: Optional[float] = None,
+    loss_threshold: Optional[float] = None
+):
     """
-    Runs a profitability simulation using individual alerts to execute trades
-    on a single target symbol.
+    Runs a profitability simulation for a single day and a specific scenario.
+
+    This script fetches all alerts for a given day from various sources, then
+    simulates trades on a single execution symbol based on those alerts. The
+    simulation's behavior (take-profit and stop-loss) is defined by the
+    profit and loss thresholds.
+
+    The resulting daily report is saved to a scenario-specific directory,
+    e.g., `reports/consolidated/deployment/profit_3.0_loss_3.0/`. This allows
+    for easy aggregation by the `consolidate_reports.py` script.
+
+    It can be run independently for debugging or testing a single day's performance.
+
+    Usage Examples:
+
+    1. Simplified - Run for a specific date with default thresholds:
+       python3 -m src.tools.centralized_report_generator.individual_trade_simulator \\
+           --execution-symbol 41I1G1000 \\
+           --alert-sources VN30 \\
+           --date 2026-01-08
+
+    2. Full Arguments - Run for a specific date with custom thresholds and mode:
+       python3 -m src.tools.centralized_report_generator.individual_trade_simulator \\
+           --execution-symbol 41I1G1000 \\
+           --alert-sources VN30 41I1G1000 \\
+           --date 2026-01-08 \\
+           --mode development \\
+           --profit-threshold 5.0 \\
+           --loss-threshold 2.5
     """
+    # --- Use the centralized function to ensure thresholds are valid ---
+    profit_threshold, loss_threshold = get_default_thresholds(profit_threshold, loss_threshold)
+
     # Correctly define project_root by navigating up from the current file's location
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    reports_dir = os.path.join(project_root, "reports")
+    base_reports_dir = os.path.join(project_root, "reports")
     
     # --- 1. Load and Combine Alerts ---
     all_alerts = []
@@ -334,7 +378,8 @@ def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, 
     
     for source_symbol in alert_sources:
         # Construct the path to the specific mode directory (deployment or development)
-        source_dir = os.path.join(reports_dir, source_symbol, mode)
+        # --- FIX: Use base_reports_dir which is correctly defined ---
+        source_dir = os.path.join(base_reports_dir, source_symbol, mode)
         
         # Check if the specific mode directory exists before searching for alerts
         if not os.path.isdir(source_dir):
@@ -458,13 +503,22 @@ def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, 
 
     # --- 3. Run Simulation ---
     summary = simulate_individual_profitability(
-        execution_symbol=execution_symbol,
         alerts=all_alerts,
-        trade_data=price_data_df
+        trade_data=price_data_df,
+        profit_threshold=profit_threshold,
+        loss_threshold=loss_threshold
     )
 
     # --- 4. Generate and Save Report ---
-    output_dir = os.path.join(reports_dir, "consolidated", "deployment")
+    # --- New: Use the utility function to get the correct output directory ---
+    output_dir = get_report_directory(
+        base_dir=base_reports_dir,
+        report_type="consolidated",
+        mode=mode,
+        profit_threshold=profit_threshold,
+        loss_threshold=loss_threshold
+    )
+    # --- End New ---
     os.makedirs(output_dir, exist_ok=True)
     
     file_date_str = date_str.replace('-', '')
@@ -481,10 +535,11 @@ def run_individual_trade_simulation(execution_symbol: str, alert_sources: list, 
             # --- End of New Section ---
 
             summary_dict['app_config'] = APPROACH_CONFIG
+            # --- Updated: Reflect the actual thresholds used in the simulation ---
             validation_config = {
                 "VALIDATION_PERIOD_MINUTES": VALIDATION_PERIOD_MINUTES,
-                "VALIDATION_PRICE_THRESHOLD_PROFIT": VALIDATION_PRICE_THRESHOLD_PROFIT,
-                "VALIDATION_PRICE_THRESHOLD_LOSS": VALIDATION_PRICE_THRESHOLD_LOSS
+                "VALIDATION_PRICE_THRESHOLD_PROFIT": profit_threshold,
+                "VALIDATION_PRICE_THRESHOLD_LOSS": loss_threshold
             }
             summary_dict['validation_config'] = validation_config
             json.dump(summary_dict, f, indent=4, default=str) # Use default=str to handle datetime
@@ -522,6 +577,19 @@ if __name__ == "__main__":
         default='deployment',
         help="The run mode ('development' or 'deployment'). Defaults to 'deployment'."
     )
+    # --- New arguments for running specific scenarios ---
+    parser.add_argument(
+        "--profit-threshold",
+        type=float,
+        default=None,
+        help="The take-profit threshold for the simulation. Overrides settings file."
+    )
+    parser.add_argument(
+        "--loss-threshold",
+        type=float,
+        default=None,
+        help="The stop-loss threshold for the simulation. Overrides settings file."
+    )
 
     args = parser.parse_args()
 
@@ -529,5 +597,7 @@ if __name__ == "__main__":
         execution_symbol=args.execution_symbol,
         alert_sources=args.alert_sources,
         date_str=args.date,
-        mode=args.mode
+        mode=args.mode,
+        profit_threshold=args.profit_threshold,
+        loss_threshold=args.loss_threshold
     )

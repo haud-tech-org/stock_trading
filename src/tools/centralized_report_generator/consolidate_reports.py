@@ -34,6 +34,7 @@ from collections import defaultdict
 import logging
 import importlib
 import sys
+from typing import Optional
 
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -41,6 +42,9 @@ sys.path.insert(0, project_root)
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
+
 
 def _run_update_price_alert_settings(performance_data: dict, settings_file_path: str):
     """
@@ -137,33 +141,63 @@ def _run_update_price_alert_settings(performance_data: dict, settings_file_path:
         logging.error(f"Failed to write updated settings to {settings_file_path}: {e}")
 
 
-def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str: str, update_price_alert_settings: bool = False):
+def consolidate_reports(
+    symbol: str, 
+    mode: str, 
+    from_date_str: str, 
+    to_date_str: str, 
+    update_price_alert_settings: bool = False,
+    profit_threshold: Optional[float] = None,
+    loss_threshold: Optional[float] = None
+):
     """
-    Aggregates individual trade simulation reports and optionally updates settings.
+    Aggregates daily simulation reports into a single consolidated summary.
 
-    This function finds all individual simulation reports for a given symbol and mode
-    within the specified date range. It calculates overall performance metrics and
-    performance by approach, then saves the results to a consolidated JSON file.
+    This script scans a scenario-specific directory for daily reports generated
+    by `individual_trade_simulator.py`. It aggregates performance metrics across
+    a specified date range for a given symbol and mode.
 
-    If `update_price_alert_settings` is True, it will also update the
-    'PERFORMANCE_BY_APPROACH' dictionary in the 'price_alert_settings.py' file
-    with the latest 'avg_worst_loss_price' for each approach.
+    The final consolidated report is saved in the same scenario directory.
+    Optionally, it can update the 'price_alert_settings.py' file with the
+    latest 'avg_worst_loss_price' calculated from the data, which helps in
+    refining the price suggestion logic.
 
-    Args:
-        symbol (str): The stock symbol to process.
-        mode (str): The run mode ('development' or 'deployment').
-        from_date_str (str): The start date for aggregation in 'YYYY-MM-DD' format.
-        to_date_str (str): The end date for aggregation in 'YYYY-MM-DD' format.
-        update_price_alert_settings (bool): If True, update the price alert settings file.
+    Usage Examples:
+
+    1. Simplified - Consolidate reports for a symbol using default thresholds:
+       python3 -m src.tools.centralized_report_generator.consolidate_reports \\
+           --symbol 41I1G1000 \\
+           --from-date 2026-01-05 \\
+           --to-date 2026-01-08
+
+    2. Full Arguments - Consolidate for a specific scenario and update settings:
+       python3 -m src.tools.centralized_report_generator.consolidate_reports \\
+           --symbol 41I1G1000 \\
+           --mode deployment \\
+           --from-date 2026-01-05 \\
+           --to-date 2026-01-08 \\
+           --profit-threshold 5.0 \\
+           --loss-threshold 2.5 \\
+           --update-price-alert-settings
     """
+    # --- Use the centralized function to ensure thresholds are valid ---
+    profit_threshold, loss_threshold = get_default_thresholds(profit_threshold, loss_threshold)
+
     # Correctly define project_root by navigating up from the current file's location
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    base_reports_dir = os.path.join(project_root, "reports")
     
-    # The reports to be consolidated are in the symbol's own directory, under the specified mode
-    reports_dir = os.path.join(project_root, "reports", "consolidated", mode)
+    # --- Updated: Use the new utility to get the correct directory for reading reports ---
+    reports_dir = get_report_directory(
+        base_dir=base_reports_dir,
+        report_type="consolidated",
+        mode=mode,
+        profit_threshold=profit_threshold,
+        loss_threshold=loss_threshold
+    )
 
     if not os.path.exists(reports_dir):
-        logging.error(f"Reports directory does not exist: {reports_dir}")
+        logging.error(f"Reports directory does not exist for the specified scenario: {reports_dir}")
         return
 
     # --- 1. Discover and Filter Report Files ---
@@ -309,6 +343,7 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
             with open(filtered_files[0], 'r') as f:
                 first_report_data = json.load(f)
                 app_config = first_report_data.get("app_config")
+                # --- Use the specific validation config from the report ---
                 validation_config = first_report_data.get("validation_config")
         except (json.JSONDecodeError, IOError) as e:
             logging.warning(f"Could not read config from {filtered_files[0]}: {e}")
@@ -322,6 +357,7 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         "validation_config": validation_config
     }
 
+    # --- The output path is the same as the input directory ---
     output_filename = f"{symbol}_overall_performance_{from_date_str}_to_{to_date_str}.json"
     output_path = os.path.join(reports_dir, output_filename)
 
@@ -372,7 +408,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--update-price-alert-settings",
         action='store_true',
-        help="If set, the script will update 'price_alert_settings.py' with the new performance data."
+        help="If set, update 'price_alert_settings.py' with new performance data."
+    )
+    # --- New arguments for running specific scenarios ---
+    parser.add_argument(
+        "--profit-threshold",
+        type=float,
+        default=None,
+        help="The profit threshold for the scenario to consolidate. Overrides settings file."
+    )
+    parser.add_argument(
+        "--loss-threshold",
+        type=float,
+        default=None,
+        help="The loss threshold for the scenario to consolidate. Overrides settings file."
     )
 
     args = parser.parse_args()
@@ -382,5 +431,7 @@ if __name__ == "__main__":
         mode=args.mode,
         from_date_str=args.from_date,
         to_date_str=args.to_date,
-        update_price_alert_settings=args.update_price_alert_settings
+        update_price_alert_settings=args.update_price_alert_settings,
+        profit_threshold=args.profit_threshold,
+        loss_threshold=args.loss_threshold
     )
