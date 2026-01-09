@@ -37,7 +37,7 @@ PERFORMANCE_BY_APPROACH = {
 PRICE_LEVEL_OFFSET_FIXED = 0.1
 
 # The maximum and minimum required difference between the suggested price and the close price.
-MAX_PRICE_ADJUSTMENT_OFFSET = 0.5
+MAX_PRICE_ADJUSTMENT_OFFSET = 1.5
 MIN_PRICE_ADJUSTMENT_OFFSET = 0.2
 # ==============================================================================
 # PERFORMANCE-BASED SUGGESTED PRICE SETTINGS
