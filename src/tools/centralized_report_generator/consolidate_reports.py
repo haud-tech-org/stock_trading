@@ -249,7 +249,9 @@ def consolidate_reports(
         "total_actual_profit_loss": 0.0,
         "actual_profit_loss_values": [],
         "worst_loss_price_values": [],
-        "best_profit_price_values": []
+        "best_profit_price_values": [],
+        "time_to_trigger_minutes_values": [],
+        "time_in_trade_minutes_values": []
     })
 
     all_trades = []
@@ -298,6 +300,11 @@ def consolidate_reports(
             stats["worst_loss_price_values"].append(trade.get("worst_loss_price"))
         if trade.get("best_profit_price") is not None:
             stats["best_profit_price_values"].append(trade.get("best_profit_price"))
+        
+        if trade.get("time_to_trigger_minutes") is not None:
+            stats["time_to_trigger_minutes_values"].append(trade.get("time_to_trigger_minutes"))
+        if trade.get("time_in_trade_minutes") is not None:
+            stats["time_in_trade_minutes_values"].append(trade.get("time_in_trade_minutes"))
         # --- End Aggregation ---
 
         if trade.get("status") == "Success":
@@ -312,22 +319,30 @@ def consolidate_reports(
         actual_profit_loss_values = stats.pop("actual_profit_loss_values")
         worst_loss_price_values = stats.pop("worst_loss_price_values")
         best_profit_price_values = stats.pop("best_profit_price_values")
+        time_to_trigger_minutes_values = stats.pop("time_to_trigger_minutes_values")
+        time_in_trade_minutes_values = stats.pop("time_in_trade_minutes_values")
 
         final_performance_by_approach[approach] = {
             "total_trades": total_trades,
             "successful_trades": stats["successful_trades"],
             "failed_trades": stats["failed_trades"],
             "success_rate": f"{(stats['successful_trades'] / total_trades * 100):.2f}%" if total_trades > 0 else "0.00%",
-            "total_actual_profit_loss": round(stats["total_actual_profit_loss"], 4),
-            "average_actual_profit_loss": round(stats["total_actual_profit_loss"] / total_trades, 4) if total_trades > 0 else 0.0,
-            "best_actual_profit": round(max(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
-            "worst_actual_loss": round(min(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
-            "min_worst_loss_price": round(min(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
-            "max_worst_loss_price": round(max(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
-            "avg_worst_loss_price": round(sum(worst_loss_price_values) / len(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
-            "min_best_profit_price": round(min(best_profit_price_values), 4) if best_profit_price_values else 0.0,
-            "max_best_profit_price": round(max(best_profit_price_values), 4) if best_profit_price_values else 0.0,
-            "avg_best_profit_price": round(sum(best_profit_price_values) / len(best_profit_price_values), 4) if best_profit_price_values else 0.0,
+            "total_actual_profit_loss": round(stats["total_actual_profit_loss"], 1),
+            "average_actual_profit_loss": round(stats["total_actual_profit_loss"] / total_trades, 1) if total_trades > 0 else 0.0,
+            "best_actual_profit": round(max(actual_profit_loss_values), 1) if actual_profit_loss_values else 0.0,
+            "worst_actual_loss": round(min(actual_profit_loss_values), 1) if actual_profit_loss_values else 0.0,
+            "min_worst_loss_price": round(min(worst_loss_price_values), 1) if worst_loss_price_values else 0.0,
+            "max_worst_loss_price": round(max(worst_loss_price_values), 1) if worst_loss_price_values else 0.0,
+            "avg_worst_loss_price": round(sum(worst_loss_price_values) / len(worst_loss_price_values), 1) if worst_loss_price_values else 0.0,
+            "min_best_profit_price": round(min(best_profit_price_values), 1) if best_profit_price_values else 0.0,
+            "max_best_profit_price": round(max(best_profit_price_values), 1) if best_profit_price_values else 0.0,
+            "avg_best_profit_price": round(sum(best_profit_price_values) / len(best_profit_price_values), 1) if best_profit_price_values else 0.0,
+            "min_time_to_trigger_minutes": round(min(time_to_trigger_minutes_values), 1) if time_to_trigger_minutes_values else 0.0,
+            "max_time_to_trigger_minutes": round(max(time_to_trigger_minutes_values), 1) if time_to_trigger_minutes_values else 0.0,
+            "avg_time_to_trigger_minutes": round(sum(time_to_trigger_minutes_values) / len(time_to_trigger_minutes_values), 1) if time_to_trigger_minutes_values else 0.0,
+            "min_time_in_trade_minutes": round(min(time_in_trade_minutes_values), 1) if time_in_trade_minutes_values else 0.0,
+            "max_time_in_trade_minutes": round(max(time_in_trade_minutes_values), 1) if time_in_trade_minutes_values else 0.0,
+            "avg_time_in_trade_minutes": round(sum(time_in_trade_minutes_values) / len(time_in_trade_minutes_values), 1) if time_in_trade_minutes_values else 0.0,
         }
 
     # --- 4. Generate and Save Master Summary File ---
@@ -335,9 +350,9 @@ def consolidate_reports(
     total_trades_overall = overall_summary["total_trades"]
     overall_summary["success_rate"] = f"{(overall_summary['successful_trades'] / total_trades_overall * 100):.2f}%" if total_trades_overall > 0 else "0.00%"
     overall_summary["failure_rate"] = f"{(overall_summary['failed_trades'] / total_trades_overall * 100):.2f}%" if total_trades_overall > 0 else "0.00%"
-    overall_summary["total_actual_profit_loss"] = round(overall_summary["total_actual_profit_loss"], 4)
-    overall_summary["total_best_profit_price"] = round(overall_summary["total_best_profit_price"], 4)
-    overall_summary["total_worst_loss_price"] = round(overall_summary["total_worst_loss_price"], 4)
+    overall_summary["total_actual_profit_loss"] = round(overall_summary["total_actual_profit_loss"], 1)
+    overall_summary["total_best_profit_price"] = round(overall_summary["total_best_profit_price"], 1)
+    overall_summary["total_worst_loss_price"] = round(overall_summary["total_worst_loss_price"], 1)
     overall_summary["source_symbols"] = source_symbols
 
 

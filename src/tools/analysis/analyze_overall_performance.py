@@ -131,11 +131,12 @@ def generate_markdown_report(scenarios: List[ScenarioPerformance], rankings: Lis
 
         # --- Section 2: Detailed Summary Table ---
         f.write("## 2. Detailed Scenario Performance\n\n")
+        f.write("Ordered by Total P/L\n\n")
         header = "| Scenario (Profit/Loss) | Total Trades | Successful | Failed | Ignored | Success Rate | Total P/L | Best Profit | Worst Loss |\n"
         separator = "|:---|---:|---:|---:|---:|---:|---:|---:|---:|\n"
         f.write(header)
         f.write(separator)
-        for s in sorted(scenarios, key=lambda x: (x.profit_threshold, x.loss_threshold)):
+        for s in sorted(scenarios, key=lambda x: x.summary.total_actual_profit_loss, reverse=True):
             summary = s.summary
             row = (f"| `{s.profit_threshold}/{s.loss_threshold}` | {summary.total_trades} | {summary.successful_trades} | "
                    f"{summary.failed_trades} | {summary.ignored_trades} | {summary.success_rate} | "
@@ -146,12 +147,13 @@ def generate_markdown_report(scenarios: List[ScenarioPerformance], rankings: Lis
 
         # --- Section 3: Ranked Performance Analysis ---
         f.write("## 3. Ranked Performance Analysis (Score 1-5, Higher is Better)\n\n")
+        f.write("Ordered by Successful Trades\n\n")
         header = ("| Scenario | Profit per Trade | Total Profit | Success Rate | Total Trades (Lower is Better) | Successful Trades |\n")
         separator = "|:---|:---:|:---:|:---:|:---:|:---:|\n"
         f.write(header)
         f.write(separator)
 
-        for r in rankings:
+        for r in sorted(rankings, key=lambda x: x.successful_trades.value, reverse=True):
             scenario_name = f"{r.profit_threshold}/{r.loss_threshold}"
             row = (f"| `{scenario_name}` | "
                    f"`{r.profit_per_trade.value:.2f}` ({r.profit_per_trade.score}) | "
@@ -172,9 +174,50 @@ def generate_markdown_report(scenarios: List[ScenarioPerformance], rankings: Lis
     print(f"Successfully generated performance analysis report at: {output_path}")
 
 
+def run_analysis(mode: str, base_reports_dir: str):
+    """
+    Runs the performance analysis and generates a markdown report.
+    This function is designed to be called from other scripts.
+    """
+    reports_base_dir_path = get_report_directory(
+        base_dir=base_reports_dir,
+        report_type='consolidated',
+        mode=mode
+    )
+    
+    report_files = find_overall_performance_files(reports_base_dir_path)
+    if not report_files:
+        logging.warning(f"No overall performance report files found in {reports_base_dir_path} for analysis.")
+        return
+
+    scenarios = load_performance_data(report_files)
+    if not scenarios:
+        logging.warning("Could not load any valid scenario data for analysis.")
+        return
+        
+    rankings = rank_scenarios(scenarios)
+    
+    if not rankings:
+        logging.warning("No rankings could be generated from the scenario data.")
+        return
+
+    # Determine output path dynamically
+    first_scenario = scenarios[0]
+    start_date = first_scenario.start_date
+    end_date = first_scenario.end_date
+    symbol = first_scenario.execution_symbol
+    
+    os.makedirs(reports_base_dir_path, exist_ok=True)
+    
+    output_filename = f"{symbol}_performance_analysis_{start_date}_to_{end_date}.md"
+    output_path = os.path.join(reports_base_dir_path, output_filename)
+
+    generate_markdown_report(scenarios, rankings, output_path)
+
+
 def main():
     """
-    Main function to run the analysis.
+    Main function to run the analysis from the command line.
     """
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     parser = argparse.ArgumentParser(description="Analyze overall trading performance from report files.")
@@ -194,37 +237,7 @@ def main():
 
     args = parser.parse_args()
     
-    # --- Updated: Use the correct utility to get the directory for reading reports ---
-    reports_base_dir = get_report_directory(
-        base_dir=args.base_reports_dir,
-        report_type='consolidated',
-        mode=args.mode
-    )
-    
-    report_files = find_overall_performance_files(reports_base_dir)
-    if not report_files:
-        print(f"No overall performance report files found in {reports_base_dir}")
-        return
-
-    scenarios = load_performance_data(report_files)
-    if not scenarios:
-        print("Could not load any valid scenario data.")
-        return
-        
-    rankings = rank_scenarios(scenarios)
-    
-    # Determine output path dynamically
-    first_scenario = scenarios[0]
-    start_date = first_scenario.start_date
-    end_date = first_scenario.end_date
-    symbol = first_scenario.execution_symbol
-    
-    os.makedirs(reports_base_dir, exist_ok=True)
-    
-    output_filename = f"{symbol}_performance_analysis_{start_date}_to_{end_date}.md"
-    output_path = os.path.join(reports_base_dir, output_filename)
-
-    generate_markdown_report(scenarios, rankings, output_path)
+    run_analysis(mode=args.mode, base_reports_dir=args.base_reports_dir)
 
 
 if __name__ == "__main__":

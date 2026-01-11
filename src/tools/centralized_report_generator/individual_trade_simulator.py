@@ -269,6 +269,16 @@ def simulate_individual_profitability(
         exit_candle = trade_data.asof(exit_time)
         # --- End of New Exit Logic ---
 
+        # --- Calculate Durations ---
+        time_to_trigger_minutes = None
+        if trigger_timestamp and pd.notna(trigger_timestamp):
+            time_to_trigger_minutes = (trigger_timestamp - entry_time).total_seconds() / 60
+
+        time_in_trade_minutes = None
+        if exit_time and pd.notna(exit_time) and trigger_timestamp and pd.notna(trigger_timestamp):
+            time_in_trade_minutes = (exit_time - trigger_timestamp).total_seconds() / 60
+        # --- End of Duration Calculation ---
+
         # --- Definitive Exit Suggested Price Logic ---
         exit_signal = 'SELL' if entry_signal == 'BUY' else 'BUY'
 
@@ -301,7 +311,9 @@ def simulate_individual_profitability(
             best_possible_exit_price=best_possible_exit_price,
             worst_loss_price=worst_loss_price,
             best_profit_price=best_profit_price,
-            trigger_timestamp=trigger_timestamp.isoformat() if trigger_timestamp else None
+            trigger_timestamp=trigger_timestamp.isoformat() if trigger_timestamp else None,
+            time_to_trigger_minutes=time_to_trigger_minutes,
+            time_in_trade_minutes=time_in_trade_minutes
         )
         trades.append(trade)
 

@@ -46,31 +46,31 @@ import pandas as pd
 import sys
 import os
 from typing import Optional
-import glob
 
 # Add the project root to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, project_root)
 
 from src.stockreports.config.validation_settings import VALIDATION_PRICE_THRESHOLD_PROFIT, VALIDATION_PRICE_THRESHOLD_LOSS
-from src.stockreports.utils.file_utils import clear_files_in_directory
-from src.stockreports.utils.report_utils import get_consolidated_scenario_directory
+# from src.stockreports.utils.file_utils import clear_files_in_directory
+# from src.stockreports.utils.report_utils import get_consolidated_scenario_directory
 from src.stockreports.utils.time_utils import get_market_timezone
 from src.tools.centralized_report_generator.consolidate_reports import consolidate_reports
 from src.tools.centralized_report_generator.individual_trade_simulator import run_individual_trade_simulation
 from src.tools.centralized_report_generator.support_resistance_detector import run_sr_detection_for_symbols
 from src.tools.centralized_report_generator.update_alert_files_with_suggestion import update_alerts_with_suggested_prices
+from src.tools.analysis.analyze_overall_performance import run_analysis
 
 
-def _clear_scenario_reports(mode: str, profit_threshold: float, loss_threshold: float):
-    """A helper to clear old reports for a specific scenario."""
-    logging.info(f"--- Clearing old reports for scenario Profit: {profit_threshold}, Loss: {loss_threshold} ---")
-    scenario_dir = get_consolidated_scenario_directory(
-        mode=mode,
-        profit_threshold=profit_threshold,
-        loss_threshold=loss_threshold
-    )
-    clear_files_in_directory(scenario_dir)
+# def _clear_scenario_reports(mode: str, profit_threshold: float, loss_threshold: float):
+#     """A helper to clear old reports for a specific scenario."""
+#     logging.info(f"--- Clearing old reports for scenario Profit: {profit_threshold}, Loss: {loss_threshold} ---")
+#     scenario_dir = get_consolidated_scenario_directory(
+#         mode=mode,
+#         profit_threshold=profit_threshold,
+#         loss_threshold=loss_threshold
+#     )
+#     clear_files_in_directory(scenario_dir)
 
 
 def generate_reports_for_period(
@@ -85,7 +85,8 @@ def generate_reports_for_period(
     sr_resolution: int,
     sr_min_touches: int,
     suggestion_type: Optional[str],
-    update_price_alert_settings: bool
+    update_price_alert_settings: bool,
+    run_analysis_flag: bool
 ):
     """
     Orchestrates the generation of daily reports, consolidated summaries,
@@ -107,6 +108,8 @@ def generate_reports_for_period(
             'structural', or 'all').
         update_price_alert_settings (bool): If True, the consolidation step will
             update the 'price_alert_settings.py' file with new performance data.
+        run_analysis_flag (bool): If True, runs the performance analysis script
+            after all other steps are complete.
     """
     logging.info(f"--- Starting centralized report generation from {from_date_str} to {to_date_str} ---")
 
@@ -119,8 +122,8 @@ def generate_reports_for_period(
                 logging.info(f"--- Skipping simulation for Profit: {profit_threshold}, Loss: {loss_threshold} (profit <= loss) ---")
                 continue
 
-            # Clear old reports for the current scenario before running
-            _clear_scenario_reports(mode, profit_threshold, loss_threshold)
+            # # Clear old reports for the current scenario before running
+            # _clear_scenario_reports(mode, profit_threshold, loss_threshold)
 
             logging.info(f"--- Running simulation for Profit: {profit_threshold}, Loss: {loss_threshold} ---")
 
@@ -171,7 +174,18 @@ def generate_reports_for_period(
                 logging.error(f"Failed to generate consolidated report. Error: {e}")
                 # Even if consolidation fails, we might still want to run the SR detector
     
-    # --- 3. Run Support/Resistance Detector (if requested) ---
+    # --- 3. Run Performance Analysis (if requested) ---
+    if run_analysis_flag:
+        logging.info("--- Starting performance analysis. ---")
+        try:
+            # The analysis script will find the reports based on the mode
+            base_reports_dir = os.path.join(project_root, "reports")
+            run_analysis(mode=mode, base_reports_dir=base_reports_dir)
+            logging.info("--- Successfully ran performance analysis. ---")
+        except Exception as e:
+            logging.error(f"Performance analysis failed. Error: {e}", exc_info=True)
+
+    # --- 4. Run Support/Resistance Detector (if requested) ---
     if run_sr:
         logging.info("--- Starting Support/Resistance detection process. ---")
         if not sr_start_time:
@@ -198,7 +212,7 @@ def generate_reports_for_period(
         except Exception as e:
             logging.error(f"Support/Resistance detector failed. Error: {e}")
 
-    # --- 4. Update Alert Files with Suggested Prices (if requested) ---
+    # --- 5. Update Alert Files with Suggested Prices (if requested) ---
     if suggestion_type:
         logging.info("--- Starting update of alert files with suggested prices. ---")
         try:
@@ -290,6 +304,12 @@ if __name__ == "__main__":
         action='store_true',
         help="If set, each consolidated report step will attempt to update 'price_alert_settings.py'."
     )
+    parser.add_argument(
+        "--run-analysis",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run the performance analysis script after all reports are generated. Disable with --no-run-analysis."
+    )
 
     args = parser.parse_args()
 
@@ -305,5 +325,6 @@ if __name__ == "__main__":
         sr_resolution=args.sr_resolution,
         sr_min_touches=args.sr_min_touches,
         suggestion_type=args.suggestion_type,
-        update_price_alert_settings=args.update_price_alert_settings
+        update_price_alert_settings=args.update_price_alert_settings,
+        run_analysis_flag=args.run_analysis
     )

@@ -120,6 +120,8 @@ class Trade:
     worst_loss_price: Optional[float] = None
     best_profit_price: Optional[float] = None
     trigger_timestamp: Optional[str] = None
+    time_to_trigger_minutes: Optional[float] = None
+    time_in_trade_minutes: Optional[float] = None
 
 @dataclass
 class ProfitabilityReport:
