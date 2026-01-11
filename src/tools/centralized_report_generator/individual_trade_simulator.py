@@ -148,26 +148,40 @@ def simulate_individual_profitability(
             continue
 
         # --- New: Find the exact trigger time and adjust the validation window ---
-        across_time = None
-        if entry_signal == 'BUY':
-            # Find the first candle where the low was at or below the entry price
-            triggered_candles = initial_validation_window_df[initial_validation_window_df['low'] <= entry_price]
-            if not triggered_candles.empty:
-                across_time = triggered_candles.index[0]
-        elif entry_signal == 'SELL':
-            # Find the first candle where the high was at or above the entry price
-            triggered_candles = initial_validation_window_df[initial_validation_window_df['high'] >= entry_price]
-            if not triggered_candles.empty:
-                across_time = triggered_candles.index[0]
+        trigger_timestamp = None
 
-        if across_time is None:
+        # Separate the first candle from the rest of the window
+        first_candle = initial_validation_window_df.iloc[0]
+        remaining_candles = initial_validation_window_df.iloc[1:]
+
+        if entry_signal == 'BUY':
+            # 1. Check the first candle's close price
+            if first_candle['close'] <= entry_price:
+                trigger_timestamp = first_candle.name
+            # 2. If not triggered, check the remaining candles' low price
+            elif not remaining_candles.empty:
+                triggered_in_remaining = remaining_candles[remaining_candles['low'] <= entry_price]
+                if not triggered_in_remaining.empty:
+                    trigger_timestamp = triggered_in_remaining.index[0]
+
+        elif entry_signal == 'SELL':
+            # 1. Check the first candle's close price
+            if first_candle['close'] >= entry_price:
+                trigger_timestamp = first_candle.name
+            # 2. If not triggered, check the remaining candles' high price
+            elif not remaining_candles.empty:
+                triggered_in_remaining = remaining_candles[remaining_candles['high'] >= entry_price]
+                if not triggered_in_remaining.empty:
+                    trigger_timestamp = triggered_in_remaining.index[0]
+
+        if trigger_timestamp is None:
             logging.info(f"Trade at {entry_time} for {entry_signal} was IGNORED. Entry price {entry_price} not met in validation window.")
             ignored_trades += 1
             continue
         
-        logging.info(f"Trade triggered at {across_time}. Adjusting validation window.")
+        logging.info(f"Trade triggered at {trigger_timestamp}. Adjusting validation window.")
         # The new validation window starts from the moment the price was crossed
-        validation_window_df = initial_validation_window_df.loc[across_time:]
+        validation_window_df = initial_validation_window_df.loc[trigger_timestamp:]
         # --- End of Trigger Time and Window Adjustment ---
 
         # --- Best Possible Entry/Exit Price & Worst Loss Calculation ---
@@ -286,7 +300,8 @@ def simulate_individual_profitability(
             best_possible_entry_price=best_possible_entry_price,
             best_possible_exit_price=best_possible_exit_price,
             worst_loss_price=worst_loss_price,
-            best_profit_price=best_profit_price
+            best_profit_price=best_profit_price,
+            trigger_timestamp=trigger_timestamp.isoformat() if trigger_timestamp else None
         )
         trades.append(trade)
 

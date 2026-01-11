@@ -115,10 +115,11 @@ class Trade:
     entry_signal_status: str
     exit_signal_status: str
     improvement_suggestion: str
-    best_possible_entry_price: float
-    best_possible_exit_price: float
-    worst_loss_price: float
-    best_profit_price: float
+    best_possible_entry_price: Optional[float] = None
+    best_possible_exit_price: Optional[float] = None
+    worst_loss_price: Optional[float] = None
+    best_profit_price: Optional[float] = None
+    trigger_timestamp: Optional[str] = None
 
 @dataclass
 class ProfitabilityReport:
