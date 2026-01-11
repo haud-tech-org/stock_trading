@@ -278,7 +278,7 @@ def simulate_individual_profitability(
             exit_approach='VALIDATION_EXIT',
             actual_profit_loss=actual_profit_loss,
             status=status,
-            entry_source_symbol=alert.get('source_symbol'),
+            entry_source_symbol=alert.get('symbol'),
             exit_source_symbol='SYNTHETIC',
             entry_signal_status=status,
             exit_signal_status='N/A',
@@ -414,7 +414,6 @@ def run_individual_trade_simulation(
                         parent_dir_name = os.path.basename(os.path.dirname(alert_file_path))
 
                         for alert in alerts:
-                            alert['source_symbol'] = source_symbol
                             if 'approach' not in alert or not alert['approach']:
                                 alert['approach'] = parent_dir_name
                         # --- End of Fix ---

@@ -256,18 +256,19 @@ def consolidate_reports(
     for report_file in filtered_files:
         try:
             with open(report_file, 'r') as f:
-                data = json.load(f)
+                report_data = json.load(f)
                 
-                # Aggregate overall summary fields
-                overall_summary["total_trades"] += data.get("total_trades", 0)
-                overall_summary["successful_trades"] += data.get("successful_trades", 0)
-                overall_summary["failed_trades"] += data.get("failed_trades", 0)
-                overall_summary["ignored_trades"] += data.get("ignored_trades", 0)
-                overall_summary["total_actual_profit_loss"] += data.get("total_actual_profit_loss", 0.0)
-                overall_summary["total_best_profit_price"] += data.get("total_best_profit_price", 0.0)
-                overall_summary["total_worst_loss_price"] += data.get("total_worst_loss_price", 0.0)
+                # --- FIX: Aggregate top-level summary fields from each daily report ---
+                overall_summary["total_trades"] += report_data.get("total_trades", 0)
+                overall_summary["successful_trades"] += report_data.get("successful_trades", 0)
+                overall_summary["failed_trades"] += report_data.get("failed_trades", 0)
+                overall_summary["ignored_trades"] += report_data.get("ignored_trades", 0)
+                overall_summary["total_actual_profit_loss"] += report_data.get("total_actual_profit_loss", 0.0)
+                overall_summary["total_best_profit_price"] += report_data.get("total_best_profit_price", 0.0)
+                overall_summary["total_worst_loss_price"] += report_data.get("total_worst_loss_price", 0.0)
+                # --- END FIX ---
 
-                trades = data.get("trades", [])
+                trades = report_data.get("trades", [])
                 all_trades.extend(trades)
         except (json.JSONDecodeError, IOError) as e:
             logging.error(f"Error reading or parsing {report_file}: {e}")
