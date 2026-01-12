@@ -30,6 +30,13 @@ VALIDATION_PRICE_DROP_THRESHOLD = 3.0
 VALIDATION_TIME_WINDOW_MINUTES = 10
 VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity in validation scripts
 
+# Maximum Time to Trigger in Minutes
+# Meaning: The maximum number of minutes allowed from alert generation to trade entry (price cross).
+# Guidance: If a trade doesn't trigger within this window, it's considered missed and ignored.
+# Range: Integer > 0.
+# Example: `MAX_TIME_TO_TRIGGER_MINUTES = 5`
+MAX_TIME_TO_TRIGGER_MINUTES = 3
+
 # Validation Price Threshold for Take-Profit
 # Meaning: The price difference from the entry point that triggers a "Success" (take-profit) exit.
 # Guidance: Defines the reward target for a trade.
