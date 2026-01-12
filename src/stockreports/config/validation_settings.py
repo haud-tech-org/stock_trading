@@ -34,12 +34,12 @@ VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity 
 # Meaning: The price difference from the entry point that triggers a "Success" (take-profit) exit.
 # Guidance: Defines the reward target for a trade.
 # Range: Float > 0.
-VALIDATION_PRICE_THRESHOLD_PROFIT = 3.0
+VALIDATION_PRICE_THRESHOLD_PROFIT = [3.0, 3.5, 4.0, 4.5, 5.0]
 # Validation Price Threshold for Stop-Loss
 # Meaning: The price difference from the entry point that triggers a "Failed" (stop-loss) exit.
 # Guidance: Defines the risk tolerance for a trade.
 # Range: Float > 0.
-VALIDATION_PRICE_THRESHOLD_LOSS = 3.0
+VALIDATION_PRICE_THRESHOLD_LOSS = [2.5, 3.0, 3.5, 4.0]
 
 
 # --- Data Source Configuration ---

@@ -1,36 +1,41 @@
 """
-Centralized Summary Report Generator
+Centralized Report Generation and Backtesting Orchestrator
 
 Purpose:
-This script is the main orchestrator for generating comprehensive trading reports
-and updating related configurations. It can perform several key tasks in sequence:
+This script is the main entry point for running a comprehensive backtesting and
+reporting workflow. It automates the process of simulating trades across multiple
+scenarios (profit/loss thresholds) and can perform several key tasks in sequence:
 
-1.  **Individual Trade Simulation**: For each day in a given date range, it
-    simulates trades based on generated alerts.
-2.  **Consolidated Reporting**: It aggregates the results of the daily simulations
-    into a single performance summary. It can optionally update the main
-    price alert configuration file with new performance metrics.
+1.  **Batch Trade Simulation**: Iterates through profit/loss scenarios defined in
+    `validation_settings.py`. For each scenario, it runs `individual_trade_simulator.py`
+    for every day in a given date range.
+2.  **Batch Consolidated Reporting**: After each scenario's daily simulations are
+    complete, it runs `consolidate_reports.py` to aggregate the results into a
+    single performance summary for that scenario.
 3.  **Support/Resistance Detection**: Optionally, it can run a historical analysis
     to detect and update significant support and resistance price levels.
 4.  **Suggested Price Backfilling**: Optionally, it can trigger a maintenance
     script to backfill or update suggested entry prices in existing alert files.
 
 Usage Examples:
-1. Generate standard daily and consolidated reports for a date range:
-   python3 -m src.tools.centralized_report_generator.centralized_report_generator \\
-       --execution-symbol 41I1G1000 \\
-       --alert-sources VN30 41I1G1000 \\
-       --from-date 2026-01-05 --to-date 2026-01-08 \\
-       --mode deployment
 
-2. Run the full process, including S/R detection, suggested price backfilling,
-   and updating the price alert configuration from the consolidated report:
+1. Simplified - Run backtesting for a date range with default settings:
    python3 -m src.tools.centralized_report_generator.centralized_report_generator \\
        --execution-symbol 41I1G1000 \\
        --alert-sources VN30 \\
-       --from-date 2026-01-08 --to-date 2026-01-08 \\
+       --from-date 2026-01-05 \\
+       --to-date 2026-01-08 \\
+       --mode deployment
+
+2. Full Arguments - Run the complete workflow with all optional tasks:
+   python3 -m src.tools.centralized_report_generator.centralized_report_generator \\
+       --execution-symbol 41I1G1000 \\
+       --alert-sources VN30 41I1G1000 \\
+       --from-date 2026-01-08 \\
+       --to-date 2026-01-08 \\
        --mode deployment \\
-       --run-sr-detector --sr-start-time "2026-01-01 09:00:00" \\
+       --run-sr-detector \\
+       --sr-start-time "2026-01-01 09:00:00" \\
        --suggestion-type all \\
        --update-price-alert-settings
 """
@@ -46,11 +51,26 @@ from typing import Optional
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, project_root)
 
+from src.stockreports.config.validation_settings import VALIDATION_PRICE_THRESHOLD_PROFIT, VALIDATION_PRICE_THRESHOLD_LOSS
+# from src.stockreports.utils.file_utils import clear_files_in_directory
+# from src.stockreports.utils.report_utils import get_consolidated_scenario_directory
 from src.stockreports.utils.time_utils import get_market_timezone
 from src.tools.centralized_report_generator.consolidate_reports import consolidate_reports
 from src.tools.centralized_report_generator.individual_trade_simulator import run_individual_trade_simulation
 from src.tools.centralized_report_generator.support_resistance_detector import run_sr_detection_for_symbols
 from src.tools.centralized_report_generator.update_alert_files_with_suggestion import update_alerts_with_suggested_prices
+from src.tools.analysis.analyze_overall_performance import run_analysis
+
+
+# def _clear_scenario_reports(mode: str, profit_threshold: float, loss_threshold: float):
+#     """A helper to clear old reports for a specific scenario."""
+#     logging.info(f"--- Clearing old reports for scenario Profit: {profit_threshold}, Loss: {loss_threshold} ---")
+#     scenario_dir = get_consolidated_scenario_directory(
+#         mode=mode,
+#         profit_threshold=profit_threshold,
+#         loss_threshold=loss_threshold
+#     )
+#     clear_files_in_directory(scenario_dir)
 
 
 def generate_reports_for_period(
@@ -65,7 +85,8 @@ def generate_reports_for_period(
     sr_resolution: int,
     sr_min_touches: int,
     suggestion_type: Optional[str],
-    update_price_alert_settings: bool
+    update_price_alert_settings: bool,
+    run_analysis_flag: bool
 ):
     """
     Orchestrates the generation of daily reports, consolidated summaries,
@@ -87,53 +108,84 @@ def generate_reports_for_period(
             'structural', or 'all').
         update_price_alert_settings (bool): If True, the consolidation step will
             update the 'price_alert_settings.py' file with new performance data.
+        run_analysis_flag (bool): If True, runs the performance analysis script
+            after all other steps are complete.
     """
     logging.info(f"--- Starting centralized report generation from {from_date_str} to {to_date_str} ---")
 
-    # --- 1. Run Individual Trade Simulator for each day ---
-    logging.info("--- Step 1: Running Individual Trade Simulator for each day. ---")
-    try:
-        from_date = datetime.strptime(from_date_str, '%Y-%m-%d').date()
-        to_date = datetime.strptime(to_date_str, '%Y-%m-%d').date()
-    except ValueError:
-        logging.error("Invalid date format. Please use YYYY-MM-DD.")
-        return
+    profit_thresholds = VALIDATION_PRICE_THRESHOLD_PROFIT
+    loss_thresholds = VALIDATION_PRICE_THRESHOLD_LOSS
 
-    date_range = pd.date_range(start=from_date, end=to_date)
+    for profit_threshold in profit_thresholds:
+        for loss_threshold in loss_thresholds:
+            if profit_threshold <= loss_threshold:
+                logging.info(f"--- Skipping simulation for Profit: {profit_threshold}, Loss: {loss_threshold} (profit <= loss) ---")
+                continue
 
-    for current_date in date_range:
-        day_str = current_date.strftime('%Y-%m-%d')
-        logging.info(f"--- Generating report for {execution_symbol} on {day_str} ---")
+            # # Clear old reports for the current scenario before running
+            # _clear_scenario_reports(mode, profit_threshold, loss_threshold)
+
+            logging.info(f"--- Running simulation for Profit: {profit_threshold}, Loss: {loss_threshold} ---")
+
+            # --- 1. Run Individual Trade Simulator for each day ---
+            logging.info("--- Step 1: Running Individual Trade Simulator for each day. ---")
+            try:
+                from_date = datetime.strptime(from_date_str, '%Y-%m-%d').date()
+                to_date = datetime.strptime(to_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                logging.error("Invalid date format. Please use YYYY-MM-DD.")
+                return
+
+            date_range = pd.date_range(start=from_date, end=to_date)
+
+            for current_date in date_range:
+                day_str = current_date.strftime('%Y-%m-%d')
+                logging.info(f"--- Generating report for {execution_symbol} on {day_str} ---")
+                try:
+                    run_individual_trade_simulation(
+                        execution_symbol=execution_symbol,
+                        alert_sources=alert_sources,
+                        date_str=day_str,
+                        mode=mode,
+                        profit_threshold=profit_threshold,
+                        loss_threshold=loss_threshold
+                    )
+                except Exception as e:
+                    logging.error(f"Failed to generate individual report for {day_str}. Error: {e}")
+                    # Continue to the next day
+                    continue
+            
+            logging.info("--- Finished generating all individual daily reports. ---")
+
+            # --- 2. Generate Consolidated Report ---
+            logging.info(f"--- Starting generation of consolidated report for {execution_symbol} from {from_date_str} to {to_date_str} ---")
+            try:
+                consolidate_reports(
+                    symbol=execution_symbol,
+                    mode=mode,
+                    from_date_str=from_date_str,
+                    to_date_str=to_date_str,
+                    update_price_alert_settings=update_price_alert_settings,
+                    profit_threshold=profit_threshold,
+                    loss_threshold=loss_threshold
+                )
+                logging.info("--- Successfully generated the consolidated report. ---")
+            except Exception as e:
+                logging.error(f"Failed to generate consolidated report. Error: {e}")
+                # Even if consolidation fails, we might still want to run the SR detector
+    
+    # --- 3. Run Performance Analysis (if requested) ---
+    if run_analysis_flag:
+        logging.info("--- Starting performance analysis. ---")
         try:
-            run_individual_trade_simulation(
-                execution_symbol=execution_symbol,
-                alert_sources=alert_sources,
-                date_str=day_str,
-                mode=mode
-            )
+            # The analysis script will find the reports based on the mode
+            base_reports_dir = os.path.join(project_root, "reports")
+            run_analysis(mode=mode, base_reports_dir=base_reports_dir)
+            logging.info("--- Successfully ran performance analysis. ---")
         except Exception as e:
-            logging.error(f"Failed to generate individual report for {day_str}. Error: {e}")
-            # Continue to the next day
-            continue
-    
-    logging.info("--- Finished generating all individual daily reports. ---")
+            logging.error(f"Performance analysis failed. Error: {e}", exc_info=True)
 
-    # --- 2. Generate Consolidated Report ---
-    logging.info(f"--- Starting generation of consolidated report for {execution_symbol} from {from_date_str} to {to_date_str} ---")
-    try:
-        consolidate_reports(
-            symbol=execution_symbol,
-            mode=mode,
-            from_date_str=from_date_str,
-            to_date_str=to_date_str,
-            update_price_alert_settings=update_price_alert_settings
-        )
-        logging.info("--- Successfully generated the consolidated report. ---")
-    except Exception as e:
-        logging.error(f"Failed to generate consolidated report. Error: {e}")
-        # Even if consolidation fails, we might still want to run the SR detector
-    
-    # --- 3. Run Support/Resistance Detector (if requested) ---
+    # --- 4. Run Support/Resistance Detector (if requested) ---
     if run_sr:
         logging.info("--- Starting Support/Resistance detection process. ---")
         if not sr_start_time:
@@ -160,7 +212,7 @@ def generate_reports_for_period(
         except Exception as e:
             logging.error(f"Support/Resistance detector failed. Error: {e}")
 
-    # --- 4. Update Alert Files with Suggested Prices (if requested) ---
+    # --- 5. Update Alert Files with Suggested Prices (if requested) ---
     if suggestion_type:
         logging.info("--- Starting update of alert files with suggested prices. ---")
         try:
@@ -178,7 +230,7 @@ def generate_reports_for_period(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Run a centralized report generation process for a given period.",
+        description="Run a centralized report generation and backtesting process for multiple scenarios.",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
@@ -210,48 +262,53 @@ if __name__ == "__main__":
         type=str,
         choices=['development', 'deployment'],
         required=True,
-        help="The run mode ('development' or 'deployment') for consolidation."
+        help="The run mode ('development' or 'deployment') for all sub-processes."
     )
-    # --- New arguments for Support/Resistance Detector ---
+    # --- Optional Sub-process Triggers ---
     parser.add_argument(
         "--run-sr-detector",
         action='store_true',
-        help="If set, run the support/resistance detector at the end."
+        help="If set, run the support/resistance detector after all scenarios are complete."
     )
     parser.add_argument(
         "--sr-start-time",
         type=str,
-        help="Start time for the S/R detector (YYYY-MM-DD HH:MM:SS)."
+        help="Start time for the S/R detector (YYYY-MM-DD HH:MM:SS). Required if --run-sr-detector is set."
     )
     parser.add_argument(
         "--sr-end-time",
         type=str,
-        help="Optional end time for the S/R detector (YYYY-MM-DD HH:MM:SS)."
+        help="Optional end time for the S/R detector (YYYY-MM-DD HH:MM:SS). Defaults to now."
     )
     parser.add_argument(
         "--sr-resolution",
         type=int,
         default=15,
-        help="Data resolution for the S/R detector in minutes."
+        help="Data resolution for the S/R detector in minutes. Default: 15."
     )
     parser.add_argument(
         "--sr-min-touches",
         type=int,
         default=3,
-        help="Minimum touches for a significant S/R level."
+        help="Minimum touches for a significant S/R level. Default: 3."
     )
-    # --- New arguments for Suggested Price Update ---
     parser.add_argument(
         "--suggestion-type",
         type=str,
         choices=['performance', 'structural', 'all'],
         default=None,
-        help="If provided, runs the suggestion updater for the specified price type."
+        help="If provided, runs the suggestion updater to backfill prices after all scenarios are complete."
     )
     parser.add_argument(
         "--update-price-alert-settings",
         action='store_true',
-        help="If set, the consolidated report step will update 'price_alert_settings.py'."
+        help="If set, each consolidated report step will attempt to update 'price_alert_settings.py'."
+    )
+    parser.add_argument(
+        "--run-analysis",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run the performance analysis script after all reports are generated. Disable with --no-run-analysis."
     )
 
     args = parser.parse_args()
@@ -268,5 +325,6 @@ if __name__ == "__main__":
         sr_resolution=args.sr_resolution,
         sr_min_touches=args.sr_min_touches,
         suggestion_type=args.suggestion_type,
-        update_price_alert_settings=args.update_price_alert_settings
+        update_price_alert_settings=args.update_price_alert_settings,
+        run_analysis_flag=args.run_analysis
     )

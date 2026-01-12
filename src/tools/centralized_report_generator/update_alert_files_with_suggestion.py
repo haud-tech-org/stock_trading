@@ -1,29 +1,35 @@
 """
-A maintenance script to backfill or update suggested prices in existing alert files.
+Maintenance script to backfill or update suggested entry prices in alert files.
 
 Purpose:
-This script iterates through alert notification JSON files within a specified date range
-and calculates and populates the 'performance_suggested_price' and/or 
-'structural_suggested_price' fields for each alert.
+This script is a standalone tool for maintaining data integrity in historical
+alert files. It scans the entire 'reports' directory for alert notification
+JSON files within a specified date range. For each alert found, it calculates
+and populates the 'performance_suggested_price' and/or 'structural_suggested_price'
+fields.
 
-It is useful for backfilling data after changes to the price suggestion logic or for
-populating these fields in older alert files that lack them.
+This is essential for:
+- Backfilling suggested prices on older alert files that were generated before
+  this logic existed.
+- Updating suggested prices across all files after making changes to the
+  price suggestion algorithms.
+- Ensuring data consistency for analysis and reporting.
+
+The script recursively searches through all subdirectories, making it compatible
+with the new scenario-based report structure (e.g., reports/.../profit_3.0_loss_3.0/).
 
 Usage Examples:
-1. Update only the performance suggested price for alerts from a specific date:
-   python3 -m src.tools.centralized_report_generator.update_alert_files_with_suggestion \\
-       --from-date 2026-01-08 --to-date 2026-01-08 \\
-       --suggestion-type performance
 
-2. Update only the structural suggested price for a range of dates:
+1. Simplified - Update all price types for a single day:
    python3 -m src.tools.centralized_report_generator.update_alert_files_with_suggestion \\
-       --from-date 2026-01-05 --to-date 2026-01-08 \\
-       --suggestion-type structural
-
-3. Update both performance and structural prices:
-   python3 -m src.tools.centralized_report_generator.update_alert_files_with_suggestion \\
-       --from-date 2026-01-08 --to-date 2026-01-08 \\
+       --from-date 2026-01-08 \\
        --suggestion-type all
+
+2. Full Arguments - Update only the performance-based price for a date range:
+   python3 -m src.tools.centralized_report_generator.update_alert_files_with_suggestion \\
+       --from-date 2026-01-05 \\
+       --to-date 2026-01-08 \\
+       --suggestion-type performance
 """
 import argparse
 import json
@@ -44,6 +50,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, _apply_price_offset
 from src.stockreports.utils.time_utils import get_market_timezone
+from src.stockreports.utils.report_utils import find_all_alert_files
 from dateutil import parser as date_parser
 # Import settings for fallback calculation
 from src.stockreports.config import price_alert_settings
@@ -114,25 +121,11 @@ def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, su
         logging.error("Invalid date format. Please use YYYY-MM-DD.")
         return
 
-    # Find all alert files recursively
-    glob_pattern = os.path.join(reports_dir, "**", "alert_notification_*.json")
-    all_files = glob.glob(glob_pattern, recursive=True)
-
-    # Filter files by date
-    filtered_files = []
-    for file_path in all_files:
-        try:
-            filename = os.path.basename(file_path)
-            date_part_str = filename.replace('alert_notification_', '').replace('.json', '')
-            file_date = datetime.strptime(date_part_str, '%Y%m%d').date()
-            if from_date <= file_date <= to_date:
-                filtered_files.append(file_path)
-        except (ValueError, IndexError):
-            logging.warning(f"Could not parse date from filename: {filename}. Skipping.")
-            continue
+    # Use the centralized utility function to find all relevant alert files
+    filtered_files = find_all_alert_files(reports_dir, from_date, to_date)
 
     if not filtered_files:
-        logging.warning("No alert files found in the specified date range.")
+        logging.warning("No alert files found in the specified date range across any report directories.")
         return
 
     logging.info(f"Found {len(filtered_files)} alert files to process.")
@@ -231,36 +224,38 @@ def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, su
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="A tool to backfill or update suggested prices in alert notification files.",
+        description="A maintenance tool to scan all report files and backfill/update suggested entry prices for alerts.",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--from-date",
         type=str,
         required=True,
-        help="The start date for updating alerts in YYYY-MM-DD format."
+        help="The start date for the scan in YYYY-MM-DD format."
     )
     parser.add_argument(
         "--to-date",
         type=str,
-        required=True,
-        help="The end date for the scan, in YYYY-MM-DD format."
+        help="The end date for the scan in YYYY-MM-DD format. If omitted, defaults to the same as --from-date."
     )
     parser.add_argument(
         "--suggestion-type",
         type=str,
         choices=['performance', 'structural', 'all'],
-        default=None,
-        help="Specify which suggested price to update:\n"
-             "'performance': Update performance_suggested_price only.\n"
-             "'structural': Update structural_suggested_price only.\n"
-             "'all': Update both.\n"
-             "If not provided, the script will not update any prices."
+        required=True,
+        help="Specify which suggested price to calculate and update:\n"
+             "  'performance': Update 'performance_suggested_price' only.\n"
+             "  'structural':  Update 'structural_suggested_price' only.\n"
+             "  'all':         Update both fields."
     )
 
     args = parser.parse_args()
+
+    # If to_date is not provided, default it to from_date for a single-day scan
+    to_date_str = args.to_date if args.to_date else args.from_date
+
     update_alerts_with_suggested_prices(
         from_date_str=args.from_date,
-        to_date_str=args.to_date,
+        to_date_str=to_date_str,
         suggestion_type=args.suggestion_type
     )

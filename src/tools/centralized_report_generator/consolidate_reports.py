@@ -34,6 +34,7 @@ from collections import defaultdict
 import logging
 import importlib
 import sys
+from typing import Optional
 
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -41,6 +42,9 @@ sys.path.insert(0, project_root)
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
+
 
 def _run_update_price_alert_settings(performance_data: dict, settings_file_path: str):
     """
@@ -137,33 +141,63 @@ def _run_update_price_alert_settings(performance_data: dict, settings_file_path:
         logging.error(f"Failed to write updated settings to {settings_file_path}: {e}")
 
 
-def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str: str, update_price_alert_settings: bool = False):
+def consolidate_reports(
+    symbol: str, 
+    mode: str, 
+    from_date_str: str, 
+    to_date_str: str, 
+    update_price_alert_settings: bool = False,
+    profit_threshold: Optional[float] = None,
+    loss_threshold: Optional[float] = None
+):
     """
-    Aggregates individual trade simulation reports and optionally updates settings.
+    Aggregates daily simulation reports into a single consolidated summary.
 
-    This function finds all individual simulation reports for a given symbol and mode
-    within the specified date range. It calculates overall performance metrics and
-    performance by approach, then saves the results to a consolidated JSON file.
+    This script scans a scenario-specific directory for daily reports generated
+    by `individual_trade_simulator.py`. It aggregates performance metrics across
+    a specified date range for a given symbol and mode.
 
-    If `update_price_alert_settings` is True, it will also update the
-    'PERFORMANCE_BY_APPROACH' dictionary in the 'price_alert_settings.py' file
-    with the latest 'avg_worst_loss_price' for each approach.
+    The final consolidated report is saved in the same scenario directory.
+    Optionally, it can update the 'price_alert_settings.py' file with the
+    latest 'avg_worst_loss_price' calculated from the data, which helps in
+    refining the price suggestion logic.
 
-    Args:
-        symbol (str): The stock symbol to process.
-        mode (str): The run mode ('development' or 'deployment').
-        from_date_str (str): The start date for aggregation in 'YYYY-MM-DD' format.
-        to_date_str (str): The end date for aggregation in 'YYYY-MM-DD' format.
-        update_price_alert_settings (bool): If True, update the price alert settings file.
+    Usage Examples:
+
+    1. Simplified - Consolidate reports for a symbol using default thresholds:
+       python3 -m src.tools.centralized_report_generator.consolidate_reports \\
+           --symbol 41I1G1000 \\
+           --from-date 2026-01-05 \\
+           --to-date 2026-01-08
+
+    2. Full Arguments - Consolidate for a specific scenario and update settings:
+       python3 -m src.tools.centralized_report_generator.consolidate_reports \\
+           --symbol 41I1G1000 \\
+           --mode deployment \\
+           --from-date 2026-01-05 \\
+           --to-date 2026-01-08 \\
+           --profit-threshold 5.0 \\
+           --loss-threshold 2.5 \\
+           --update-price-alert-settings
     """
+    # --- Use the centralized function to ensure thresholds are valid ---
+    profit_threshold, loss_threshold = get_default_thresholds(profit_threshold, loss_threshold)
+
     # Correctly define project_root by navigating up from the current file's location
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    base_reports_dir = os.path.join(project_root, "reports")
     
-    # The reports to be consolidated are in the symbol's own directory, under the specified mode
-    reports_dir = os.path.join(project_root, "reports", "consolidated", mode)
+    # --- Updated: Use the new utility to get the correct directory for reading reports ---
+    reports_dir = get_report_directory(
+        base_dir=base_reports_dir,
+        report_type="consolidated",
+        mode=mode,
+        profit_threshold=profit_threshold,
+        loss_threshold=loss_threshold
+    )
 
     if not os.path.exists(reports_dir):
-        logging.error(f"Reports directory does not exist: {reports_dir}")
+        logging.error(f"Reports directory does not exist for the specified scenario: {reports_dir}")
         return
 
     # --- 1. Discover and Filter Report Files ---
@@ -215,25 +249,28 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         "total_actual_profit_loss": 0.0,
         "actual_profit_loss_values": [],
         "worst_loss_price_values": [],
-        "best_profit_price_values": []
+        "best_profit_price_values": [],
+        "time_to_trigger_minutes_values": [],
+        "time_in_trade_minutes_values": []
     })
 
     all_trades = []
     for report_file in filtered_files:
         try:
             with open(report_file, 'r') as f:
-                data = json.load(f)
+                report_data = json.load(f)
                 
-                # Aggregate overall summary fields
-                overall_summary["total_trades"] += data.get("total_trades", 0)
-                overall_summary["successful_trades"] += data.get("successful_trades", 0)
-                overall_summary["failed_trades"] += data.get("failed_trades", 0)
-                overall_summary["ignored_trades"] += data.get("ignored_trades", 0)
-                overall_summary["total_actual_profit_loss"] += data.get("total_actual_profit_loss", 0.0)
-                overall_summary["total_best_profit_price"] += data.get("total_best_profit_price", 0.0)
-                overall_summary["total_worst_loss_price"] += data.get("total_worst_loss_price", 0.0)
+                # --- FIX: Aggregate top-level summary fields from each daily report ---
+                overall_summary["total_trades"] += report_data.get("total_trades", 0)
+                overall_summary["successful_trades"] += report_data.get("successful_trades", 0)
+                overall_summary["failed_trades"] += report_data.get("failed_trades", 0)
+                overall_summary["ignored_trades"] += report_data.get("ignored_trades", 0)
+                overall_summary["total_actual_profit_loss"] += report_data.get("total_actual_profit_loss", 0.0)
+                overall_summary["total_best_profit_price"] += report_data.get("total_best_profit_price", 0.0)
+                overall_summary["total_worst_loss_price"] += report_data.get("total_worst_loss_price", 0.0)
+                # --- END FIX ---
 
-                trades = data.get("trades", [])
+                trades = report_data.get("trades", [])
                 all_trades.extend(trades)
         except (json.JSONDecodeError, IOError) as e:
             logging.error(f"Error reading or parsing {report_file}: {e}")
@@ -244,6 +281,10 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         return
 
     # --- 3. Calculate Overall Performance Statistics ---
+    # --- New: Gather all unique source symbols from trades ---
+    source_symbols = sorted(list(set(trade.get('entry_source_symbol') for trade in all_trades if 'entry_source_symbol' in trade)))
+    # --- End New ---
+
     for trade in all_trades:
         approach = trade.get("entry_approach")
         if not approach:
@@ -259,6 +300,11 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
             stats["worst_loss_price_values"].append(trade.get("worst_loss_price"))
         if trade.get("best_profit_price") is not None:
             stats["best_profit_price_values"].append(trade.get("best_profit_price"))
+        
+        if trade.get("time_to_trigger_minutes") is not None:
+            stats["time_to_trigger_minutes_values"].append(trade.get("time_to_trigger_minutes"))
+        if trade.get("time_in_trade_minutes") is not None:
+            stats["time_in_trade_minutes_values"].append(trade.get("time_in_trade_minutes"))
         # --- End Aggregation ---
 
         if trade.get("status") == "Success":
@@ -273,22 +319,30 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
         actual_profit_loss_values = stats.pop("actual_profit_loss_values")
         worst_loss_price_values = stats.pop("worst_loss_price_values")
         best_profit_price_values = stats.pop("best_profit_price_values")
+        time_to_trigger_minutes_values = stats.pop("time_to_trigger_minutes_values")
+        time_in_trade_minutes_values = stats.pop("time_in_trade_minutes_values")
 
         final_performance_by_approach[approach] = {
             "total_trades": total_trades,
             "successful_trades": stats["successful_trades"],
             "failed_trades": stats["failed_trades"],
             "success_rate": f"{(stats['successful_trades'] / total_trades * 100):.2f}%" if total_trades > 0 else "0.00%",
-            "total_actual_profit_loss": round(stats["total_actual_profit_loss"], 4),
-            "average_actual_profit_loss": round(stats["total_actual_profit_loss"] / total_trades, 4) if total_trades > 0 else 0.0,
-            "best_actual_profit": round(max(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
-            "worst_actual_loss": round(min(actual_profit_loss_values), 4) if actual_profit_loss_values else 0.0,
-            "min_worst_loss_price": round(min(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
-            "max_worst_loss_price": round(max(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
-            "avg_worst_loss_price": round(sum(worst_loss_price_values) / len(worst_loss_price_values), 4) if worst_loss_price_values else 0.0,
-            "min_best_profit_price": round(min(best_profit_price_values), 4) if best_profit_price_values else 0.0,
-            "max_best_profit_price": round(max(best_profit_price_values), 4) if best_profit_price_values else 0.0,
-            "avg_best_profit_price": round(sum(best_profit_price_values) / len(best_profit_price_values), 4) if best_profit_price_values else 0.0,
+            "total_actual_profit_loss": round(stats["total_actual_profit_loss"], 1),
+            "average_actual_profit_loss": round(stats["total_actual_profit_loss"] / total_trades, 1) if total_trades > 0 else 0.0,
+            "best_actual_profit": round(max(actual_profit_loss_values), 1) if actual_profit_loss_values else 0.0,
+            "worst_actual_loss": round(min(actual_profit_loss_values), 1) if actual_profit_loss_values else 0.0,
+            "min_worst_loss_price": round(min(worst_loss_price_values), 1) if worst_loss_price_values else 0.0,
+            "max_worst_loss_price": round(max(worst_loss_price_values), 1) if worst_loss_price_values else 0.0,
+            "avg_worst_loss_price": round(sum(worst_loss_price_values) / len(worst_loss_price_values), 1) if worst_loss_price_values else 0.0,
+            "min_best_profit_price": round(min(best_profit_price_values), 1) if best_profit_price_values else 0.0,
+            "max_best_profit_price": round(max(best_profit_price_values), 1) if best_profit_price_values else 0.0,
+            "avg_best_profit_price": round(sum(best_profit_price_values) / len(best_profit_price_values), 1) if best_profit_price_values else 0.0,
+            "min_time_to_trigger_minutes": round(min(time_to_trigger_minutes_values), 1) if time_to_trigger_minutes_values else 0.0,
+            "max_time_to_trigger_minutes": round(max(time_to_trigger_minutes_values), 1) if time_to_trigger_minutes_values else 0.0,
+            "avg_time_to_trigger_minutes": round(sum(time_to_trigger_minutes_values) / len(time_to_trigger_minutes_values), 1) if time_to_trigger_minutes_values else 0.0,
+            "min_time_in_trade_minutes": round(min(time_in_trade_minutes_values), 1) if time_in_trade_minutes_values else 0.0,
+            "max_time_in_trade_minutes": round(max(time_in_trade_minutes_values), 1) if time_in_trade_minutes_values else 0.0,
+            "avg_time_in_trade_minutes": round(sum(time_in_trade_minutes_values) / len(time_in_trade_minutes_values), 1) if time_in_trade_minutes_values else 0.0,
         }
 
     # --- 4. Generate and Save Master Summary File ---
@@ -296,9 +350,10 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
     total_trades_overall = overall_summary["total_trades"]
     overall_summary["success_rate"] = f"{(overall_summary['successful_trades'] / total_trades_overall * 100):.2f}%" if total_trades_overall > 0 else "0.00%"
     overall_summary["failure_rate"] = f"{(overall_summary['failed_trades'] / total_trades_overall * 100):.2f}%" if total_trades_overall > 0 else "0.00%"
-    overall_summary["total_actual_profit_loss"] = round(overall_summary["total_actual_profit_loss"], 4)
-    overall_summary["total_best_profit_price"] = round(overall_summary["total_best_profit_price"], 4)
-    overall_summary["total_worst_loss_price"] = round(overall_summary["total_worst_loss_price"], 4)
+    overall_summary["total_actual_profit_loss"] = round(overall_summary["total_actual_profit_loss"], 1)
+    overall_summary["total_best_profit_price"] = round(overall_summary["total_best_profit_price"], 1)
+    overall_summary["total_worst_loss_price"] = round(overall_summary["total_worst_loss_price"], 1)
+    overall_summary["source_symbols"] = source_symbols
 
 
     # --- New: Get app_config and validation_config from the first available report ---
@@ -309,6 +364,7 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
             with open(filtered_files[0], 'r') as f:
                 first_report_data = json.load(f)
                 app_config = first_report_data.get("app_config")
+                # --- Use the specific validation config from the report ---
                 validation_config = first_report_data.get("validation_config")
         except (json.JSONDecodeError, IOError) as e:
             logging.warning(f"Could not read config from {filtered_files[0]}: {e}")
@@ -316,12 +372,16 @@ def consolidate_reports(symbol: str, mode: str, from_date_str: str, to_date_str:
 
     # Combine into a single output object
     final_report = {
+        "execution_symbol": symbol,
+        "start_date": from_date_str,
+        "end_date": to_date_str,
         "overall_summary": overall_summary,
         "performance_by_approach": final_performance_by_approach,
         "app_config": app_config,
         "validation_config": validation_config
     }
 
+    # --- The output path is the same as the input directory ---
     output_filename = f"{symbol}_overall_performance_{from_date_str}_to_{to_date_str}.json"
     output_path = os.path.join(reports_dir, output_filename)
 
@@ -372,7 +432,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--update-price-alert-settings",
         action='store_true',
-        help="If set, the script will update 'price_alert_settings.py' with the new performance data."
+        help="If set, update 'price_alert_settings.py' with new performance data."
+    )
+    # --- New arguments for running specific scenarios ---
+    parser.add_argument(
+        "--profit-threshold",
+        type=float,
+        default=None,
+        help="The profit threshold for the scenario to consolidate. Overrides settings file."
+    )
+    parser.add_argument(
+        "--loss-threshold",
+        type=float,
+        default=None,
+        help="The loss threshold for the scenario to consolidate. Overrides settings file."
     )
 
     args = parser.parse_args()
@@ -382,5 +455,7 @@ if __name__ == "__main__":
         mode=args.mode,
         from_date_str=args.from_date,
         to_date_str=args.to_date,
-        update_price_alert_settings=args.update_price_alert_settings
+        update_price_alert_settings=args.update_price_alert_settings,
+        profit_threshold=args.profit_threshold,
+        loss_threshold=args.loss_threshold
     )

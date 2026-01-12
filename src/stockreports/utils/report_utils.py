@@ -5,12 +5,15 @@ import os
 import json
 import logging
 import pandas as pd
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import pytz
+import glob
+from datetime import datetime
 
 from src.stockreports.config import loader
 from src.stockreports.alert.model.models import AlertResult, AlertSummary, ProfitabilityReport
 from src.stockreports.utils.time_utils import get_market_timezone_str
+from src.stockreports.utils.file_utils import save_json_report
 
 # --- Settings & Logger ---
 settings = loader.get_settings()
@@ -18,25 +21,151 @@ TIMEZONE = pytz.timezone(get_market_timezone_str())
 logger = logging.getLogger(__name__)
 
 
-def _save_json_report(data: Any, filepath: str, logger_instance: logging.Logger):
+def get_report_directory(
+    base_dir: str,
+    report_type: str,
+    mode: str,
+    symbol: Optional[str] = None,
+    profit_threshold: Optional[float] = None,
+    loss_threshold: Optional[float] = None
+) -> str:
     """
-    A generic utility to save data to a JSON file. It creates the directory if it doesn't exist.
+    Constructs the correct directory path for reports based on the new structure.
 
     Args:
-        data (Any): The data to save (can be a list, dict, or pandas DataFrame).
-        filepath (str): The full path to the file.
-        logger_instance (logging.Logger): The logger to use for output.
+        base_dir (str): The root 'reports' directory.
+        report_type (str): The type of report, e.g., 'consolidated' or a symbol like 'VN30'.
+        mode (str): The run mode, 'development' or 'deployment'.
+        symbol (Optional[str]): The stock symbol, used for certain report types.
+        profit_threshold (Optional[float]): The profit threshold for the scenario.
+        loss_threshold (Optional[float]): The loss threshold for the scenario.
+
+    Returns:
+        str: The fully constructed directory path.
     """
-    try:
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, 'w') as f:
-            if isinstance(data, pd.DataFrame):
-                data.to_json(f, orient='records', indent=4)
-            else:
-                json.dump(data, f, indent=4)
-        logger_instance.info(f"Successfully saved report to {filepath}")
-    except Exception as e:
-        logger_instance.error(f"Failed to save report to {filepath}: {e}")
+    # Start with the base path: reports/{report_type}/{mode}
+    path_parts = [base_dir, report_type, mode]
+
+    # If thresholds are provided, create the scenario-specific subfolder
+    if profit_threshold is not None and loss_threshold is not None:
+        scenario_folder = f"profit_{profit_threshold}_loss_{loss_threshold}"
+        path_parts.append(scenario_folder)
+
+    # For certain report types that are symbol-specific at this level
+    if report_type != 'consolidated':
+        if symbol:
+            path_parts.insert(2, symbol)  # e.g., reports/VN30/deployment/...
+        else:
+            # If no symbol is provided for a non-consolidated report,
+            # the path intentionally stops at the mode level,
+            # allowing callers to iterate through all symbols.
+            # e.g., reports/VN30/deployment/
+            pass
+
+    return os.path.join(*path_parts)
+
+
+def get_default_thresholds(
+    profit_threshold: Optional[float] = None,
+    loss_threshold: Optional[float] = None
+) -> tuple[float, float]:
+    """
+    Ensures valid profit and loss thresholds are returned.
+
+    If the provided thresholds are None, it dynamically imports and returns
+    the first values from the validation settings file as defaults.
+
+    Args:
+        profit_threshold (Optional[float]): The provided profit threshold.
+        loss_threshold (Optional[float]): The provided loss threshold.
+
+    Returns:
+        A tuple containing the definite (float, float) profit and loss thresholds.
+    """
+    # If any threshold is missing, we'll need the defaults from settings.
+    if profit_threshold is None or loss_threshold is None:
+        from src.stockreports.config.validation_settings import (
+            VALIDATION_PRICE_THRESHOLD_PROFIT,
+            VALIDATION_PRICE_THRESHOLD_LOSS
+        )
+        
+        if profit_threshold is None:
+            logging.info("Profit threshold is missing, loading default from settings.")
+            profit_threshold = VALIDATION_PRICE_THRESHOLD_PROFIT[0] if VALIDATION_PRICE_THRESHOLD_PROFIT else 3.0
+
+        if loss_threshold is None:
+            logging.info("Loss threshold is missing, loading default from settings.")
+            loss_threshold = VALIDATION_PRICE_THRESHOLD_LOSS[0] if VALIDATION_PRICE_THRESHOLD_LOSS else 3.0
+    
+    return profit_threshold, loss_threshold
+
+
+def find_all_alert_files(
+    base_reports_dir: str,
+    from_date: datetime.date,
+    to_date: datetime.date
+) -> list[str]:
+    """
+    Recursively finds all 'alert_notification_*.json' files within a date range,
+    searching through all subdirectories.
+
+    Args:
+        base_reports_dir (str): The root 'reports' directory to start the scan from.
+        from_date (datetime.date): The start date for filtering.
+        to_date (datetime.date): The end date for filtering.
+
+    Returns:
+        A list of absolute file paths to the alert files.
+    """
+    logging.info(f"Scanning for all alert files in {base_reports_dir} from {from_date} to {to_date}")
+    
+    # Use a recursive glob to find all potential files
+    glob_pattern = os.path.join(base_reports_dir, "**", "alert_notification_*.json")
+    all_files = glob.glob(glob_pattern, recursive=True)
+
+    filtered_files = []
+    for file_path in all_files:
+        try:
+            filename = os.path.basename(file_path)
+            # Handles both 'alert_notification_YYYY-MM-DD.json' and 'alert_notification_YYYYMMDD.json'
+            date_part_str = filename.replace('alert_notification_', '').replace('.json', '')
+            
+            file_date = None
+            try:
+                # First, try parsing 'YYYY-MM-DD' format
+                file_date = datetime.strptime(date_part_str, '%Y-%m-%d').date()
+            except ValueError:
+                # If that fails, try parsing 'YYYYMMDD' format
+                file_date = datetime.strptime(date_part_str, '%Y%m%d').date()
+
+            if from_date <= file_date <= to_date:
+                filtered_files.append(file_path)
+        except (ValueError, IndexError):
+            logging.warning(f"Could not parse date from filename: {filename}. Skipping.")
+            continue
+            
+    logging.info(f"Found {len(filtered_files)} alert files in the specified date range.")
+    return filtered_files
+
+
+def get_consolidated_scenario_directory(
+    mode: str,
+    profit_threshold: float,
+    loss_threshold: float
+) -> str:
+    """
+    Constructs the directory path for a specific consolidated report scenario.
+    """
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    base_reports_dir = os.path.join(project_root, "reports")
+    
+    return get_report_directory(
+        base_dir=base_reports_dir,
+        report_type="consolidated",
+        mode=mode,
+        profit_threshold=profit_threshold,
+        loss_threshold=loss_threshold
+    )
 
 
 def save_alert_report(result: AlertResult, symbol: str, date_str: str):
@@ -93,7 +222,7 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
             alerts_to_save[col] = pd.to_datetime(alerts_to_save[col], errors='coerce', utc=True)
             alerts_to_save[col] = alerts_to_save[col].dt.tz_convert(TIMEZONE).dt.strftime('%Y-%m-%dT%H:%M:%S%z')
 
-    _save_json_report(alerts_to_save, filepath, logger)
+    save_json_report(alerts_to_save, filepath, logger)
 
 
 def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
@@ -152,7 +281,7 @@ def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
     all_summaries.append(new_summary.to_dict())
     all_summaries.sort(key=lambda x: x.get('date', ''))
     
-    _save_json_report(all_summaries, filepath, logger)
+    save_json_report(all_summaries, filepath, logger)
 
 
 def save_profitability_report(summary_data: ProfitabilityReport, symbol: str, date_str: str, logger_instance: logging.Logger):
@@ -165,4 +294,12 @@ def save_profitability_report(summary_data: ProfitabilityReport, symbol: str, da
     filename = f"profitability_summary_{date_str.replace('-', '')}.json"
     filepath = os.path.join(report_dir, filename)
     
-    _save_json_report(summary_data.to_dict(), filepath, logger_instance)
+    save_json_report(summary_data.to_dict(), filepath, logger_instance)
+
+
+def find_overall_performance_files(root_dir: str) -> list[str]:
+    """
+    Recursively finds all overall performance JSON files in a directory.
+    """
+    glob_pattern = os.path.join(root_dir, "**", "*_overall_performance_*.json")
+    return glob.glob(glob_pattern, recursive=True)

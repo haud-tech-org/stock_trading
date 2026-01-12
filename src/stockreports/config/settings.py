@@ -1,12 +1,7 @@
 # src/stockreports/config/settings.py
 """
 Main configuration file for the stock reporting and alerting application.
-This file contains high-level settings ALERT_APPROACHES = [
-    "RCM",
-    "CONSISTENT_MOMENTUM",
-    "ICHIMOKU",
-    "STRONG_CANDLE"
-]I access, operational mode,
+This file contains high-level settings for API access, operational mode,
 notifications, and market-specific details.
 """
 
@@ -124,7 +119,6 @@ SAVE_DEV_API_RESPONSE_TO_FILE = True
 # Alert Approaches
 # Meaning: A list of the alert generation strategies (approaches) to run. The names correspond to modules in the `src/stockreports/alert/approach/` directory.
 # Guidance: You can add or remove approach names from this list to enable or disable them. The names are case-insensitive.
-# Example: `ALERT_APPROACHES = ["RCM"]` would run only the RCM strategy.
 # Example: `ALERT_APPROACHES = ["RCM"]` would run only the RCM strategy.
 ALERT_APPROACHES = [
     "RCM",
