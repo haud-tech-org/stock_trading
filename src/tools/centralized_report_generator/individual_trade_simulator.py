@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR, SESSIONS
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
-from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES
+from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES
 from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
 from src.stockreports.alert.model.models import ProfitabilityReport, Trade
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, get_primary_suggested_price
@@ -178,6 +178,14 @@ def simulate_individual_profitability(
             logging.info(f"Trade at {entry_time} for {entry_signal} was IGNORED. Entry price {entry_price} not met in validation window.")
             ignored_trades += 1
             continue
+
+        # --- Moved & Refactored: Check if the trade took too long to trigger ---
+        time_to_trigger_minutes = (trigger_timestamp - entry_time).total_seconds() / 60
+        if time_to_trigger_minutes > MAX_TIME_TO_TRIGGER_MINUTES:
+            logging.info(f"Trade at {entry_time} for {entry_signal} was IGNORED. Time to trigger ({time_to_trigger_minutes:.2f} min) exceeded limit of {MAX_TIME_TO_TRIGGER_MINUTES} min.")
+            ignored_trades += 1
+            continue
+        # --- End of Moved Check ---
         
         logging.info(f"Trade triggered at {trigger_timestamp}. Adjusting validation window.")
         # The new validation window starts from the moment the price was crossed
@@ -270,10 +278,6 @@ def simulate_individual_profitability(
         # --- End of New Exit Logic ---
 
         # --- Calculate Durations ---
-        time_to_trigger_minutes = None
-        if trigger_timestamp and pd.notna(trigger_timestamp):
-            time_to_trigger_minutes = (trigger_timestamp - entry_time).total_seconds() / 60
-
         time_in_trade_minutes = None
         if exit_time and pd.notna(exit_time) and trigger_timestamp and pd.notna(trigger_timestamp):
             time_in_trade_minutes = (exit_time - trigger_timestamp).total_seconds() / 60
