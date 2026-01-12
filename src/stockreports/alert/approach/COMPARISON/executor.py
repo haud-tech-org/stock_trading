@@ -132,7 +132,7 @@ class ComparisonExecutor(Executor):
                 
                 # --- Volume Confirmation ---
                 use_volume_spike = self.settings.use_volume_confirmation
-                use_increasing_volume = self.settings.use_increasing_volume_confirmation
+                use_increasing_volume = self.settings.use_volume_increasing_confirmation
                 use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
 
                 # Define the window for volume checks, typically the lookback window ending at the current candle
