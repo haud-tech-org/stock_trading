@@ -48,7 +48,10 @@ Once a potential Reversal -> Confirmation pattern is identified, a final series 
     *   **Standard Indicators:** Checks for alignment with other indicators like MA, MACD, etc., if enabled.
 2.  **Breakout Filter (Optional):** If `PEAK_BOTTOM_LOOKBACK_PERIOD` is set, it checks that the confirmation candle's close has broken above the highs (for a BUY) or below the lows (for a SELL) of the specified lookback window *prior* to the reversal point.
 3.  **Magnitude Filter:** The price change between the **`close` price of the reversal candle** and the `close` price of the confirmation candle must be greater than `MIN_ALERT_MAGNITUDE`.
-4.  **Volume Filters (Optional):** If enabled, it performs final checks for a volume spike, increasing volume, or the confirmation candle having the maximum volume in its local window.
+4.  **Volume Filters (Optional):** If any of the volume settings are enabled, the following checks are performed:
+    *   `USE_VOLUME_CONFIRMATION`: Checks for a significant volume spike on the confirmation candle `i`.
+    *   `USE_INCREASING_VOLUME_CONFIRMATION`: Checks for a generally increasing volume trend within the confirmation window (from the reversal to candle `i`).
+    *   `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION`: Checks if the confirmation candle `i` has the highest volume within the confirmation window.
 
 If all enabled filters pass, an `AlertData` object is created with the signal (`BUY` or `SELL`). In deployment mode, the function returns immediately with this latest alert. In development mode, the loop continues to find all historical occurrences of the pattern.
 
