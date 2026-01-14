@@ -10,6 +10,10 @@ from src.stockreports.alert.common.confirmation.confirmation import prepare_indi
 from src.stockreports.alert.common.constants_charts import ChartDefaults, PlotKeys, PlotConfigKeys, Chart
 from tests.debug.common.charts.configs.plot_config import PlotConfigurations
 import copy
+import json
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from mplfinance.original_flavor import candlestick_ohlc
 
 class VisibilityChartGenerator:
     def __init__(self, approach_name, signal_type='BUY'):
@@ -245,3 +249,79 @@ if __name__ == "__main__":
     # Use the new class-based approach
     chart_generator = VisibilityChartGenerator(args.approach_name, args.signal_type)
     chart_generator.generate(args.input_file, args.output_dir, args.breakout_time)
+
+
+def generate_alert_chart(input_file: str, output_dir: str, approach_name: str, alerts_df: pd.DataFrame):
+    """
+    Generates a standardized visibility chart for any given approach.
+
+    This function plots candlestick data and overlays markers for all BUY and SELL
+    alerts found in the provided alerts DataFrame.
+
+    Args:
+        input_file (str): Path to the JSON file containing the candlestick data.
+        output_dir (str): Directory to save the generated chart.
+        approach_name (str): The name of the alert approach.
+        alerts_df (pd.DataFrame): DataFrame containing the alerts to plot.
+    """
+    try:
+        with open(input_file, 'r') as f:
+            data = json.load(f)
+        
+        df = pd.DataFrame(data)
+        if df.empty:
+            print("Dataframe is empty, skipping chart generation.")
+            return
+            
+        symbol = os.path.basename(input_file).split('_')[0]
+
+        # Data preparation for plotting
+        df['time'] = pd.to_datetime(df['time'])
+        df['time_numeric'] = df['time'].apply(mdates.date2num)
+
+        # Plotting
+        fig, ax = plt.subplots(figsize=(20, 10))
+        
+        candlestick_ohlc(ax, df[['time_numeric', 'open', 'high', 'low', 'close']].values, width=0.0005, colorup='g', colordown='r', alpha=0.8)
+        
+        # Plot alerts
+        alerts_df['alert_time'] = pd.to_datetime(alerts_df['alert_time']).dt.tz_convert(df['time'].dt.tz)
+        
+        for _, alert in alerts_df.iterrows():
+            alert_time = alert['alert_time']
+            signal_type = alert['signal']
+            
+            alert_time_numeric = mdates.date2num(alert_time)
+            
+            candle = df[df['time'] <= alert_time].iloc[-1]
+            
+            marker = '^' if signal_type == 'BUY' else 'v'
+            color = 'blue' if signal_type == 'BUY' else 'orange'
+            y_pos = candle['high'] + (df['high'].max() - df['low'].min()) * 0.05
+            
+            ax.plot(alert_time_numeric, y_pos, marker, markersize=12, color=color, label=f'{signal_type} Alert')
+
+        # Formatting
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+        fig.autofmt_xdate()
+        
+        ax.set_title(f'{symbol} - {approach_name} Alerts Analysis', fontsize=16)
+        ax.set_xlabel('Time', fontsize=12)
+        ax.set_ylabel('Price', fontsize=12)
+        
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), loc='upper left')
+        
+        plt.tight_layout()
+
+        os.makedirs(output_dir, exist_ok=True)
+        
+        chart_filename = os.path.join(output_dir, f"{symbol}_{approach_name}_visibility_chart.png")
+        plt.savefig(chart_filename)
+        plt.close(fig)
+        
+        print(f"Chart saved to {chart_filename}")
+
+    except Exception as e:
+        print(f"An error occurred during alert chart generation: {e}")
