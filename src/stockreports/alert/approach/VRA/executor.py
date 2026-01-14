@@ -91,7 +91,7 @@ class VraExecutor(Executor):
 
             # Validate confirmation and get alert/anchor candles
             validation_result = validate_reversal_confirmation(
-                confirmation_df, reversal_signal, self.settings.min_alert_body_size
+                confirmation_df, reversal_signal, self.settings.min_alert_body_size, self.settings.max_distance_close_price
             )
             if validation_result is None:
                 continue

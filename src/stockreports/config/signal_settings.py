@@ -305,6 +305,7 @@ APPROACH_CONFIG = {
         "MIN_GAP_SIZE": 2.0,
         "MIN_ALERT_BODY_SIZE": 1.0,
         "COOLDOWN_WINDOW": 3,
+        "MAX_DISTANCE_CLOSE_PRICE": 2.0
     },
     "COMPARISON": {
         "PRIMARY_SYMBOL": "41I1G1000",
@@ -366,6 +367,7 @@ APPROACH_CONFIG = {
         "MIN_TREND_MAGNITUDE": 7.0,
         "VOLUME_MULTIPLIER": 4.0,
         "MIN_ALERT_BODY_SIZE": 0.3,
+        "MAX_DISTANCE_CLOSE_PRICE": 2.0
     },
 }
 

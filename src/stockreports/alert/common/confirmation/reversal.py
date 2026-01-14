@@ -5,7 +5,8 @@ from typing import Tuple, Optional
 def validate_reversal_confirmation(
     confirmation_df: pd.DataFrame, 
     reversal_signal: Signal, 
-    min_alert_body_size: float
+    min_alert_body_size: float,
+    max_distance_close_price: float = 2.0
 ) -> Optional[Tuple[pd.Series, pd.Series]]:
     """
     Validates the reversal confirmation logic, focusing on identifying the
@@ -15,6 +16,7 @@ def validate_reversal_confirmation(
         confirmation_df: The DataFrame for the confirmation window.
         reversal_signal: The potential signal (BUY or SELL).
         min_alert_body_size: The minimum required body size for the alert candle.
+        max_distance_close_price: The max distance between the anchor and alert candle close prices. Defaults to 2.0.
 
     Returns:
         A tuple of (alert_candle, anchor_candle) if validation passes,
@@ -47,6 +49,10 @@ def validate_reversal_confirmation(
         return None
     
     anchor_candle = confirmation_df.loc[anchor_candle_idx]
+
+    # New Validation: Check distance between anchor and alert close prices
+    if abs(alert_candle['close'] - anchor_candle['close']) > max_distance_close_price:
+        return None
 
     # Final Reversal Check (Complex)
     anchor_body_avg = (anchor_candle['open'] + anchor_candle['close']) / 2
