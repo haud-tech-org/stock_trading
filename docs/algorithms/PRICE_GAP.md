@@ -1,62 +1,77 @@
 # Price Gap Approach
 
-## Overview
-The **Price Gap** approach identifies significant price gaps between the previous candle's close and the current candle's open. It detects both **Gap Up (BUY)** and **Gap Down (SELL)** patterns. The approach includes optional breakout confirmation and a mandatory forward window confirmation to validate the signal strength and progression.
+## 1. Objective
 
-## Logic
+The **Price Gap** approach is designed to identify trading opportunities that arise from significant price gaps between two consecutive candles. The core logic is to find a gap and then determine if it will result in a **Continuation** of the gap's trend or a **Reversal** against it.
 
-The analysis is performed on a candle-by-candle basis. For a given candle at time `T` (Signal Candle) and previous candle at `T-1`:
+The logic operates on a sliding `LOOKBACK_WINDOW` of candles.
 
-### 1. Gap Detection
-First, the system checks for a significant price gap.
+## 2. Key Parameters
 
-*   **BUY Signal (Gap Up)**:
-    *   Condition: `Open(T) - Close(T-1) >= MIN_GAP_SIZE`
-*   **SELL Signal (Gap Down)**:
-    *   Condition: `Close(T-1) - Open(T) >= MIN_GAP_SIZE`
+This approach is configured in `src/stockreports/config/signal_settings.py` and loaded by the `PriceGapSettings` class.
 
-### 2. Breakout Confirmation (Optional)
-If `USE_BREAKOUT_CONFIRMATION` is enabled, the signal candle's close is compared against a historical lookback window (size `LOOKBACK_PERIOD`) ending at `T-1`.
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `LOOKBACK_WINDOW` | 10 | The number of candles in the sliding window used to identify a pattern. |
+| `MIN_GAP_SIZE` | 5.0 | The minimum price difference required between one candle's close and the next one's open to be considered a significant gap. |
+| `MIN_ALERT_BODY_SIZE` | 0.3 | The minimum required body size for a candle to be considered a valid alert candle, specifically used in the reversal validation. |
+| `COOLDOWN_WINDOW` | 3 | The minimum time (in minutes) that must pass before another alert with the same signal can be generated. |
 
-*   **BUY Signal**:
-    *   Condition: `Close(T) > Max(Close in Lookback Window)`
-    *   *The current close must be strictly higher than the highest close in the previous window.*
-*   **SELL Signal**:
-    *   Condition: `Close(T) < Min(Close in Lookback Window)`
-    *   *The current close must be strictly lower than the lowest close in the previous window.*
+## 3. Step-by-Step Logic
 
-### 3. Forward Window Confirmation
-If the Gap (and optional Breakout) conditions are met, the system scans a **Forward Window** starting from the Signal Candle `T` up to `T + CONFIRMATION_FORWARD_WINDOW - 1`.
+The core logic is implemented in the `PriceGapExecutor` class. It iterates through the data using a sliding window and performs the following checks for each window:
 
-The system looks for a valid **Confirmation Candle** within this window. It scans in reverse (from the end of the window back to `T`) to find the latest valid confirmation.
+### Part 1: Find the Price Gap
 
-A candle in the forward window is considered a valid confirmation if:
+1.  **Scan for Gap**: The algorithm iterates through the `LOOKBACK_WINDOW` to find the first occurrence of a price gap between two consecutive candles (`previous_candle` and `current_candle`).
+    *   **Condition**: `abs(current_candle['open'] - previous_candle['close']) >= MIN_GAP_SIZE`.
+2.  **Identify Gap Anchor**: The `current_candle` (the one that opens after the gap) is marked as the "Gap Anchor Candle".
+3.  **Determine Gap Trend**: A trend is inferred from the gap direction (e.g., a gap up implies a `BUY` trend).
 
-1.  **Direction**:
-    *   **BUY**: The candle is Green (`Close > Open`).
-    *   **SELL**: The candle is Red (`Open > Close`).
-2.  **Body Size**:
-    *   The absolute difference between Open and Close is at least `MIN_CONFIRMATION_BODY_SIZE`.
-3.  **Progression** (if the Confirmation Candle is *after* the Signal Candle `T`):
-    *   **BUY**: `Open(Confirmation) > Open(Signal Candle)`
-    *   **SELL**: `Open(Confirmation) < Open(Signal Candle)`
-    *   *This ensures the trend is continuing in the expected direction.*
+### Part 2: Check for Cooldown
 
-## Alert Generation
-If a valid Confirmation Candle is found:
-*   **Alert Time**: The timestamp of the **Confirmation Candle**.
-*   **Alert Price**: The close price of the **Confirmation Candle**.
-*   **Start Time**: The timestamp of the candle *before* the gap (`T-1`).
-*   **Start Price**: The close price of the candle *before* the gap (`T-1`).
+4.  **Cooldown Validation**: Before proceeding, the system checks if a new alert is permissible based on the cooldown rules.
+    *   **Condition**: An alert is **ignored** if the time since the last generated alert is less than the `COOLDOWN_WINDOW` **AND** the signal of the potential new alert is the same as the last one.
 
-## Configuration
-Settings are managed via the `PriceGapSettings` class (typically loaded from `src/stockreports/alert/approach/PRICE_GAP/settings.py` or shared settings).
+### Part 3: Determine Alert Type (Continuation vs. Reversal)
 
-| Setting | Description |
-| :--- | :--- |
-| `MIN_GAP_SIZE` | The minimum price difference required between `Close(T-1)` and `Open(T)` to trigger a potential signal. |
-| `USE_BREAKOUT_CONFIRMATION` | Boolean flag to enable/disable the historical lookback check. |
-| `LOOKBACK_PERIOD` | Number of previous candles to check for Breakout Confirmation. |
-| `CONFIRMATION_FORWARD_WINDOW` | Number of candles (including the signal candle) to scan forward for a valid confirmation. |
-| `MIN_CONFIRMATION_BODY_SIZE` | Minimum body size (`abs(Close - Open)`) required for a Confirmation Candle. |
-| `COOLDOWN_WINDOW` | Minimum time (in minutes) required between consecutive alerts to prevent spamming. |
+Once a valid, non-cooldown gap is found, the logic branches into two scenarios:
+
+#### Scenario A: Continuation Alert
+
+5.  **Condition**: This scenario occurs if the **Gap Anchor Candle** is also the **very last candle** in the `LOOKBACK_WINDOW`.
+6.  **Alert Generation**: An alert is generated immediately.
+    *   **Signal**: Same as the Gap Trend (e.g., gap up → `BUY` alert).
+    *   **Alert Candle**: The Gap Anchor Candle itself.
+
+#### Scenario B: Reversal Alert
+
+7.  **Condition**: This scenario occurs if there are more candles in the window *after* the Gap Anchor Candle.
+8.  **Define Confirmation Window**: A "confirmation window" is defined, starting from the Gap Anchor Candle to the end of the lookback window.
+9.  **Validate Reversal**: The executor calls the standardized `validate_reversal_confirmation` utility on this confirmation window.
+    *   **Important**: It checks for a signal that is the **opposite** of the initial Gap Trend (e.g., a gap up is followed by a search for a `SELL` reversal).
+10. **Alert Generation**: If the utility finds a valid reversal pattern, an alert is generated.
+    *   **Signal**: The reversal signal (opposite of the Gap Trend).
+    *   **Alert Candle**: The confirming candle identified by the utility.
+
+## 4. Flow Diagram
+
+```mermaid
+graph TD
+    subgraph "Part 1 & 2: Find Gap & Check Cooldown"
+        A[Start Sliding Window] --> B{Find Gap >= Min Size?};
+        B -- No --> A;
+        B -- Yes --> C{In Cooldown Period AND Same Signal?};
+        C -- Yes --> B;
+        C -- No --> D;
+    end
+
+    subgraph "Part 3: Determine Alert Type"
+        D{Is Gap Anchor the Last Candle in Window?};
+        D -- Yes --> E[Generate Continuation Alert];
+        D -- No --> F[Define Confirmation Window];
+        F --> G{Call validate_reversal_confirmation};
+        G -- No Confirmation --> B;
+        G -- Confirmed --> H[Generate Reversal Alert];
+    end
+```
