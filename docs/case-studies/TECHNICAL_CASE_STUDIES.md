@@ -30,22 +30,33 @@ All manual testing scripts in `tests\manual\` have been successfully executed an
 - **Status**: ✅ RESOLVED
 
 #### c. Standardized Cooldown Logic for Alert Generation
-- **Issue**: To prevent alert spam, a consistent cooldown mechanism was needed that could be applied across different alert executors. The logic needed to be simple, stateful, and configurable.
-- **Resolution Pattern**: A standardized pattern was developed and implemented in the `PriceGapExecutor`.
-    1. **Configuration**: A `COOLDOWN_WINDOW` parameter (in minutes) was added to the approach's settings class and the main `signal_settings.py` file.
-    2. **Stateful Tracking**: A class-level variable, `LATEST_ALERT: Optional[AlertData] = None`, was added to the executor class. Using a class-level variable ensures the state persists across multiple potential instantiations of the executor within a single script run.
-    3. **Pre-Alert Check**: Before creating and appending a new `AlertData` object, a check is performed:
+- **Issue**: To prevent alert spam, a consistent cooldown mechanism was needed that could be applied across different alert executors. The initial implementation involved inline logic within each executor, leading to code duplication.
+- **Resolution Pattern**:
+    1. **Centralized Utility**: A shared function, `is_in_cooldown`, was created in `src/stockreports/utils/alert_utils.py`. This function encapsulates the entire logic for checking if a new alert falls within the cooldown period of a previous one with the same signal.
         ```python
-        if PriceGapExecutor.LATEST_ALERT:
-            time_since_last_alert = (new_alert_time - PriceGapExecutor.LATEST_ALERT.alert_time).total_seconds() / 60
-            is_in_cooldown = time_since_last_alert < cooldown_window
-            is_same_signal = new_signal == PriceGapExecutor.LATEST_ALERT.signal
-
-            if is_in_cooldown and is_same_signal:
-                continue # Skip creating the new alert
+        def is_in_cooldown(
+            new_alert_time: datetime,
+            new_signal: Signal,
+            latest_alert: Optional[AlertData],
+            cooldown_window: int
+        ) -> bool:
+            # ... implementation ...
         ```
-    4. **State Update**: If the alert is not skipped, the `LATEST_ALERT` class variable is updated with the newly created `AlertData` object.
-- **Status**: ✅ RESOLVED and established as a reusable pattern.
+    2. **Configuration**: A `COOLDOWN_WINDOW` parameter (in minutes) is added to each approach's settings class and configured in `signal_settings.py`.
+    3. **Stateful Tracking**: A class-level variable, `LATEST_ALERT: Optional[AlertData] = None`, is maintained in each executor to track the most recent alert.
+    4. **Refactored Pre-Alert Check**: Executors now call the centralized utility function, simplifying the check:
+        ```python
+        # In the executor's logic...
+        if is_in_cooldown(
+            new_alert_time=alert_candle['time'],
+            new_signal=reversal_signal,
+            latest_alert=VraExecutor.LATEST_ALERT,
+            cooldown_window=self.settings.cooldown_window
+        ):
+            continue # Skip creating the new alert
+        ```
+    5. **State Update**: If the alert is not skipped, the executor updates its `LATEST_ALERT` class variable with the newly created `AlertData` object.
+- **Status**: ✅ REFACTORED to a shared utility, improving maintainability and eliminating code duplication.
 
 #### d. Best Practice: Encapsulate Complex Object Creation
 - **Issue**: Executor logic can become cluttered when the main algorithm is mixed with the complex task of populating data objects (e.g., `AlertData`), which involves setting many fields, calculating values, and formatting JSON. This hurts readability and makes the code harder to maintain.
