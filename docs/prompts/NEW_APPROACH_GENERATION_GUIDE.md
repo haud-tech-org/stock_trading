@@ -161,3 +161,4 @@ This section documents real errors made during development to serve as learning 
 ## References
 
 - For a log of common technical issues and their resolutions, which can help in avoiding common pitfalls, refer to the [Technical Case Studies & Issue Resolution Log](../case-studies/TECHNICAL_CASE_STUDIES.md).
+- For an example of a standardized, well-structured documentation file for an approach, see the [Price Gap Approach Documentation](../algorithms/PRICE_GAP.md).
