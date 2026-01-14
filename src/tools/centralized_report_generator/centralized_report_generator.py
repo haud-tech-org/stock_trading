@@ -118,9 +118,6 @@ def generate_reports_for_period(
 
     for profit_threshold in profit_thresholds:
         for loss_threshold in loss_thresholds:
-            if profit_threshold <= loss_threshold:
-                logging.info(f"--- Skipping simulation for Profit: {profit_threshold}, Loss: {loss_threshold} (profit <= loss) ---")
-                continue
 
             # # Clear old reports for the current scenario before running
             # _clear_scenario_reports(mode, profit_threshold, loss_threshold)

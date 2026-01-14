@@ -300,3 +300,7 @@ if __name__ == "__main__":
     *   Update `VisibilityChartGenerator` to check for the `USE_...` flag for your new plot.
 
 This updated guide ensures your debug scripts are aligned with the new, more robust, object-oriented, and configuration-driven framework.
+
+## References
+
+- For real-world examples of issues encountered during debugging and their resolutions, consult the [Technical Case Studies & Issue Resolution Log](../case-studies/TECHNICAL_CASE_STUDIES.md). This can provide valuable context for troubleshooting.
