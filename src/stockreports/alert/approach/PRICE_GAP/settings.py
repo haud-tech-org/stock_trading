@@ -10,3 +10,4 @@ class PriceGapSettings(BaseSettings):
         self.min_gap_size = self.get("MIN_GAP_SIZE")
         self.min_alert_body_size = self.get("MIN_ALERT_BODY_SIZE")
         self.cooldown_window = self.get("COOLDOWN_WINDOW")
+        self.max_distance_close_price = self.get("MAX_DISTANCE_CLOSE_PRICE")

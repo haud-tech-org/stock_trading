@@ -16,6 +16,7 @@ This approach is configured in `src/stockreports/config/signal_settings.py`. A d
 | `LOOKBACK_WINDOW` | 10 | The number of candles in the sliding window used to identify a pattern. |
 | `VOLUME_MULTIPLIER` | 4.0 | The factor by which the anchor volume candle must exceed the minimum volume that occurred *before* it in the window. |
 | `MIN_ALERT_BODY_SIZE` | 0.3 | The minimum required body size (open-close difference) of the final alert candle to ensure it's a decisive move. |
+| `MAX_DISTANCE_CLOSE_PRICE` | 2.0 | The maximum allowed price difference between the close of the anchor candle and the close of the alert candle during a reversal confirmation. |
 | `MIN_TREND_MAGNITUDE` | 10.0 | The minimum price change required between the anchor candle and the window's peak/trough to be considered a valid trend. |
 
 ## Step-by-Step Logic
@@ -39,7 +40,8 @@ The core logic is implemented in the `VraExecutor` class in `src/stockreports/al
 
 4.  **Validate Reversal Confirmation:**
     *   The logic calls the standardized `validate_reversal_confirmation` function on the confirmation window.
-    *   **Condition:** This function checks if a valid reversal pattern exists after the volume spike. It looks for a new candle (the "Alert Candle") that confirms the reversal direction and has a body size of at least `MIN_ALERT_BODY_SIZE`.
+    *   **Condition 1:** This function checks if a valid reversal pattern exists after the volume spike. It looks for a new candle (the "Alert Candle") that confirms the reversal direction and has a body size of at least `MIN_ALERT_BODY_SIZE`.
+    *   **Condition 2:** It also validates that the price distance between the reversal's anchor candle and the final alert candle is no more than `MAX_DISTANCE_CLOSE_PRICE`.
     *   If no confirmed reversal is found, the window is discarded.
 
 5.  **Final Magnitude Validation:**

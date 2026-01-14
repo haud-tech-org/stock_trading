@@ -13,3 +13,4 @@ class VraSettings(BaseSettings):
         self.min_trend_magnitude = self.get("MIN_TREND_MAGNITUDE")
         self.volume_multiplier = self.get("VOLUME_MULTIPLIER")
         self.min_alert_body_size = self.get("MIN_ALERT_BODY_SIZE")
+        self.max_distance_close_price = self.get("MAX_DISTANCE_CLOSE_PRICE")
