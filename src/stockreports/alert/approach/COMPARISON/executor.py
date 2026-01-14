@@ -1,37 +1,29 @@
 import pandas as pd
 import logging
 import json
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.model.models import AlertResult, AlertData, ConfirmationResult
-from .confirmation import ComparisonConfirmation
-from .settings import ComparisonSignalSettings
-from src.stockreports.utils.data_utils import load_data_for_development, load_live_data
+from src.stockreports.alert.common.constants import Approach, Signal, Mode
+from src.stockreports.alert.model.models import AlertResult, AlertData
+from .settings import ComparisonSettings
+from src.stockreports.utils.alert_utils import is_in_cooldown
 from src.stockreports.utils.historical_data_manager import get_historical_data
-from src.stockreports.config import loader
-from src.stockreports.alert.common.constants import Approach, Mode, Signal
-from src.stockreports.alert.common.volume import (
-    is_volume_increasing, 
-    is_last_candle_volume_max, 
-    is_volume_spike_confirmed, 
-    can_apply_volume_confirmation
-)
-
 
 class ComparisonExecutor(Executor):
     APPROACH_NAME = Approach.COMPARISON
-    LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
+    LATEST_ALERT: Optional[AlertData] = None
 
     def __init__(self, symbol: str):
-        self.settings = ComparisonSignalSettings(symbol)
+        self.settings = ComparisonSettings(symbol)
         super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
-        """
-        Entry point for the COMPARISON approach. It takes a DataFrame and returns an AlertResult.
-        """
+        # This approach should only run for its configured primary symbol.
+        if self.symbol != self.settings.primary_symbol:
+            return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame())
+
         try:
             self.logger.info(f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...")
 
@@ -53,144 +45,142 @@ class ComparisonExecutor(Executor):
                 message=str(e)
             )
 
-    def _find_comparison_alerts(self, df: pd.DataFrame, new_candle_count: int) -> list[AlertData]:
-        """
-        Finds alerts by comparing the main symbol against a reference symbol,
-        using a unified reverse loop for both DEPLOYMENT and DEVELOPMENT modes.
-        """
+    def _find_comparison_alerts(self, df_primary: pd.DataFrame, new_candle_count: int) -> List[AlertData]:
+        # --- Data Loading for Reference Symbol ---
+        start_time = df_primary['time'].min()
+        end_time = df_primary['time'].max()
+        df_reference = get_historical_data(self.settings.reference_symbol, start_time=start_time, end_time=end_time)
+
+        if df_reference is None or df_reference.empty:
+            self.logger.warning(f"Reference dataframe for {self.settings.reference_symbol} is empty. Skipping alert finding.")
+            return []
+
         alerts = []
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
+        window_size = self.settings.lookback_window
 
-        # --- 1. Initial Setup & Config ---
-        
-        if self.symbol != self.settings.primary_symbol:
-            self.logger.warning(f"Executor symbol '{self.symbol}' does not match settings primary symbol '{self.settings.primary_symbol}'. Skipping.")
+        # Align dataframes
+        df_merged = pd.merge(df_primary, df_reference, left_index=True, right_index=True, suffixes=('_primary', '_reference'))
+        if len(df_merged) < window_size:
+            self.logger.warning(f"Not enough aligned data for {self.APPROACH_NAME}: requires {window_size}, have {len(df_merged)}.")
             return alerts
 
-        if not self.settings.referenced_symbol:
-            return alerts
+        df_indexed = df_merged.reset_index()
 
-        # --- 2. Data Loading from Cache ---
-        start_time = df['time'].min()
-        end_time = df['time'].max()
-        
-        ref_data = get_historical_data(self.settings.referenced_symbol, start_time=start_time, end_time=end_time)
+        loop_end_index = len(df_indexed) - 1
+        min_scan_index = window_size - 1
 
-        if ref_data is None or ref_data.empty:
-            self.logger.warning(f"Could not retrieve data for reference symbol '{self.settings.referenced_symbol}' for the required time window. Skipping.")
-            return alerts
-
-        main_data = df.set_index('time')
-        ref_data = ref_data.set_index('time')
-        aligned_main, aligned_ref = main_data.align(ref_data, join='inner', axis=0)
-
-        # --- 3. Indicator Calculation ---
-        ma_period = self.settings.ma_short_period
-        aligned_main[f'ma_{ma_period}'] = aligned_main['close'].rolling(window=ma_period).mean()
-        aligned_ref[f'ma_{ma_period}'] = aligned_ref['close'].rolling(window=ma_period).mean()
-        
-        final_main, final_ref = aligned_main.dropna().align(aligned_ref.dropna(), join='inner', axis=0)
-
-        if final_main.empty or len(final_main) < ma_period:
-            self.logger.warning(f"Not enough aligned data to run comparison after indicator calculation. Required: {ma_period}, have: {len(final_main)}.")
-            return alerts
-
-        # --- 4. Unified Reverse Loop ---
-        confirmation_checker = ComparisonConfirmation(self.settings)
-        cooldown_period_minutes = self.settings.cooldown_period  # Use dedicated cooldown setting
-        
-        loop_end = len(final_main) - 1
-        min_scan_index = self.settings.lookback_window - 1
-        
         if is_development_mode:
-            loop_start = min_scan_index
+            loop_start_index = min_scan_index
         else:
-            # In production, we only scan the new candles, but never go below the minimum required lookback
-            loop_start = max(min_scan_index, len(final_main) - new_candle_count)
+            loop_start_index = max(min_scan_index, len(df_indexed) - new_candle_count)
 
-        for i in range(loop_end, loop_start - 1, -1):
-            current_candle_time = final_main.index[i]
+        for i in range(loop_end_index, loop_start_index - 1, -1):
+            window_df = df_indexed.iloc[i - window_size + 1 : i + 1]
 
-            # Time-based cooldown check using the instance-level timestamp
-            if ComparisonExecutor.LATEST_ALERT_TIMESTAMP is not None:
-                time_since_last_alert = current_candle_time - ComparisonExecutor.LATEST_ALERT_TIMESTAMP
-                if time_since_last_alert.total_seconds() / 60 < cooldown_period_minutes:
-                    continue
+            anchor_idx, potential_signal = self._find_crossover_point(window_df)
+            if anchor_idx is None:
+                continue
 
-            main_window = final_main.iloc[:i + 1]
-            ref_window = final_ref.iloc[:i + 1]
+            alert_candle = window_df.iloc[-1]
+            anchor_candle = window_df.loc[anchor_idx]
 
-            data_window = {
-                self.symbol: main_window,
-                self.settings.referenced_symbol: ref_window
-            }
+            # 1. Divergence Check
+            divergence = alert_candle['close_primary'] - alert_candle['close_reference']
 
-            confirmation_result = confirmation_checker.confirm(data_window)
+            # 2. Trend Consistency and Magnitude Check
+            primary_trend_magnitude = alert_candle['close_primary'] - anchor_candle['close_primary']
+            reference_trend_magnitude = alert_candle['close_reference'] - anchor_candle['close_reference']
 
-            if confirmation_result:
-                reversal_time = confirmation_result.reversal_time
-                
-                # --- Volume Confirmation ---
-                use_volume_spike = self.settings.use_volume_confirmation
-                use_increasing_volume = self.settings.use_volume_increasing_confirmation
-                use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
+            is_consistent_trend = (primary_trend_magnitude > 0 and reference_trend_magnitude > 0) or \
+                                  (primary_trend_magnitude < 0 and reference_trend_magnitude < 0)
 
-                # Define the window for volume checks, typically the lookback window ending at the current candle
-                volume_check_window_df = main_window.iloc[-self.settings.lookback_window:]
+            if not is_consistent_trend:
+                continue
 
-                volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(final_main) and is_volume_spike_confirmed(final_main.reset_index(), i))
-                volume_is_increasing = not use_increasing_volume or is_volume_increasing(volume_check_window_df)
-                last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(volume_check_window_df)
+            if abs(primary_trend_magnitude) > self.settings.max_primary_trend_magnitude:
+                continue
+            
+            # Determine the final signal based on trend direction and potential signal from crossover
+            final_signal = None
+            if primary_trend_magnitude > 0 and potential_signal == Signal.BUY and not self.settings.disable_buy_signal:
+                final_signal = Signal.BUY
+            elif primary_trend_magnitude < 0 and potential_signal == Signal.SELL and not self.settings.disable_sell_signal:
+                final_signal = Signal.SELL
 
-                if not (volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed):
-                    continue
-                # --- End Volume Confirmation ---
+            if final_signal is None:
+                continue
 
-                alert = self._create_alert(
-                    candle=main_window.iloc[-1],
-                    alert_info=confirmation_result,
-                    reversal_time=reversal_time,
-                    reversal_price=main_window.loc[reversal_time]['open'] if reversal_time else main_window.iloc[-1]['open'],
-                    referenced_symbol=self.settings.referenced_symbol,
-                    settings=self.settings
-                )
-                alerts.append(alert)
-                
-                # Update the instance-level timestamp with the new alert's time
-                ComparisonExecutor.LATEST_ALERT_TIMESTAMP = alert.alert_time
+            # 3. Divergence Threshold and Consistency Check
+            if not (
+                (final_signal == Signal.BUY and divergence >= self.settings.min_divergence_threshold) or
+                (final_signal == Signal.SELL and divergence <= -self.settings.min_divergence_threshold)
+            ):
+                continue
 
-                if not is_development_mode:
-                    return alerts
+            # 4. Cooldown Check
+            if is_in_cooldown(
+                new_alert_time=alert_candle['time'],
+                new_signal=final_signal,
+                latest_alert=ComparisonExecutor.LATEST_ALERT,
+                cooldown_window=self.settings.cooldown_window
+            ):
+                continue
 
-        return alerts[::-1]
+            alert_data = self._create_alert_data(alert_candle, anchor_candle, final_signal, divergence)
+            alerts.append(alert_data)
+            ComparisonExecutor.LATEST_ALERT = alert_data
 
-    def _create_alert(self, candle: pd.Series, alert_info: ConfirmationResult, reversal_time: pd.Timestamp, reversal_price: float, referenced_symbol: str, settings: ComparisonSignalSettings) -> AlertData:
+            if not is_development_mode:
+                return alerts
+        
+        return alerts
+
+    def _find_crossover_point(self, window_df: pd.DataFrame) -> Tuple[Optional[int], Optional[Signal]]:
         """
-        Creates and returns a standardized AlertData object.
+        Finds the most recent crossover point and the potential signal it implies.
+        Searches backwards and returns the index and signal of the first flip found.
         """
-        alert_time = candle.name
+        if len(window_df) < 2:
+            return None, None
+
+        # Iterate backwards from the end of the window.
+        for i in range(len(window_df) - 1, 0, -1):
+            current_candle = window_df.iloc[i]
+            prev_candle = window_df.iloc[i - 1]
+
+            prev_primary_below_ref = prev_candle['close_primary'] < prev_candle['close_reference']
+            curr_primary_below_ref = current_candle['close_primary'] < current_candle['close_reference']
+
+            if prev_primary_below_ref != curr_primary_below_ref:
+                # Crossover detected. Determine the signal based on the direction of the cross.
+                potential_signal = Signal.BUY if not curr_primary_below_ref else Signal.SELL
+                return window_df.index[i], potential_signal
+
+        return None, None
+
+    def _create_alert_data(self, alert_candle: pd.Series, anchor_candle: pd.Series, signal: Signal, divergence: float) -> AlertData:
+        alert_time = alert_candle['time']
         alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
-
-        # Ensure start_time is a Timestamp object, not None
-        start_time = reversal_time if reversal_time is not None else alert_time
+        magnitude = abs(alert_candle['close_primary'] - anchor_candle['close_primary'])
 
         details = {
-            "trend": alert_info.trend,
-            "referenced_symbol": referenced_symbol,
-            "ma_period": settings.ma_short_period,
-            "lookback_window": settings.lookback_window,
-            "cooldown_period": settings.cooldown_period
+            "reference_symbol": self.settings.reference_symbol,
+            "divergence_at_alert": divergence,
+            "anchor_candle_time": anchor_candle['time'].isoformat(),
+            "anchor_candle_price_primary": anchor_candle['close_primary'],
+            "anchor_candle_price_reference": anchor_candle['close_reference'],
         }
 
         return AlertData(
             approach=self.APPROACH_NAME,
             id=alert_id,
             symbol=self.symbol,
-            signal=alert_info.signal,
-            alert_price=candle['close'],
+            signal=signal,
+            alert_price=alert_candle['close_primary'],
             alert_time=alert_time,
-            start_price=reversal_price,
-            start_time=start_time,
-            magnitude=abs(candle['close'] - reversal_price),
+            start_price=anchor_candle['close_primary'],
+            start_time=anchor_candle['time'].isoformat(),
+            magnitude=magnitude,
             details=json.dumps(details)
         )
