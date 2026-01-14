@@ -157,3 +157,7 @@ This section documents real errors made during development to serve as learning 
         2.  Move the logic into the helper methods one by one in subsequent edits.
         3.  Finally, update the original function to be a dispatcher.
         This reduces the risk of large-scale accidental deletions and makes errors easier to pinpoint.
+
+## References
+
+- For a log of common technical issues and their resolutions, which can help in avoiding common pitfalls, refer to the [Technical Case Studies & Issue Resolution Log](../case-studies/TECHNICAL_CASE_STUDIES.md).

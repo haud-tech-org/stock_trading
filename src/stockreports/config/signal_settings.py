@@ -361,6 +361,13 @@ APPROACH_CONFIG = {
         # --- Optional Signal Disabling ---
         "DISABLE_BUY_SIGNAL": False,
         "DISABLE_SELL_SIGNAL": False
-    }
+    },
+    # --- VRA (Volume-Reversal-Anchor) ---
+    "VRA": {
+        "LOOKBACK_WINDOW": 10,
+        "MIN_TREND_MAGNITUDE": 7.0,
+        "VOLUME_MULTIPLIER": 4.0,
+        "MIN_ALERT_BODY_SIZE": 0.3,
+    },
 }
 
