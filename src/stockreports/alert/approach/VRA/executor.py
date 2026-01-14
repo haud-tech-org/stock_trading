@@ -9,9 +9,11 @@ from src.stockreports.alert.common.constants import Approach, Mode, Signal
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from .settings import VraSettings
 from src.stockreports.alert.common.confirmation.reversal import validate_reversal_confirmation
+from src.stockreports.utils.alert_utils import is_in_cooldown
 
 class VraExecutor(Executor):
     APPROACH_NAME = Approach.VRA
+    LATEST_ALERT: Optional[AlertData] = None
 
     def __init__(self, symbol: str):
         self.settings = VraSettings(symbol)
@@ -109,6 +111,16 @@ class VraExecutor(Executor):
             if magnitude < self.settings.min_trend_magnitude:
                 continue
             
+            # --- Cooldown Logic ---
+            if is_in_cooldown(
+                new_alert_time=alert_candle['time'],
+                new_signal=reversal_signal,
+                latest_alert=VraExecutor.LATEST_ALERT,
+                cooldown_window=self.settings.cooldown_window
+            ):
+                self.logger.info(f"Skipping alert for {self.symbol} due to cooldown.")
+                continue
+
             # --- All validations passed, create alert ---
             alert_time = alert_candle['time']
             alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
@@ -131,6 +143,7 @@ class VraExecutor(Executor):
                 })
             )
             alerts.append(alert_data)
+            VraExecutor.LATEST_ALERT = alert_data
 
             # In production mode, return immediately after finding the first valid alert
             if not is_development_mode:

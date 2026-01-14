@@ -6,6 +6,10 @@ from typing import Optional, Tuple
 from src.stockreports.config import price_alert_settings, settings
 from src.stockreports.utils.historical_data_manager import get_historical_data
 import importlib
+from typing import Optional
+from src.stockreports.alert.model.models import AlertData
+from src.stockreports.alert.common.constants import Signal
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -174,3 +178,31 @@ def adjust_price_by_signal(price: float, signal: str) -> float:
     if signal.upper() == 'BUY':
         return price - price_level
     return price + price_level
+
+
+def is_in_cooldown(
+    new_alert_time: datetime,
+    new_signal: Signal,
+    latest_alert: Optional[AlertData],
+    cooldown_window: int
+) -> bool:
+    """
+    Checks if a new alert is within the cooldown period of the last alert.
+
+    Args:
+        new_alert_time: The timestamp of the potential new alert.
+        new_signal: The signal (BUY/SELL) of the potential new alert.
+        latest_alert: The last recorded AlertData object.
+        cooldown_window: The cooldown period in minutes.
+
+    Returns:
+        True if the new alert should be skipped due to cooldown, False otherwise.
+    """
+    if latest_alert is None:
+        return False
+
+    time_since_last_alert = (new_alert_time - latest_alert.alert_time).total_seconds() / 60
+    is_in_cooldown_period = time_since_last_alert < cooldown_window
+    is_same_signal = new_signal == latest_alert.signal
+
+    return is_in_cooldown_period and is_same_signal

@@ -11,6 +11,7 @@ from src.stockreports.alert.common.constants import Approach, Signal, Mode
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from .settings import PriceGapSettings
 from src.stockreports.alert.common.confirmation.reversal import validate_reversal_confirmation
+from src.stockreports.utils.alert_utils import is_in_cooldown
 
 class PriceGapExecutor(Executor):
     APPROACH_NAME = Approach.PRICE_GAP
@@ -84,10 +85,13 @@ class PriceGapExecutor(Executor):
                     gap_trend_signal = Signal.BUY if gap > 0 else Signal.SELL
                     
                     # Cooldown Check
-                    if PriceGapExecutor.LATEST_ALERT:
-                        time_since_last_alert = (current_candle['time'] - PriceGapExecutor.LATEST_ALERT.alert_time).total_seconds() / 60
-                        if time_since_last_alert < cooldown_window and gap_trend_signal == PriceGapExecutor.LATEST_ALERT.signal:
-                            continue # Skip this potential alert
+                    if is_in_cooldown(
+                        new_alert_time=current_candle['time'],
+                        new_signal=gap_trend_signal,
+                        latest_alert=PriceGapExecutor.LATEST_ALERT,
+                        cooldown_window=cooldown_window
+                    ):
+                        continue
 
                     # --- Scenario 1: Continuation Alert ---
                     if anchor_candle_A.name == window_df.index[-1]:
@@ -119,10 +123,13 @@ class PriceGapExecutor(Executor):
                             alert_candle, reversal_anchor_candle = validation_result
                             
                             # Cooldown Check for Reversal
-                            if PriceGapExecutor.LATEST_ALERT:
-                                time_since_last_alert = (alert_candle['time'] - PriceGapExecutor.LATEST_ALERT.alert_time).total_seconds() / 60
-                                if time_since_last_alert < cooldown_window and reversal_signal == PriceGapExecutor.LATEST_ALERT.signal:
-                                    continue # Skip this potential alert
+                            if is_in_cooldown(
+                                new_alert_time=alert_candle['time'],
+                                new_signal=reversal_signal,
+                                latest_alert=PriceGapExecutor.LATEST_ALERT,
+                                cooldown_window=cooldown_window
+                            ):
+                                continue
 
                             alert_data = self._create_alert_data(
                                 signal=reversal_signal,
