@@ -76,5 +76,46 @@ All manual testing scripts in `tests\manual\` have been successfully executed an
     - **Efficiency**: Speeds up development by allowing developers to reuse trusted components.
 - **Status**: ✅ Established as a best practice.
 
+### 6. COMPARISON Approach Refactoring & Debugging ✅
+**Status**: IN-PROGRESS
+**Purpose**: Document the process of refactoring the `COMPARISON` approach to improve its validation logic and resolve bugs.
+
+**Case Studies & Issues Resolved**:
+
+#### a. Constructor Mismatch in Data Object Creation
+- **Issue**: After refactoring the `_create_alert_data` method, a `TypeError: __init__() got an unexpected keyword argument 'timestamp'` was raised. The `AlertData` constructor was being called with outdated or incorrect parameter names, failing to match the dataclass definition.
+- **Resolution**:
+    1. **Error Analysis**: The traceback clearly pointed to the `AlertData(...)` call inside `_create_alert_data` in the `ComparisonExecutor`.
+    2. **Model Definition Review**: Inspected the `AlertData` dataclass in `src/stockreports/alert/model/models.py` to confirm its expected fields (e.g., `id`, `symbol`, `signal`, `approach`, `alert_time`, `alert_price`, `start_time`, `start_price`, `magnitude`, `details`).
+    3. **Code Correction**: Modified the `_create_alert_data` method to correctly map the available data to the `AlertData` constructor's fields. This involved removing the invalid `timestamp` argument and correctly assigning values to `alert_time`, `start_time`, `alert_price`, and `start_price`.
+    4. **Data Serialization**: Ensured the `details` dictionary was properly converted to a JSON string using `json.dumps()` before being passed to the `AlertData` object, as required by the model's `details: str` type hint.
+- **Status**: ✅ RESOLVED
+
+#### b. Enum Member vs. Value Mismatches
+- **Issue**: A common error pattern involves the incorrect use of Enum members. Code sometimes uses `Enum.MEMBER.value` (e.g., `Approach.COMPARISON.value`, which is the string `"COMPARISON"`) when the receiving function or data model expects the actual Enum member (`Approach.COMPARISON`). Conversely, other parts of the code, like JSON serialization, require the primitive string value. This leads to `TypeError` or logic failures.
+- **Resolution**:
+    1. **Contextual Usage**: Established a clear rule: use the Enum member for internal logic, type hints, and comparisons (`if approach == Approach.VRA:`). Use the `.value` attribute only when serializing data (e.g., to JSON) or when a primitive type is explicitly required.
+    2. **Code Correction**: In `ComparisonExecutor._create_alert_data`, the `approach` field in the `details` dictionary and the `AlertData` constructor requires a string, so `self.APPROACH_NAME.value` is the correct usage.
+    3. **Systematic Review**: This pattern highlights the need to be vigilant about the expected type (Enum member vs. its value) at every function call and data assignment boundary.
+- **Status**: ✅ RESOLVED & Documented as a recurring pattern to watch for.
+
+#### c. Best Practice: Standardize Log Message Prefixes
+- **Issue**: As the system grows, debugging becomes difficult when log messages from different modules and classes are interleaved without clear identifiers. It's hard to trace the execution flow for a specific component.
+- **Resolution Pattern**:
+    1. **Standardization Rule**: A consistent logging format was adopted. All log messages must be prefixed with the name of their originating component.
+    2. **Class-based Logging**: For methods within a class, the prefix should be the class name. This is easily achieved using `self.__class__.__name__`.
+        ```python
+        self.logger.debug(f"[{self.__class__.__name__}] My log message.")
+        ```
+    3. **Module-based Logging**: For functions in a utility module, the prefix should be the module's name, accessible via `__name__`.
+        ```python
+        logger.debug(f"[{__name__}] My log message.")
+        ```
+- **Benefits**:
+    - **Clarity**: Immediately identifies the source of every log entry.
+    - **Filterability**: Allows developers to easily `grep` or filter logs for a specific component (e.g., `grep "ComparisonExecutor"`).
+    - **Traceability**: Simplifies tracing the step-by-step execution path through different parts of the system.
+- **Status**: ✅ Established as a best practice and applied across multiple components.
+
 ## Issues Resolved
 ...

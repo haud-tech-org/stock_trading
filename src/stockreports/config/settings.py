@@ -15,6 +15,10 @@ notifications, and market-specific details.
 # Always include the derivative symbol is the FIRST symbol
 SYMBOLS = ["41I1G1000", "VN30"]
 
+# List of symbols that have a significant impact on the market.
+IMPACT_SYMBOLS = ["VIC", "VHM"]
+
+
 # API Base URL
 # Meaning: The root URL for the historical data API endpoint.
 # Guidance: Do not change this unless the API provider changes their URL structure.
@@ -123,11 +127,11 @@ SAVE_DEV_API_RESPONSE_TO_FILE = True
 ALERT_APPROACHES = [
     #"RCM",
     #"CONSISTENT_MOMENTUM",
-    "ICHIMOKU",
-    "STRONG_CANDLE",
+    #"ICHIMOKU",
+    #"STRONG_CANDLE",
     #"SUPPORT_RESISTANCE_BREAK",
     #"MOMENTUM_EXHAUSTION",
-    "CONSECUTIVE_POWER_CANDLES",
+    #"CONSECUTIVE_POWER_CANDLES",
     #"CONSOLIDATION_BREAKOUT",
     "COMPARISON",
     #"PROMINENT_PEAK_REVERSAL",
