@@ -12,6 +12,7 @@ from src.stockreports.alert.model.models import AlertResult, AlertData
 from .settings import PriceGapSettings
 from src.stockreports.alert.common.confirmation.reversal import validate_reversal_confirmation
 from src.stockreports.utils.alert_utils import is_in_cooldown
+from src.stockreports.alert.common.signal.market_trend_validation import validate_concurrent_trend
 
 class PriceGapExecutor(Executor):
     APPROACH_NAME = Approach.PRICE_GAP
@@ -78,9 +79,26 @@ class PriceGapExecutor(Executor):
                 current_candle = window_df.iloc[j]
                 previous_candle = window_df.iloc[j - 1]
 
-                gap = current_candle['open'] - previous_candle['close']
+                # Identify the highest and lowest points of the previous candle's body
+                prev_body_high = max(previous_candle['open'], previous_candle['close'])
+                prev_body_low = min(previous_candle['open'], previous_candle['close'])
 
-                if abs(gap) >= min_gap_size:
+                gap = 0
+                is_valid_gap = False
+
+                # Check for a valid gap up (current open is above previous body)
+                if current_candle['open'] > prev_body_high:
+                    gap = current_candle['open'] - prev_body_high
+                    if gap >= min_gap_size:
+                        is_valid_gap = True
+                
+                # Check for a valid gap down (current open is below previous body)
+                elif current_candle['open'] < prev_body_low:
+                    gap = current_candle['open'] - prev_body_low
+                    if abs(gap) >= min_gap_size:
+                        is_valid_gap = True
+
+                if is_valid_gap:
                     anchor_candle_A = current_candle
                     gap_trend_signal = Signal.BUY if gap > 0 else Signal.SELL
                     
@@ -95,6 +113,17 @@ class PriceGapExecutor(Executor):
 
                     # --- Scenario 1: Continuation Alert ---
                     if anchor_candle_A.name == window_df.index[-1]:
+                        # Market Trend Validation for Continuation
+                        if self.settings.enable_market_trend_validation:
+                            if not validate_concurrent_trend(
+                                expected_signal=gap_trend_signal,
+                                alert_time=current_candle['time'],
+                                min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
+                                require_all=False
+                            ):
+                                self.logger.debug(f"[{self.__class__.__name__}] Concurrent market trend validation failed for Continuation alert at {current_candle['time']}.")
+                                continue
+
                         alert_data = self._create_alert_data(
                             signal=gap_trend_signal,
                             alert_candle=anchor_candle_A,
@@ -122,6 +151,17 @@ class PriceGapExecutor(Executor):
                         if validation_result:
                             alert_candle, reversal_anchor_candle = validation_result
                             
+                            # Market Trend Validation for Reversal
+                            if self.settings.enable_market_trend_validation:
+                                if not validate_concurrent_trend(
+                                    expected_signal=reversal_signal,
+                                    alert_time=alert_candle['time'],
+                                    min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
+                                    require_all=False
+                                ):
+                                    self.logger.debug(f"[{self.__class__.__name__}] Concurrent market trend validation failed for Reversal alert at {alert_candle['time']}.")
+                                    continue
+
                             # Cooldown Check for Reversal
                             if is_in_cooldown(
                                 new_alert_time=alert_candle['time'],

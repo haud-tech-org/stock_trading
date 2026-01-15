@@ -5,11 +5,12 @@ import json
 from typing import Optional
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.common.constants import Approach, Mode, Signal
+from src.stockreports.alert.common.constants import Approach, Signal, Mode
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from .settings import VraSettings
 from src.stockreports.alert.common.confirmation.reversal import validate_reversal_confirmation
 from src.stockreports.utils.alert_utils import is_in_cooldown
+from src.stockreports.alert.common.signal.market_trend_validation import validate_concurrent_trend
 
 class VraExecutor(Executor):
     APPROACH_NAME = Approach.VRA
@@ -100,6 +101,17 @@ class VraExecutor(Executor):
             
             alert_candle, anchor_candle = validation_result
 
+            # Market Trend Validation
+            if self.settings.enable_market_trend_validation:
+                if not validate_concurrent_trend(
+                    expected_signal=reversal_signal,
+                    alert_time=alert_candle['time'],
+                    min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
+                    require_all=False
+                ):
+                    self.logger.debug(f"[{self.__class__.__name__}] Concurrent market trend validation failed for Reversal alert at {alert_candle['time']}.")
+                    continue
+            
             # 7. Magnitude Validation (Most Complex)
             if reversal_signal == Signal.SELL:
                 min_close_in_window = window_df['close'].min()
