@@ -64,3 +64,9 @@ from tests.debug.common.charts.visibility_chart import generate_alert_chart
 ```
 
 By following this model, we ensure all approaches have consistent, high-quality debugging visuals while keeping the codebase clean and organized.
+
+## Pre-generation Checklist
+1.  **Review Case Studies**: Before writing any code, consult the **[Technical Case Studies & Issue Resolution Log](../../case-studies/TECHNICAL_CASE_STUDIES.md)** and the **[Code Generation Guidelines](./CODE_GENERATION_GUIDELINES.md)** to avoid repeating past mistakes.
+
+## Core Components of the Debug Script
+The script should be structured with the following key sections:

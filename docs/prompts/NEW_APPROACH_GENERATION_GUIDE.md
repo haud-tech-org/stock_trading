@@ -139,7 +139,17 @@ class ConsolidationBreakoutExecutor(Executor):
         # ... (core analysis for a single window) ...
 ```
 
-## 6. Case Studies: Common Pitfalls to Avoid
+### Step 6: Create the Documentation File
+
+-   **Path**: `docs/algorithms/APPROACH_NAME.md`
+-   **Action**: Create a detailed documentation file for the new approach.
+-   **Mandatory Format**: The documentation **must** adhere to the standard content structure, as seen in the [VRA Approach Documentation](../../algorithms/VRA.md). It must include the following sections:
+    1.  **Objective**: A high-level summary of the strategy.
+    2.  **Key Parameters**: A markdown table listing all configuration parameters, their default values, and descriptions.
+    3.  **Step-by-Step Logic**: A detailed breakdown of the algorithm's execution flow.
+    4.  **Flow Diagram**: A `mermaid` diagram visualizing the logic.
+
+## 4. Case Studies: Common Pitfalls to Avoid
 
 This section documents real errors made during development to serve as learning examples.
 
@@ -162,3 +172,112 @@ This section documents real errors made during development to serve as learning 
 
 - For a log of common technical issues and their resolutions, which can help in avoiding common pitfalls, refer to the [Technical Case Studies & Issue Resolution Log](../case-studies/TECHNICAL_CASE_STUDIES.md).
 - For an example of a standardized, well-structured documentation file for an approach, see the [Price Gap Approach Documentation](../algorithms/PRICE_GAP.md).
+
+# Guide to Generating a New Alert Approach
+
+## Objective
+To create all the necessary files and boilerplate code for a new alert generation approach. This guide ensures that new approaches are structured consistently and integrate seamlessly into the existing system.
+
+## Pre-generation Checklist
+1.  **Review Case Studies**: Before writing any code, consult the **[Technical Case Studies & Issue Resolution Log](../../case-studies/TECHNICAL_CASE_STUDIES.md)** and the **[Code Generation Guidelines](./CODE_GENERATION_GUIDELINES.md)** to avoid repeating past mistakes.
+
+## Step-by-Step File Generation
+
+### 1. Define the Approach Name
+-   **Action**: Ask the user for the name of the new approach (e.g., "TrendReversal", "MarketMomentum").
+-   **Details**: The name should be descriptive of the strategy and follow the existing naming conventions. Avoid generic names; be as specific as possible about the strategy's intent.
+-   **Example**: For a strategy based on moving average crossovers, a suitable name might be "MACrossOverStrategy".
+
+### 2. Create the Executor File Structure
+-   **Action**: Generate the necessary file and folder structure for the new approach.
+-   **Details**: This includes creating a new folder under `src/stockreports/alert/approach/` with the approach name, and inside it, creating `__init__.py`, `executor.py`, and `settings.py` files.
+-   **Example**: For the "MACrossOverStrategy", the structure would be:
+    ```
+    src/
+    └── stockreports/
+        └── alert/
+            └── approach/
+                └── MACrossOverStrategy/
+                    ├── __init__.py
+                    ├── executor.py
+                    └── settings.py
+    ```
+
+### 3. Create a Dedicated Settings Class
+-   **Action**: Define a new settings class for the approach in `settings.py`.
+-   **Details**: This class should inherit from `BaseSettings` and define all necessary parameters for the approach, using sensible defaults. Parameters should be documented with comments.
+-   **Example**: A settings class for the moving average crossover might look like:
+    ```python
+    from src.stockreports.alert.common.base_settings import BaseSettings
+
+    class MACrossOverSettings(BaseSettings):
+        def __init__(self, symbol: str):
+            super().__init__(symbol, "MACROSSOVERSTRATEGY")
+            self.short_window = self.get("SHORT_WINDOW", 50)
+            self.long_window = self.get("LONG_WINDOW", 200)
+    ```
+
+### 4. Configure the Approach in `signal_settings.py`
+-   **Action**: Create a file at `src/stockreports/config/signal_settings.py` (if it doesn't exist) and add a new dictionary key for the approach. Populate it with all the parameters defined in the `settings.py` file, along with their default values.
+
+### 5. Create the Documentation File
+-   **Path**: `docs/algorithms/APPROACH_NAME.md`
+-   **Action**: Create a detailed documentation file for the new approach.
+-   **Mandatory Format**: The documentation **must** adhere to the standard content structure, as seen in the [VRA Approach Documentation](../../algorithms/VRA.md). It must include the following sections:
+    1.  **Objective**: A high-level summary of the strategy.
+    2.  **Key Parameters**: A markdown table listing all configuration parameters, their default values, and descriptions.
+    3.  **Step-by-Step Logic**: A detailed breakdown of the algorithm's execution flow.
+    4.  **Flow Diagram**: A `mermaid` diagram visualizing the logic.
+
+### 6. Implement the Executor Class
+-   **Action**: Develop the main executor class for the approach in `executor.py`.
+-   **Details**: The class should inherit from `Executor` and implement the `run` method, calling private methods for the main logic. Ensure proper error handling and logging.
+-   **Example**: A skeleton for the moving average crossover executor might look like:
+    ```python
+    import pandas as pd
+    import logging
+    from typing import Optional
+    from src.stockreports.alert.executor import Executor
+    from .settings import MACrossOverSettings
+
+    class MACrossOverExecutor(Executor):
+        APPROACH_NAME = "MACROSSOVERSTRATEGY"
+
+        def __init__(self, symbol: str):
+            super().__init__(symbol)
+            self.settings = MACrossOverSettings(symbol)
+            self.logger = logging.getLogger(__name__)
+
+        def run(self, df: pd.DataFrame, new_candle_count: int = 0):
+            # Main execution logic
+            pass
+
+        def _analyze_window(self, window: pd.DataFrame) -> Optional[AlertData]:
+            # Analysis logic for a single window
+            pass
+    ```
+
+### 7. Test the New Approach
+-   **Action**: Validate the new approach with historical data to ensure it behaves as expected.
+-   **Details**: Run the approach in a development environment, review the generated alerts, and adjust the logic or settings as necessary. Pay close attention to the performance and accuracy of the alerts.
+-   **Example**: For the moving average crossover, check that the alerts are triggered at the correct points based on historical price data.
+
+### 8. Document the Approach
+-   **Action**: Create a documentation file for the new approach.
+-   **Details**: This should include an overview of the strategy, how to configure it, and examples of the generated alerts. Follow the documentation standards used in existing approaches.
+-   **Example**: A Markdown file `MACROSSOVERSTRATEGY.md` in the `docs` folder, with sections for **Overview**, **Configuration**, **Examples**, and **Backtesting Results**.
+
+### 9. Review and Refactor
+-   **Action**: Conduct a thorough review of the new approach's code and documentation.
+-   **Details**: Refactor any parts of the code that can be improved, ensure all new files are included in version control, and update any relevant documentation or diagrams.
+-   **Example**: Use code review tools to check for common issues, and manually inspect the documentation for clarity and completeness.
+
+### 10. Deploy the New Approach
+-   **Action**: Deploy the new approach to the live environment.
+-   **Details**: Follow the deployment procedures used for other approaches, monitor the deployment for any issues, and be prepared to roll back if necessary.
+-   **Example**: Deploy the "MACrossOverStrategy" and monitor the initial alerts closely to ensure everything is functioning correctly.
+
+## References
+-   **Code Generation Guidelines**: Detailed guidelines on generating code for new approaches, including naming conventions, file structures, and coding standards.
+-   **Technical Case Studies & Issue Resolution Log**: A log of common technical issues and their resolutions, which can help in avoiding common pitfalls.
+-   **Existing Approach Documentation**: Examples of standardized, well-structured documentation files for existing approaches, serving as a reference for documenting new approaches.
