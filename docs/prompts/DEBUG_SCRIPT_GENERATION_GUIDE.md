@@ -65,8 +65,13 @@ from tests.debug.common.charts.visibility_chart import generate_alert_chart
 
 By following this model, we ensure all approaches have consistent, high-quality debugging visuals while keeping the codebase clean and organized.
 
-## Pre-generation Checklist
-1.  **Review Case Studies**: Before writing any code, consult the **[Technical Case Studies & Issue Resolution Log](../../case-studies/TECHNICAL_CASE_STUDIES.md)** and the **[Code Generation Guidelines](./CODE_GENERATION_GUIDELINES.md)** to avoid repeating past mistakes.
+## Pre-generation Mandate
+To prevent recurring errors, the following steps are **mandatory** before generating any new script:
+
+1.  **Identify the "Golden Pattern"**: Find the most recent, well-structured, and working example of a similar script in the workspace (e.g., for a debug script, `VRA/debug_executor.py` was identified as the current standard). This is your primary reference.
+2.  **Review Core Configuration**: Explicitly check how the "Golden Pattern" script handles configuration and imports. Note the use of `config.loader` and `utils.data_utils` over any older, direct imports.
+3.  **Verify Utility Paths**: Do not assume module locations. If you need a utility (e.g., for charting or reporting), use the file explorer to confirm its exact path before writing the import statement.
+4.  **Consult the Case Studies**: Review **[Technical Case Studies & Issue Resolution Log](../../case-studies/TECHNICAL_CASE_STUDIES.md)** for known pitfalls, especially regarding "Stale Code Patterns" and "Dependency Management".
 
 ## Core Components of the Debug Script
 The script should be structured with the following key sections:
