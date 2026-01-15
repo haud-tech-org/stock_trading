@@ -7,11 +7,11 @@ from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.common.constants import Approach, Signal, Mode
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from .settings import ComparisonSettings
-from src.stockreports.utils.alert_utils import is_in_cooldown
-from src.stockreports.utils.historical_data_manager import get_historical_data
 from src.stockreports.alert.common.confirmation.reversal import validate_reversal_confirmation
+from src.stockreports.utils.alert_utils import is_in_cooldown
+from src.stockreports.alert.common.signal.market_trend_validation import validate_concurrent_trend
 from src.stockreports.alert.common.signal.trend_utils import validate_trend
-from src.stockreports.alert.common.signal.market_trend_validation import validate_market_trend
+from src.stockreports.utils.historical_data_manager import get_historical_data
 
 class ComparisonExecutor(Executor):
     APPROACH_NAME = Approach.COMPARISON
@@ -122,8 +122,22 @@ class ComparisonExecutor(Executor):
             anchor_candle_primary = df_primary[df_primary['time'] == anchor_timestamp].iloc[0]
             alert_candle_primary = df_primary[df_primary['time'] == alert_time].iloc[0]
             primary_trend_magnitude = alert_candle_primary['close'] - anchor_candle_primary['close']
-            if abs(primary_trend_magnitude) > self.settings.max_primary_trend_magnitude:
-                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Primary trend magnitude ({primary_trend_magnitude:.2f}) exceeded max ({self.settings.max_primary_trend_magnitude}).")
+
+            failed_magnitude_check = False
+            reason = ""
+            if potential_signal == Signal.BUY:
+                if not (self.settings.min_primary_trend_magnitude <= primary_trend_magnitude <= self.settings.max_primary_trend_magnitude):
+                    failed_magnitude_check = True
+                    reason = f"magnitude ({primary_trend_magnitude:.2f}) was not within [{self.settings.min_primary_trend_magnitude}, {self.settings.max_primary_trend_magnitude}]"
+            elif potential_signal == Signal.SELL:
+                min_sell_magnitude = -self.settings.max_primary_trend_magnitude
+                max_sell_magnitude = -self.settings.min_primary_trend_magnitude
+                if not (min_sell_magnitude <= primary_trend_magnitude <= max_sell_magnitude):
+                    failed_magnitude_check = True
+                    reason = f"magnitude ({primary_trend_magnitude:.2f}) was not within [{min_sell_magnitude}, {max_sell_magnitude}]"
+            
+            if failed_magnitude_check:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Primary trend for {potential_signal} signal failed because {reason}.")
                 continue
 
             # Step 4: Define confirmation window and validate trends
@@ -169,22 +183,13 @@ class ComparisonExecutor(Executor):
 
             # Step 6: Validate against overall market trend (optional)
             if self.settings.enable_market_trend_validation:
-                # Find the timestamp of the candle immediately after the anchor reversal
-                anchor_reversal_idx = anchor_reversal_candle_ref.name
-                if anchor_reversal_idx + 1 < len(df_reference):
-                    market_trend_start_time = df_reference.iloc[anchor_reversal_idx + 1]['time']
-                else:
-                    self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 6 Failed: No candle found after anchor reversal for market trend validation.")
-                    continue # No candles after the reversal to validate, so skip
-
-                if not validate_market_trend(
-                    start_time=market_trend_start_time,
-                    end_time=alert_time,
+                if not validate_concurrent_trend(
                     expected_signal=final_signal,
-                    min_price_change=self.settings.min_market_price_change,
-                    use_monotonic_check=False
+                    alert_time=alert_time,
+                    min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
+                    require_all=False
                 ):
-                    self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 6 Failed: Market trend validation failed.")
+                    self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 6 Failed: Concurrent market trend validation failed.")
                     continue
 
             # Step 7: Cooldown Check

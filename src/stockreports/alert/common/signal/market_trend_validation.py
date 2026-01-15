@@ -75,3 +75,130 @@ def validate_market_trend(
     # If all symbols passed the validation
     logger.debug(f"[{__name__}] Market trend validation passed for all {len(symbols)} symbols.")
     return True
+
+
+def validate_concurrent_trend(
+    expected_signal: Signal,
+    alert_time: pd.Timestamp,
+    symbols: List[str] = IMPACT_SYMBOLS,
+    min_body_size: Optional[float] = None,
+    min_body_to_range_ratio: Optional[float] = None,
+    require_all: bool = True
+) -> bool:
+    """
+    Validates that all or at least one of the specified symbols have a candle of a specific direction at a given time.
+
+    Args:
+        expected_signal (Signal): The expected signal (BUY for green candle, SELL for red candle).
+        alert_time (pd.Timestamp): The specific timestamp of the candle to validate.
+        symbols (List[str]): A list of symbol strings to validate. Defaults to IMPACT_SYMBOLS.
+        min_body_size (Optional[float]): If provided, validates that the candle's body size
+                                         meets this minimum requirement.
+        min_body_to_range_ratio (Optional[float]): If provided, validates that the candle's body
+                                                   is at least this ratio of the total candle range (high-low).
+        require_all (bool): If True, all symbols must pass validation. If False, at least one must pass.
+
+    Returns:
+        bool: True if the validation condition is met, False otherwise.
+    """
+    if not symbols:
+        logger.debug(f"[{__name__}] Concurrent trend validation passed: No symbols provided.")
+        return True
+
+    logger.debug(f"[{__name__}] Starting concurrent trend validation for {len(symbols)} symbols at {alert_time}, expecting signal '{expected_signal}'. Require all: {require_all}.")
+
+    passed_symbols_count = 0
+    for symbol in symbols:
+        # Add a buffer to the time range to ensure data is captured
+        buffer = pd.Timedelta(minutes=1)
+        start_buffer = alert_time - buffer
+        end_buffer = alert_time + buffer
+
+        # Fetch data within the buffered time window
+        df_symbol_buffered = get_historical_data(symbol, start_time=start_buffer, end_time=end_buffer)
+
+        if df_symbol_buffered is None or df_symbol_buffered.empty:
+            logger.warning(f"[{__name__}] Concurrent trend validation: No data for '{symbol}' around {alert_time}.")
+            if require_all:
+                return False # If all are required, this is a failure.
+            continue # Otherwise, just skip to the next symbol.
+
+        # --- FIX: Ensure 'time' column is the index ---
+        if 'time' in df_symbol_buffered.columns and not isinstance(df_symbol_buffered.index, pd.DatetimeIndex):
+            df_symbol_buffered = df_symbol_buffered.set_index('time')
+        # --- End FIX ---
+
+        # --- Enhanced Debugging ---
+        logger.debug(f"[{__name__}] For symbol '{symbol}', searching for alert_time: {alert_time}")
+        logger.debug(f"[{__name__}] Available timestamps in buffered data: {df_symbol_buffered.index.tolist()}")
+        # --- End Enhanced Debugging ---
+
+        # Find the specific candle at the exact alert_time
+        candle_series = df_symbol_buffered[df_symbol_buffered.index == alert_time]
+        if candle_series.empty:
+            logger.warning(f"[{__name__}] Concurrent trend validation: Could not find candle for '{symbol}' at exact time {alert_time}.")
+            if require_all:
+                return False
+            continue
+        
+        candle = candle_series.iloc[0]
+        
+        # Determine the candle's signal
+        is_green = candle['close'] > candle['open']
+        is_red = candle['close'] < candle['open']
+        
+        actual_signal = Signal.BUY if is_green else (Signal.SELL if is_red else Signal.HOLD)
+
+        # Check if the signal matches the expected signal
+        if actual_signal != expected_signal:
+            logger.debug(f"[{__name__}] Concurrent trend validation for '{symbol}' failed. Expected '{expected_signal}', but its signal was '{actual_signal}'.")
+            if require_all:
+                return False
+            continue
+
+        # Optional: Validate the body size of the candle
+        if min_body_size is not None and min_body_size > 0:
+            body_size = abs(candle['close'] - candle['open'])
+            if body_size < min_body_size:
+                logger.debug(f"[{__name__}] Concurrent trend validation for '{symbol}' failed minimum body size. "
+                             f"Required: {min_body_size}, Actual: {body_size}")
+                if require_all:
+                    return False
+                continue
+
+        # Optional: Validate the body to range ratio
+        if min_body_to_range_ratio is not None and min_body_to_range_ratio > 0:
+            body_size = abs(candle['close'] - candle['open'])
+            range_size = candle['high'] - candle['low']
+            
+            if range_size > 0:
+                body_ratio = body_size / range_size
+                if body_ratio < min_body_to_range_ratio:
+                    logger.debug(f"[{__name__}] Concurrent trend validation for '{symbol}' failed minimum body-to-range ratio. "
+                                 f"Required: {min_body_to_range_ratio}, Actual: {body_ratio:.2f}")
+                    if require_all:
+                        return False
+                    continue
+            elif min_body_to_range_ratio > 0: # If range is 0 (a doji), it can't meet any positive ratio requirement.
+                logger.debug(f"[{__name__}] Concurrent trend validation for '{symbol}' failed body-to-range ratio. "
+                             f"Candle has zero range, but a ratio of {min_body_to_range_ratio} was required.")
+                if require_all:
+                    return False
+                continue
+        
+        logger.debug(f"[{__name__}] Concurrent trend validation passed for '{symbol}'. Its signal '{actual_signal}' matched expected '{expected_signal}'.")
+        
+        # If we don't require all and we found one, we can exit early.
+        if not require_all:
+            logger.debug(f"[{__name__}] Concurrent trend validation passed: at least one symbol '{symbol}' met the criteria.")
+            return True
+        
+        passed_symbols_count += 1
+
+    if require_all:
+        logger.debug(f"[{__name__}] Concurrent trend validation passed for all {passed_symbols_count} symbols.")
+        return True
+    else:
+        # If we are here and `require_all` is false, it means no symbols passed the validation.
+        logger.debug(f"[{__name__}] Concurrent trend validation failed: No symbols met the required criteria.")
+        return False

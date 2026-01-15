@@ -15,3 +15,5 @@ class VraSettings(BaseSettings):
         self.min_alert_body_size = self.get("MIN_ALERT_BODY_SIZE")
         self.max_distance_close_price = self.get("MAX_DISTANCE_CLOSE_PRICE")
         self.cooldown_window = self.get("COOLDOWN_WINDOW")
+        self.enable_market_trend_validation = self.get("ENABLE_MARKET_TREND_VALIDATION")
+        self.impact_symbols_min_body_to_range_ratio = self.get("IMPACT_SYMBOLS_MIN_BODY_TO_RANGE_RATIO")
