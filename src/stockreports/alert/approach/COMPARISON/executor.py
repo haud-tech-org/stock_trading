@@ -48,7 +48,7 @@ class ComparisonExecutor(Executor):
                 message=str(e)
             )
 
-    def _find_comparison_alerts(self, df_primary: pd.DataFrame, new_candle_count: int) -> List[AlertData]:
+    def _find_comparison_alerts(self, df_primary: pd.DataFrame, new_candle_count: int = 0) -> List[AlertData]:
         # --- Data Loading for Reference Symbol ---
         start_time = df_primary['time'].min()
         end_time = df_primary['time'].max()

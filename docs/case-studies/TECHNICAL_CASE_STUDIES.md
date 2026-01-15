@@ -117,5 +117,28 @@ All manual testing scripts in `tests\manual\` have been successfully executed an
     - **Traceability**: Simplifies tracing the step-by-step execution path through different parts of the system.
 - **Status**: ✅ Established as a best practice and applied across multiple components.
 
+#### d. Stale Code Patterns & Configuration
+- **Issue**: Generated code, specifically debug scripts, used outdated import and configuration patterns (e.g., direct `DataLoader` and `shared_settings` imports) instead of following the most current project structure. This led to `ModuleNotFoundError` and other runtime errors.
+- **Resolution**:
+    1. **Identify "Golden Pattern"**: Always identify a recent, working script (e.g., `tests/debug/alert/approach/VRA/debug_executor.py`) as the authoritative reference for structure and imports.
+    2. **Centralized Configuration**: Refactored the script to use the centralized `src.stockreports.config.loader` to manage settings.
+    3. **Centralized Data Loading**: Replaced direct `DataLoader` instantiation with the `src.stockreports.utils.data_utils.load_live_data` utility, which respects the centralized configuration.
+- **Status**: ✅ RESOLVED. This is now a mandatory pre-generation step.
+
+#### e. Incorrect Import Path Assumptions
+- **Issue**: Code generation assumed an incorrect module path (`src.stockreports.alert.utils.chart_utils`) that did not exist, causing an `ImportError`.
+- **Resolution**:
+    1. **File System Verification**: Before writing an import statement, the correct path must be verified by checking the file system.
+    2. **Correction**: The path was corrected to the existing module: `src.stockreports.utils.alert_utils`.
+- **Status**: ✅ RESOLVED.
+
+#### f. Implicit Dependency Failures
+- **Issue**: The debug script crashed with `ModuleNotFoundError: No module named 'matplotlib'` because a transitive dependency required for charting was not installed in the Python environment.
+- **Resolution**:
+    1. **Identify Missing Package**: The error message clearly identified the missing package.
+    2. **Environment-Specific Installation**: Installed the package into the correct, active Python virtual environment (`.venv/bin/pip install matplotlib`).
+    3. **Best Practice**: For long-term stability, such dependencies should be added to a `requirements.txt` file.
+- **Status**: ✅ RESOLVED.
+
 ## Issues Resolved
 ...
