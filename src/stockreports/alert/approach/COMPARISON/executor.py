@@ -106,7 +106,8 @@ class ComparisonExecutor(Executor):
                 confirmation_df=ref_confirmation_df,
                 reversal_signal=potential_signal,
                 min_alert_body_size=self.settings.min_alert_body_size,
-                max_distance_close_price=self.settings.max_distance_close_price
+                max_distance_close_price=self.settings.max_distance_close_price,
+                min_volume_multiplier=self.settings.volume_multiplier
             )
             if validation_result is None:
                 self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 2 Failed: Reversal confirmation failed on reference symbol.")

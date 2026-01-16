@@ -42,6 +42,10 @@ BBANDS_PERIOD = 20
 BBANDS_STDDEV = 2.0
 
 
+# -- Volume Settings --
+VOLUME_MULTIPLIER = 2.0 # Default multiplier for volume profile validation.
+
+
 # --- SUPPORT_BREAKDOWN Specific Settings ---
 # Lookback period for average volume to confirm a breakdown.
 # If set to None, the average is calculated from the start of the trading day.
@@ -307,7 +311,8 @@ APPROACH_CONFIG = {
         "COOLDOWN_WINDOW": 3,
         "MAX_DISTANCE_CLOSE_PRICE": 2.0,
         "ENABLE_MARKET_TREND_VALIDATION": True,
-        "IMPACT_SYMBOLS_MIN_BODY_TO_RANGE_RATIO": 0.3
+        "IMPACT_SYMBOLS_MIN_BODY_TO_RANGE_RATIO": 0.3,
+        "VOLUME_MULTIPLIER": 2.0
     },
     "COMPARISON": {
         "PRIMARY_SYMBOL": "VN30F1M",
@@ -371,7 +376,7 @@ APPROACH_CONFIG = {
     "VRA": {
         "LOOKBACK_WINDOW": 10,
         "MIN_TREND_MAGNITUDE": 7.0,
-        "VOLUME_MULTIPLIER": 4.0,
+        "VOLUME_MULTIPLIER": 2.5,
         "MIN_ALERT_BODY_SIZE": 0.3,
         "MAX_DISTANCE_CLOSE_PRICE": 2.0,
         "COOLDOWN_WINDOW": 3,

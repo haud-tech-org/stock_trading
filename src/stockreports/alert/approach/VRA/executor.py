@@ -105,7 +105,11 @@ class VraExecutor(Executor):
 
             # 3. Validate reversal confirmation
             validation_result = validate_reversal_confirmation(
-                confirmation_df, reversal_signal, self.settings.min_alert_body_size, self.settings.max_distance_close_price
+                confirmation_df, 
+                reversal_signal, 
+                self.settings.min_alert_body_size, 
+                self.settings.max_distance_close_price,
+                min_volume_multiplier=self.settings.volume_multiplier
             )
             if validation_result is None:
                 self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Reversal confirmation failed for {reversal_signal} signal.")

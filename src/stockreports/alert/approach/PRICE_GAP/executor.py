@@ -163,7 +163,8 @@ class PriceGapExecutor(Executor):
                             confirmation_df, 
                             reversal_signal, 
                             self.settings.min_alert_body_size,
-                            self.settings.max_distance_close_price
+                            self.settings.max_distance_close_price,
+                            min_volume_multiplier=self.settings.volume_multiplier
                         )
 
                         if validation_result:
