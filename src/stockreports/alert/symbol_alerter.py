@@ -114,7 +114,7 @@ class SymbolAlerter:
             self._run_development_mode()
         elif settings.MODE == "DEPLOYMENT":
             self._run_deployment_mode()
-        self.logger.info(f"Execution finished for symbol: {self.symbol}.")
+        self.logger.warning(f"Execution finished for symbol: {self.symbol}.")
 
     def _enrich_and_save_reports(self, result: AlertResult, processing_date: str):
         """

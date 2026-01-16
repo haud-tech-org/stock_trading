@@ -383,14 +383,14 @@ def run_individual_trade_simulation(
 
     1. Simplified - Run for a specific date with default thresholds:
        python3 -m src.tools.centralized_report_generator.individual_trade_simulator \\
-           --execution-symbol 41I1G1000 \\
+           --execution-symbol VN30F1M \\
            --alert-sources VN30 \\
            --date 2026-01-08
 
     2. Full Arguments - Run for a specific date with custom thresholds and mode:
        python3 -m src.tools.centralized_report_generator.individual_trade_simulator \\
-           --execution-symbol 41I1G1000 \\
-           --alert-sources VN30 41I1G1000 \\
+           --execution-symbol VN30F1M \\
+           --alert-sources VN30 VN30F1M \\
            --date 2026-01-08 \\
            --mode development \\
            --profit-threshold 5.0 \\

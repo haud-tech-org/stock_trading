@@ -14,7 +14,7 @@ Usage:
 
 Example:
     python3 tests/debug/alert/approach/COMPARISON/debug_executor.py \\
-        --symbol "41I1G1000" \\
+        --symbol "VN30F1M" \\
         --start-time "2026-01-13 13:30:00" \\
         --end-time "2026-01-13 13:55:00" \\
         --save-to-file --generate-chart
@@ -125,7 +125,7 @@ def run_debug(symbol, start_time_str, end_time_str, save_to_file, generate_chart
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Debug script for the COMPARISON alert approach.")
-    parser.add_argument("--symbol", type=str, required=True, help="The stock symbol to analyze (e.g., '41I1G1000').")
+    parser.add_argument("--symbol", type=str, required=True, help="The stock symbol to analyze (e.g., 'VN30F1M').")
     parser.add_argument("--start-time", type=str, required=True, help="The start of the time window in 'YYYY-MM-DD HH:MM:SS' format.")
     parser.add_argument("--end-time", type=str, required=True, help="The end of the time window in 'YYYY-MM-DD HH:MM:SS' format.")
     parser.add_argument("--save-to-file", action="store_true", help="If set, saves the generated alerts to a report file.")

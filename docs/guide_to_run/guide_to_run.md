@@ -16,8 +16,8 @@ python3 -m src.tools.consolidated_profitability_simulator \
 ## Individual simulation reports
 ```sh
 python3 -m src.tools.centralized_report_generator.individual_trade_simulator \
-  --execution-symbol 41I1G1000 \
-  --alert-sources VN30 41I1G1000 \
+  --execution-symbol VN30F1M \
+  --alert-sources VN30 VN30F1M \
   --date 2026-01-06
 ```
 
@@ -40,7 +40,7 @@ python3 src/tools/extract_period_data.py \
 
 ### Command:
 ```sh
-python3 src/tools/centralized_report_generator/support_resistance_detector.py --symbols VN30 41I1G1000 --start-time "2025-11-01 09:00:00" --end-time "2025-12-31 14:30:00" --resolution 15 --min-touches 3 --update-settings
+python3 src/tools/centralized_report_generator/support_resistance_detector.py --symbols VN30 VN30F1M --start-time "2025-11-01 09:00:00" --end-time "2025-12-31 14:30:00" --resolution 15 --min-touches 3 --update-settings
 ```
 
 ## Update suggested price for alert notification files
@@ -63,14 +63,14 @@ py \
 ### Command for all tasks
 ```sh
 python3 -m src.tools.centralized_report_generator.centralized_report_generator \
-    --execution-symbol 41I1G1000 \
-    --alert-sources VN30 41I1G1000 \
+    --execution-symbol VN30F1M \
+    --alert-sources VN30 VN30F1M \
     --from-date 2026-01-05 \
-    --to-date 2026-01-08 \
+    --to-date 2026-01-05 \
     --mode deployment \
     --run-sr-detector \
     --sr-start-time "2026-01-01 09:00:00" \
-    --sr-end-time "2026-01-08 15:00:00" \
+    --sr-end-time "2026-01-15 15:00:00" \
     --sr-resolution 15 \
     --sr-min-touches 3 \
     --suggestion-type all \
@@ -80,11 +80,12 @@ python3 -m src.tools.centralized_report_generator.centralized_report_generator \
 ### Only report generators
 ```sh
 python3 -m src.tools.centralized_report_generator.centralized_report_generator \
-    --execution-symbol 41I1G1000 \
-    --alert-sources VN30 41I1G1000 \
+    --execution-symbol VN30F1M \
+    --alert-sources VN30 VN30F1M \
     --from-date 2026-01-05 \
-    --to-date 2026-01-08 \
-    --mode deployment
+    --to-date 2026-01-15 \
+    --mode deployment \
+    --update-price-alert-settings
 ```
 
 

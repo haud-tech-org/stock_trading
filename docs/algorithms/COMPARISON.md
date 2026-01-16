@@ -1,96 +1,91 @@
-# COMPARISON Approach Documentation
+# COMPARISON Approach
 
-## Objective
+## 1. Objective
 
-The **COMPARISON** approach is a technical analysis strategy designed to generate trading signals by comparing the price action of a `primary_symbol` against a `reference_symbol`. The core idea is to identify a **crossover** event between the two symbols and then validate a subsequent **reversal** and **trend confirmation** to ensure the signal's reliability.
+The COMPARISON approach is a sophisticated strategy designed to generate trading signals for a `primary_symbol` (e.g., `VN30F1M`) by analyzing its price action relative to a `reference_symbol` (e.g., `VN30`). The core principle is to identify a "crossover" event where the price relationship between the two symbols flips. This crossover acts as an anchor, and the algorithm then waits for a series of confirmations—including a reversal on the reference symbol, a specific volume profile, and trend agreement—before issuing an alert.
 
-This approach is particularly useful for pairs trading or for analyzing an asset's performance relative to a benchmark (e.g., a specific stock vs. a market index like VN30).
+This approach is unique because the final alert is triggered on the `primary_symbol`, but its validity is derived from a combination of events on both the primary and reference symbols.
 
-## Key Parameters
+## 2. Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `ComparisonSettings`, in `src/stockreports/alert/approach/COMPARISON/settings.py` loads these parameters.
+The behavior of the COMPARISON executor is controlled by the following parameters, which are configured in `src/stockreports/config/signal_settings.py`.
 
-| Parameter                         | Default      | Description                                                                                                                            |
-| :-------------------------------- | :----------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-| `PRIMARY_SYMBOL`                  | `'VN30F1M'`  | The main symbol being analyzed.                                                                                                        |
-| `REFERENCE_SYMBOL`                |              | The symbol or index used for comparison.                                                                                               |
-| `LOOKBACK_WINDOW`                 |              | The number of candles in the rolling window used for crossover detection.                                                              |
-| `MAX_PRIMARY_TREND_MAGNITUDE`     | `10.0`       | The maximum allowed price change for the primary symbol between the crossover and the alert.                                           |
-| `COOLDOWN_WINDOW`                 |              | The number of minutes after an alert during which no new alert with the same signal can be generated.                                  |
-| `DISABLE_BUY_SIGNAL`              | `False`      | If `True`, BUY alerts will not be generated.                                                                                           |
-| `DISABLE_SELL_SIGNAL`             | `False`      | If `True`, SELL alerts will not be generated.                                                                                          |
-| `MIN_ALERT_BODY_SIZE`             |              | The minimum body size (`abs(open - close)`) required for the alert candle during reversal validation (Step 2).                         |
-| `MAX_DISTANCE_CLOSE_PRICE`        | `2.0`        | The maximum allowed distance between the close prices of the anchor and alert candles during reversal validation (Step 2).             |
-| `ENABLE_MARKET_TREND_VALIDATION`  | `False`      | If `True`, enables the optional market trend validation (Step 6).                                                                      |
-| `MIN_MARKET_PRICE_CHANGE`         | `0.0`        | The minimum price change required for symbols during the market trend validation.                                                      |
+| Parameter                             | Default Value | Description                                                                                                                              |
+| ------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `PRIMARY_SYMBOL`                      | "VN30F1M"     | The symbol for which alerts will be generated.                                                                                           |
+| `REFERENCE_SYMBOL`                    | "VN30"        | The symbol used as a benchmark for comparison.                                                                                           |
+| `LOOKBACK_WINDOW`                     | 20            | The number of candles to include in the analysis window for finding the initial crossover.                                               |
+| `MIN_ALERT_BODY_SIZE`                 | 0.5           | The minimum body size of the candles involved in the reversal confirmation pattern on the reference symbol.                                |
+| `MAX_DISTANCE_CLOSE_PRICE`            | 2.0           | The maximum allowed price difference between the close prices of the candles in the reversal pattern on the reference symbol.              |
+| `VOLUME_MULTIPLIER`                   | 2.5           | The maximum volume candle in the validation window must have a volume at least this many times greater than the minimum volume candle.     |
+| `MIN_PRIMARY_TREND_MAGNITUDE`         | 0.2           | The minimum required price change on the primary symbol from the anchor to the alert candle.                                             |
+| `MAX_PRIMARY_TREND_MAGNITUDE`         | 2.5           | The maximum allowed price change on the primary symbol. This acts as a filter to avoid overly volatile or erratic moves.                 |
+| `COOLDOWN_WINDOW`                     | 3             | The number of candles to wait after an alert is generated before another alert of the same type can be issued.                           |
+| `ENABLE_MARKET_TREND_VALIDATION`      | `False`       | If `True`, the alert will only be triggered if it aligns with the broader market trend. (Typically disabled as this is an intrinsic check). |
+| `DISABLE_BUY_SIGNAL` / `DISABLE_SELL_SIGNAL` | `False`       | Master switches to disable BUY or SELL signals entirely for this approach.                                                               |
 
-## Step-by-Step Logic
+## 3. Step-by-Step Logic
 
-The core logic is implemented in the `ComparisonExecutor` class. The process is optimized for performance by starting with cheaper checks first.
+The executor first loads and aligns the data for both the primary and reference symbols. It then scans backwards through the aligned data, performing the following validation steps for each window.
 
-### Step 1: Crossover Detection
--   **Objective**: Find a point within the `lookback_window` where the closing price of the `primary_symbol` crosses over or under the `reference_symbol`.
--   **Logic**: The code iterates backwards from the end of the window.
-    -   A **BUY** signal is initiated if the primary symbol's price crosses from **below** to **above** the reference symbol's price.
-    -   A **SELL** signal is initiated if the primary symbol's price crosses from **above** to **below** the reference symbol's price.
--   **Outcome**: If a crossover is found, its timestamp is marked as the `anchor_timestamp`, and a `potential_signal` is determined.
+1.  **Crossover Point Detection**:
+    *   The algorithm searches backwards within the `LOOKBACK_WINDOW` to find the most recent point where the price relationship between the primary and reference symbols "flips" (e.g., primary price was below reference, and now it's above).
+    *   This crossover point becomes the `anchor_pos`, and the direction of the cross determines the `potential_signal` (`BUY` or `SELL`). If no crossover is found, the window is discarded.
 
-### Step 2: Reversal Confirmation on Reference Symbol
--   **Objective**: Confirm that the `reference_symbol` shows a valid reversal pattern *after* the crossover event.
--   **Logic**: This step uses the shared utility `validate_reversal_confirmation` on the reference symbol's data, starting from the `anchor_timestamp`.
--   **Outcome**: If a valid reversal is confirmed, the function returns the `alert_candle` and the `anchor_reversal_candle`. The timestamps of these candles (`alert_time` and `anchor_reversal_time`) are extracted.
+2.  **Reversal Confirmation on Reference Symbol**:
+    *   Using the timestamp of the crossover anchor, the algorithm looks for a reversal pattern on the `reference_symbol`'s data.
+    *   **Validation**: It calls the shared `validate_reversal_confirmation` utility. A valid reversal that matches the `potential_signal` must be found. This step yields the `alert_candle_ref` and `anchor_reversal_candle_ref`.
 
-### Step 3: Primary Trend Magnitude Check
--   **Objective**: Ensure the price movement of the `primary_symbol` between the crossover and the alert is not excessively large.
--   **Logic**: It calculates the absolute difference between the primary symbol's close at `alert_time` and its close at `anchor_timestamp` and checks it against `max_primary_trend_magnitude`.
--   **Outcome**: The process continues only if the magnitude is within the allowed limit.
+3.  **Volume Profile Validation on Primary Symbol**:
+    *   This is a multi-part validation performed on the `primary_symbol`'s data within a specific "volume window" (from the crossover anchor to the end of the lookback window).
+    *   **Validation 1**: The candle with the minimum volume must occur *before* the candle with the maximum volume.
+    *   **Validation 2**: The max volume must be significantly larger than the min volume (by a factor of `VOLUME_MULTIPLIER`).
+    *   **Validation 3**: The final alert time must occur at or *after* the time of the maximum volume candle.
+    *   **Validation 4**: The alert candle's volume must be greater than or equal to the volume of the candle immediately preceding it.
 
-### Step 4: Trend Validation in Confirmation Window
--   **Objective**: Verify that both the primary and reference symbols are trending in the same direction during the "confirmation window" (from `anchor_reversal_time` to `alert_time`).
--   **Logic**: The shared utility `validate_trend` is called for both symbols on this window's data.
--   **Outcome**: The process continues only if both symbols show a trend that matches the `potential_signal`.
+4.  **Primary Trend Magnitude Check**:
+    *   The algorithm calculates the price change on the `primary_symbol` between the crossover anchor and the alert candle.
+    *   **Validation**: This magnitude must fall within the range defined by `MIN_PRIMARY_TREND_MAGNITUDE` and `MAX_PRIMARY_TREND_MAGNITUDE`.
 
-### Step 5: Final Signal Agreement
--   **Objective**: Consolidate the results to determine the final, confirmed signal.
--   **Logic**: A `final_signal` is confirmed only if the `potential_signal` (Step 1) matches the trends of both symbols (Step 4) and the signal is not disabled.
+5.  **Trend Agreement Validation**:
+    *   The algorithm defines a "confirmation window" (from the reversal anchor to the alert candle).
+    *   It validates the trend direction within this window for both the primary and reference symbols independently using the `validate_trend` utility.
+    *   **Validation**: The trend direction for both symbols must agree with the `potential_signal`. For example, for a `BUY` signal, both symbols must show a `BUY` trend.
 
-### Step 6: Market Trend Validation (Optional)
--   **Objective**: If enabled, check if the broader market (defined by `IMPACT_SYMBOLS`) supports the signal.
--   **Logic**: Controlled by `enable_market_trend_validation`, this step uses `validate_market_trend` on the lookback `window_df`.
+6.  **Market Trend and Cooldown**:
+    *   **Market Trend (Optional)**: If enabled, a final check against the broader market trend is performed.
+    *   **Cooldown**: The standard cooldown logic is applied to prevent duplicate alerts.
 
-### Step 7: Cooldown Check
--   **Objective**: Prevent duplicate alerts.
--   **Logic**: It uses the shared utility `is_in_cooldown` to check if a recent alert with the same signal has been issued within the `cooldown_window`.
+7.  **Alert Generation**:
+    *   If all validations pass, a new `AlertData` object is created for the `primary_symbol` and the alert is stored.
 
-If all steps pass, an alert is generated.
-
-## Flow Diagram
+## 4. Flow Diagram
 
 ```mermaid
 graph TD
-    subgraph "Setup"
-        A[Start Sliding Window] --> B{Crossover Detected?};
-        B -- No --> A;
-        B -- Yes --> C[Get Potential Signal & Anchor Time];
-    end
-
-    subgraph "Validation Chain"
-        C --> D{Reversal Confirmed on Reference?};
-        D -- No --> A;
-        D -- Yes --> E{Primary Trend Magnitude OK?};
-        E -- No --> A;
-        E -- Yes --> F{Trend Agreement in Confirmation Window?};
-        F -- No --> A;
-        F -- Yes --> G[Get Final Signal];
-    end
-    
-    subgraph "Final Checks"
-        G --> H{Market Trend Validation Enabled?};
-        H -- Yes --> I{Market Trend OK?};
-        H -- No --> J;
-        I -- No --> A;
-        I -- Yes --> J{Cooldown Period Clear?};
-        J -- No --> A;
-        J -- Yes --> K[Generate Alert];
-    end
+    A[Start COMPARISON Execution] --> B[Load & Align Data];
+    B --> C{Loop through candles backwards};
+    C --> D[Step 1: Find Crossover Point];
+    D --> E{Crossover Found?};
+    E -- No --> C;
+    E -- Yes --> F[Step 2: Validate Reversal on Reference Symbol];
+    F --> G{Reversal Confirmed?};
+    G -- No --> C;
+    G -- Yes --> H[Step 3: Validate Volume Profile on Primary Symbol];
+    H --> I{Volume Profile Valid?};
+    I -- No --> C;
+    I -- Yes --> J[Step 4: Check Primary Trend Magnitude];
+    J --> K{Magnitude in Range?};
+    K -- No --> C;
+    K -- Yes --> L[Step 5: Validate Trend Agreement];
+    L --> M{Trends Agree?};
+    M -- No --> C;
+    M -- Yes --> N[Step 6: Market Trend & Cooldown];
+    N --> O{Checks Passed?};
+    O -- No --> C;
+    O -- Yes --> P[Create AlertData];
+    P --> Q{Deployment Mode?};
+    Q -- Yes --> R[Return Alert];
+    Q -- No --> C;
+    C -- End of Loop --> S[End Execution];
 ```

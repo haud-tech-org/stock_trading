@@ -83,7 +83,8 @@ def validate_concurrent_trend(
     symbols: List[str] = IMPACT_SYMBOLS,
     min_body_size: Optional[float] = None,
     min_body_to_range_ratio: Optional[float] = None,
-    require_all: bool = True
+    require_all: bool = True,
+    candles_data: Optional[dict] = None
 ) -> bool:
     """
     Validates that all or at least one of the specified symbols have a candle of a specific direction at a given time.
@@ -97,6 +98,9 @@ def validate_concurrent_trend(
         min_body_to_range_ratio (Optional[float]): If provided, validates that the candle's body
                                                    is at least this ratio of the total candle range (high-low).
         require_all (bool): If True, all symbols must pass validation. If False, at least one must pass.
+        candles_data (Optional[dict]): A dictionary where keys are symbol strings and values are the candle's data
+                                       (as a dict or pd.Series) at the alert_time. If provided, this data is
+                                       used instead of fetching from the database.
 
     Returns:
         bool: True if the validation condition is met, False otherwise.
@@ -109,45 +113,46 @@ def validate_concurrent_trend(
 
     passed_symbols_count = 0
     for symbol in symbols:
-        # Add a buffer to the time range to ensure data is captured
-        buffer = pd.Timedelta(minutes=1)
-        start_buffer = alert_time - buffer
-        end_buffer = alert_time + buffer
+        candle = None
+        # If pre-fetched candle data is available for the symbol, use it
+        if candles_data and symbol in candles_data:
+            candle = candles_data[symbol]
+            logger.debug(f"[{__name__}] Using pre-fetched candle data for '{symbol}'.")
+        else:
+            # Add a buffer to the time range to ensure data is captured
+            buffer = pd.Timedelta(minutes=1)
+            start_buffer = alert_time - buffer
+            end_buffer = alert_time + buffer
 
-        # Fetch data within the buffered time window
-        df_symbol_buffered = get_historical_data(symbol, start_time=start_buffer, end_time=end_buffer)
+            # Fetch data within the buffered time window
+            df_symbol_buffered = get_historical_data(symbol, start_time=start_buffer, end_time=end_buffer)
 
-        if df_symbol_buffered is None or df_symbol_buffered.empty:
-            logger.warning(f"[{__name__}] Concurrent trend validation: No data for '{symbol}' around {alert_time}.")
-            if require_all:
-                return False # If all are required, this is a failure.
-            continue # Otherwise, just skip to the next symbol.
+            if df_symbol_buffered is None or df_symbol_buffered.empty:
+                logger.warning(f"[{__name__}] Concurrent trend validation: No data for '{symbol}' around {alert_time}.")
+                if require_all:
+                    return False # If all are required, this is a failure.
+                continue # Otherwise, just skip to the next symbol.
 
-        # --- FIX: Ensure 'time' column is the index ---
-        if 'time' in df_symbol_buffered.columns and not isinstance(df_symbol_buffered.index, pd.DatetimeIndex):
-            df_symbol_buffered = df_symbol_buffered.set_index('time')
-        # --- End FIX ---
+            # --- FIX: Ensure 'time' column is the index ---
+            if 'time' in df_symbol_buffered.columns and not isinstance(df_symbol_buffered.index, pd.DatetimeIndex):
+                df_symbol_buffered = df_symbol_buffered.set_index('time')
+            # --- End FIX ---
 
-        # --- Enhanced Debugging ---
-        logger.debug(f"[{__name__}] For symbol '{symbol}', searching for alert_time: {alert_time}")
-        logger.debug(f"[{__name__}] Available timestamps in buffered data: {df_symbol_buffered.index.tolist()}")
-        # --- End Enhanced Debugging ---
-
-        # Find the specific candle at the exact alert_time
-        candle_series = df_symbol_buffered[df_symbol_buffered.index == alert_time]
-        if candle_series.empty:
-            logger.warning(f"[{__name__}] Concurrent trend validation: Could not find candle for '{symbol}' at exact time {alert_time}.")
-            if require_all:
-                return False
-            continue
-        
-        candle = candle_series.iloc[0]
+            # Find the specific candle at the exact alert_time
+            candle_series = df_symbol_buffered[df_symbol_buffered.index == alert_time]
+            if candle_series.empty:
+                logger.warning(f"[{__name__}] Concurrent trend validation: Could not find candle for '{symbol}' at exact time {alert_time}.")
+                if require_all:
+                    return False
+                continue
+            
+            candle = candle_series.iloc[0]
         
         # Determine the candle's signal
         is_green = candle['close'] > candle['open']
         is_red = candle['close'] < candle['open']
         
-        actual_signal = Signal.BUY if is_green else (Signal.SELL if is_red else Signal.HOLD)
+        actual_signal = Signal.BUY if is_green else (Signal.SELL if is_red else None)
 
         # Check if the signal matches the expected signal
         if actual_signal != expected_signal:
