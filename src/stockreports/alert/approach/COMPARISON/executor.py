@@ -119,9 +119,62 @@ class ComparisonExecutor(Executor):
             anchor_reversal_time = anchor_reversal_candle_ref['time']
             alert_time = alert_candle_ref['time']
 
-            # Step 3: Check the primary trend's magnitude (cheap check first)
-            anchor_candle_primary = df_primary[df_primary['time'] == anchor_timestamp].iloc[0]
-            alert_candle_primary = df_primary[df_primary['time'] == alert_time].iloc[0]
+            # --- Consolidated Primary Candle Lookups ---
+            # Find the alert candle on the primary dataframe.
+            alert_candle_primary_series = df_primary[df_primary['time'] == alert_time]
+            if alert_candle_primary_series.empty:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Could not find the primary alert candle at {alert_time}.")
+                continue
+            alert_candle_primary = alert_candle_primary_series.iloc[0]
+
+            # Find the anchor candle on the primary dataframe.
+            anchor_candle_primary_series = df_primary[df_primary['time'] == anchor_timestamp]
+            if anchor_candle_primary_series.empty:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 4 Failed: Could not find the primary anchor candle at {anchor_timestamp}.")
+                continue
+            anchor_candle_primary = anchor_candle_primary_series.iloc[0]
+            # --- End Lookups ---
+
+            # --- Step 3: Volume Profile Validation on Primary Symbol ---
+            # Define the volume window from the crossover anchor to the end of the lookback window.
+            volume_window_end_time = window_df.iloc[-1]['time']
+            volume_window_df = df_primary[
+                (df_primary['time'] >= anchor_timestamp) &
+                (df_primary['time'] <= volume_window_end_time)
+            ]
+
+            if len(volume_window_df) < 2:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Not enough data in volume window for analysis.")
+                continue
+
+            # Find the candles with minimum and maximum volume in this window.
+            min_vol_candle = volume_window_df.loc[volume_window_df['volume'].idxmin()]
+            max_vol_candle = volume_window_df.loc[volume_window_df['volume'].idxmax()]
+
+            # Validation 1: Min volume must occur before max volume.
+            if not (min_vol_candle['time'] < max_vol_candle['time']):
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Minimum volume at {min_vol_candle['time']} did not occur before maximum volume at {max_vol_candle['time']}.")
+                continue
+
+            # Validation 2: The volume of the max candle must be significantly larger than the min candle.
+            if not (max_vol_candle['volume'] >= min_vol_candle['volume'] * self.settings.volume_multiplier):
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Max volume ({max_vol_candle['volume']}) is not >= {self.settings.volume_multiplier}x the min volume ({min_vol_candle['volume']}).")
+                continue
+
+            # Validation 3: The final alert candle must occur at or after the max volume candle.
+            if not (alert_time >= max_vol_candle['time']):
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Alert candle at {alert_time} occurred before the maximum volume candle at {max_vol_candle['time']}.")
+                continue
+
+            # Validation 4: The alert candle's volume must be >= its preceding candle's volume.
+            alert_candle_index = alert_candle_primary.name
+            if alert_candle_index > 0:
+                alert_candle_minus_1 = df_primary.iloc[alert_candle_index - 1]
+                if alert_candle_primary['volume'] < alert_candle_minus_1['volume']:
+                    self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Alert candle volume ({alert_candle_primary['volume']}) was less than previous candle volume ({alert_candle_minus_1['volume']}).")
+                    continue
+
+            # Step 4: Check the primary trend's magnitude (cheap check first)
             primary_trend_magnitude = alert_candle_primary['close'] - anchor_candle_primary['close']
 
             failed_magnitude_check = False
@@ -138,10 +191,10 @@ class ComparisonExecutor(Executor):
                     reason = f"magnitude ({primary_trend_magnitude:.2f}) was not within [{min_sell_magnitude}, {max_sell_magnitude}]"
             
             if failed_magnitude_check:
-                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Primary trend for {potential_signal} signal failed because {reason}.")
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 4 Failed: Primary trend for {potential_signal} signal failed because {reason}.")
                 continue
 
-            # Step 4: Define confirmation window and validate trends
+            # Step 5: Define confirmation window and validate trends
             # The window is from the candle AFTER the anchor reversal up to the alert candle
             confirmation_window_primary = df_primary[
                 (df_primary['time'] > anchor_reversal_time) & 
@@ -153,7 +206,7 @@ class ComparisonExecutor(Executor):
             ]
 
             if confirmation_window_primary.empty or confirmation_window_ref.empty:
-                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 4 Failed: Confirmation window is empty.")
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 5 Failed: Confirmation window is empty.")
                 continue
 
             primary_trend_signal = validate_trend(
@@ -165,7 +218,7 @@ class ComparisonExecutor(Executor):
                 use_monotonic_check=True
             )
 
-            # Step 5: Determine the final signal based on trend agreement
+            # Step 6: Determine the final signal based on trend agreement
             final_signal = None
             if (potential_signal == Signal.BUY and 
                 primary_trend_signal == Signal.BUY and 
@@ -179,10 +232,10 @@ class ComparisonExecutor(Executor):
                 final_signal = Signal.SELL
 
             if final_signal is None:
-                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 5 Failed: Trend signals did not agree. Potential: {potential_signal}, Primary: {primary_trend_signal}, Reference: {ref_trend_signal}.")
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 6 Failed: Trend signals did not agree. Potential: {potential_signal}, Primary: {primary_trend_signal}, Reference: {ref_trend_signal}.")
                 continue
 
-            # Step 6: Validate against overall market trend (optional)
+            # Step 7: Validate against overall market trend (optional)
             if self.settings.enable_market_trend_validation:
                 if not validate_concurrent_trend(
                     expected_signal=final_signal,
@@ -190,17 +243,17 @@ class ComparisonExecutor(Executor):
                     min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
                     require_all=False
                 ):
-                    self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 6 Failed: Concurrent market trend validation failed.")
+                    self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 7 Failed: Concurrent market trend validation failed.")
                     continue
 
-            # Step 7: Cooldown Check
+            # Step 8: Cooldown Check
             if is_in_cooldown(
                 new_alert_time=alert_time,
                 new_signal=final_signal,
                 latest_alert=ComparisonExecutor.LATEST_ALERT,
                 cooldown_window=self.settings.cooldown_window
             ):
-                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 7 Failed: Alert is in cooldown period.")
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 8 Failed: Alert is in cooldown period.")
                 continue
             
             # All checks passed, create the alert
