@@ -69,39 +69,51 @@ class VraExecutor(Executor):
         for i in range(loop_end_index, loop_start_index - 1, -1):
             window_start_index = i - window_size + 1
             window_df = df_indexed.iloc[window_start_index : i + 1].copy()
+            alert_time_candidate = window_df.iloc[-1]['time']
 
             # --- Validation Order for Performance ---
 
             # 1. Volume Spike Analysis (Cheap & High-Impact)
             volume_anchor_idx = window_df['volume'].idxmax()
-            min_vol_idx = window_df['volume'].idxmin()
-
-            if min_vol_idx >= volume_anchor_idx:
+            
+            # Define the search window for the minimum volume: from the start of the window
+            # up to (but not including) the candle with the maximum volume.
+            pre_spike_df = window_df.loc[:volume_anchor_idx - 1]
+            
+            # If there are no candles before the spike, we cannot proceed.
+            if pre_spike_df.empty:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 1 Failed: Volume spike is the first candle; no preceding window to analyze.")
                 continue
+
+            # Find the minimum volume within this preceding period.
+            min_vol_idx = pre_spike_df['volume'].idxmin()
             
             candle_v = window_df.loc[volume_anchor_idx]
-            min_vol_in_window = window_df.loc[min_vol_idx]['volume']
+            min_vol_in_window = pre_spike_df.loc[min_vol_idx]['volume']
             if not (candle_v['volume'] >= self.settings.volume_multiplier * min_vol_in_window):
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 1 Failed: Volume spike ({candle_v['volume']}) did not meet the multiplier ({self.settings.volume_multiplier}) over minimum volume ({min_vol_in_window}).")
                 continue
 
-            # Define confirmation window and reversal signal
+            # 2. Define confirmation window and reversal signal
             confirmation_df = window_df.loc[volume_anchor_idx:].copy()
             if len(confirmation_df) < 2:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 2 Failed: Not enough data for reversal confirmation after volume spike.")
                 continue
             
             first_candle = window_df.iloc[0]
             reversal_signal = Signal.SELL if candle_v['close'] > first_candle['close'] else Signal.BUY
 
-            # Validate confirmation and get alert/anchor candles
+            # 3. Validate reversal confirmation
             validation_result = validate_reversal_confirmation(
                 confirmation_df, reversal_signal, self.settings.min_alert_body_size, self.settings.max_distance_close_price
             )
             if validation_result is None:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3 Failed: Reversal confirmation failed for {reversal_signal} signal.")
                 continue
             
             alert_candle, anchor_candle = validation_result
 
-            # Market Trend Validation
+            # 4. Market Trend Validation
             if self.settings.enable_market_trend_validation:
                 if not validate_concurrent_trend(
                     expected_signal=reversal_signal,
@@ -109,10 +121,10 @@ class VraExecutor(Executor):
                     min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
                     require_all=False
                 ):
-                    self.logger.debug(f"[{self.__class__.__name__}] Concurrent market trend validation failed for Reversal alert at {alert_candle['time']}.")
+                    self.logger.debug(f"[{self.__class__.__name__}] [{alert_candle['time']}] Step 4 Failed: Concurrent market trend validation failed for {reversal_signal} signal.")
                     continue
             
-            # 7. Magnitude Validation (Most Complex)
+            # 5. Magnitude Validation
             if reversal_signal == Signal.SELL:
                 min_close_in_window = window_df['close'].min()
                 magnitude = abs(anchor_candle['close'] - min_close_in_window)
@@ -121,16 +133,17 @@ class VraExecutor(Executor):
                 magnitude = abs(max_close_in_window - anchor_candle['close'])
 
             if magnitude < self.settings.min_trend_magnitude:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_candle['time']}] Step 5 Failed: Trend magnitude ({magnitude:.2f}) was less than the minimum required ({self.settings.min_trend_magnitude}).")
                 continue
             
-            # --- Cooldown Logic ---
+            # 6. Cooldown Logic
             if is_in_cooldown(
                 new_alert_time=alert_candle['time'],
                 new_signal=reversal_signal,
                 latest_alert=VraExecutor.LATEST_ALERT,
                 cooldown_window=self.settings.cooldown_window
             ):
-                self.logger.info(f"Skipping alert for {self.symbol} due to cooldown.")
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_candle['time']}] Step 6 Failed: Alert for {reversal_signal} is in cooldown.")
                 continue
 
             # --- All validations passed, create alert ---

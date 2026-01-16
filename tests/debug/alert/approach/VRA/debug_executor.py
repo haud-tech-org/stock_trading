@@ -17,7 +17,7 @@ Usage:
 
 Example:
     python3 tests/debug/alert/approach/VRA/debug_executor.py \\
-        --symbol "41I1G1000" \\
+        --symbol "VN30F1M" \\
         --start-time "2026-01-09 09:00:00" \\
         --end-time "2026-01-09 10:00:00" \\
         --save-to-file --generate-chart

@@ -13,7 +13,7 @@ notifications, and market-specific details.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
 # Always include the derivative symbol is the FIRST symbol
-SYMBOLS = ["41I1G1000", "VN30"]
+SYMBOLS = ["VN30F1M", "VN30"]
 
 # List of symbols that have a significant impact on the market.
 IMPACT_SYMBOLS = ["VIC", "VHM"]
@@ -86,7 +86,7 @@ LOGS_DIR = "logs"
 # Guidance: "INFO" provides a good balance of detail. "DEBUG" is very verbose and useful for troubleshooting. "WARNING" will only show potential problems.
 # Range: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL".
 # Example: `LOG_LEVEL = "INFO"`
-LOG_LEVEL = "INFO"
+LOG_LEVEL = "WARNING"
 
 
 # --- Data Source & Operational Mode ---
@@ -183,8 +183,8 @@ TRADING_HOURS = {
 #   - TRADE_EXECUTION_SYMBOL: The one symbol on which all trades will be simulated. This symbol's price data will be used to calculate profit/loss.
 CONSOLIDATED_PROFITABILITY = {
     "ENABLED": True,
-    "ALERT_SOURCE_SYMBOLS": ["VN30", "41I1G1000"],
-    "TRADE_EXECUTION_SYMBOL": "41I1G1000"
+    "ALERT_SOURCE_SYMBOLS": ["VN30", "VN30F1M"],
+    "TRADE_EXECUTION_SYMBOL": "VN30F1M"
 }
 
 # --- Debug Replay Configuration ---

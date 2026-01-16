@@ -13,7 +13,7 @@ Usage:
 
 Example:
     python3 tests/debug/alert/approach/CONSISTENT_MOMENTUM/debug_executor.py \\
-        --symbol "41I1G1000" \\
+        --symbol "VN30F1M" \\
         --start-time "2025-09-15 10:00:00" \\
         --end-time "2025-09-15 11:00:00" \\
         --save-to-file --generate-chart

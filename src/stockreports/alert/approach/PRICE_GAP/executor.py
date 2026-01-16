@@ -73,6 +73,8 @@ class PriceGapExecutor(Executor):
         for i in range(loop_end_index, loop_start_index - 1, -1):
             window_start_index = i - window_size + 1
             window_df = df_indexed.iloc[window_start_index : i + 1].copy()
+            alert_time_candidate = window_df.iloc[-1]['time']
+            gap_found_in_window = False
 
             # Inner loop to find the first significant gap in the window
             for j in range(1, len(window_df)):
@@ -86,34 +88,49 @@ class PriceGapExecutor(Executor):
                 gap = 0
                 is_valid_gap = False
 
-                # Check for a valid gap up (current open is above previous body)
+                # Step 1: Check for a valid gap
                 if current_candle['open'] > prev_body_high:
                     gap = current_candle['open'] - prev_body_high
                     if gap >= min_gap_size:
                         is_valid_gap = True
                 
-                # Check for a valid gap down (current open is below previous body)
                 elif current_candle['open'] < prev_body_low:
                     gap = current_candle['open'] - prev_body_low
                     if abs(gap) >= min_gap_size:
                         is_valid_gap = True
 
                 if is_valid_gap:
+                    gap_found_in_window = True
                     anchor_candle_A = current_candle
                     gap_trend_signal = Signal.BUY if gap > 0 else Signal.SELL
-                    
-                    # Cooldown Check
+
+                    # Step 2: Cooldown Check for initial gap
                     if is_in_cooldown(
                         new_alert_time=current_candle['time'],
                         new_signal=gap_trend_signal,
                         latest_alert=PriceGapExecutor.LATEST_ALERT,
                         cooldown_window=cooldown_window
                     ):
+                        self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 2 Failed: Initial gap at {current_candle['time']} is in cooldown.")
                         continue
 
                     # --- Scenario 1: Continuation Alert ---
                     if anchor_candle_A.name == window_df.index[-1]:
-                        # Market Trend Validation for Continuation
+                        # New Step: Validate the gap candle for the Continuation Alert.
+                        # This checks body size, body-to-range ratio, and direction.
+                        if not validate_concurrent_trend(
+                            expected_signal=gap_trend_signal,
+                            alert_time=current_candle['time'],
+                            symbols=[self.symbol],
+                            min_body_size=self.settings.min_alert_body_size,
+                            min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
+                            require_all=True,
+                            candles_data={self.symbol: current_candle}
+                        ):
+                            self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 1 Failed: The gap candle for Continuation Alert at {current_candle['time']} did not meet criteria.")
+                            continue
+
+                        # Step 3a: Market Trend Validation for Continuation
                         if self.settings.enable_market_trend_validation:
                             if not validate_concurrent_trend(
                                 expected_signal=gap_trend_signal,
@@ -121,7 +138,7 @@ class PriceGapExecutor(Executor):
                                 min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
                                 require_all=False
                             ):
-                                self.logger.debug(f"[{self.__class__.__name__}] Concurrent market trend validation failed for Continuation alert at {current_candle['time']}.")
+                                self.logger.debug(f"[{self.__class__.__name__}] [{current_candle['time']}] Step 3a Failed: Concurrent market trend validation failed for Continuation alert.")
                                 continue
 
                         alert_data = self._create_alert_data(
@@ -141,6 +158,7 @@ class PriceGapExecutor(Executor):
                         confirmation_df = window_df.loc[anchor_candle_A.name:].copy()
                         reversal_signal = Signal.SELL if gap_trend_signal == Signal.BUY else Signal.BUY
                         
+                        # Step 3b: Validate reversal confirmation
                         validation_result = validate_reversal_confirmation(
                             confirmation_df, 
                             reversal_signal, 
@@ -151,7 +169,7 @@ class PriceGapExecutor(Executor):
                         if validation_result:
                             alert_candle, reversal_anchor_candle = validation_result
                             
-                            # Market Trend Validation for Reversal
+                            # Step 4: Market Trend Validation for Reversal
                             if self.settings.enable_market_trend_validation:
                                 if not validate_concurrent_trend(
                                     expected_signal=reversal_signal,
@@ -159,16 +177,17 @@ class PriceGapExecutor(Executor):
                                     min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
                                     require_all=False
                                 ):
-                                    self.logger.debug(f"[{self.__class__.__name__}] Concurrent market trend validation failed for Reversal alert at {alert_candle['time']}.")
+                                    self.logger.debug(f"[{self.__class__.__name__}] [{alert_candle['time']}] Step 4 Failed: Concurrent market trend validation failed for Reversal alert.")
                                     continue
 
-                            # Cooldown Check for Reversal
+                            # Step 5: Cooldown Check for Reversal
                             if is_in_cooldown(
                                 new_alert_time=alert_candle['time'],
                                 new_signal=reversal_signal,
                                 latest_alert=PriceGapExecutor.LATEST_ALERT,
                                 cooldown_window=cooldown_window
                             ):
+                                self.logger.debug(f"[{self.__class__.__name__}] [{alert_candle['time']}] Step 5 Failed: Reversal alert is in cooldown.")
                                 continue
 
                             alert_data = self._create_alert_data(
@@ -184,6 +203,11 @@ class PriceGapExecutor(Executor):
                             PriceGapExecutor.LATEST_ALERT = alert_data
                             if not is_development_mode: return alerts
                             break # Move to the next outer window
+                        else:
+                            self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 3b Failed: Reversal confirmation failed after gap at {anchor_candle_A['time']}.")
+
+            if not gap_found_in_window:
+                self.logger.debug(f"[{self.__class__.__name__}] [{alert_time_candidate}] Step 1 Failed: No significant price gap found in the window.")
             
         return alerts
 

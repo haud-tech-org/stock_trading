@@ -12,14 +12,14 @@ calculated performance metrics, specifically the 'avg_worst_loss_price' for each
 Usage Examples:
 1. Consolidate reports for a symbol in development mode without updating settings:
    python3 -m src.tools.centralized_report_generator.consolidate_reports \\
-       --symbol 41I1G1000 \\
+       --symbol VN30F1M \\
        --mode development \\
        --from-date 2026-01-05 \\
        --to-date 2026-01-08
 
 2. Consolidate reports and update the price alert settings file:
    python3 -m src.tools.centralized_report_generator.consolidate_reports \\
-       --symbol 41I1G1000 \\
+       --symbol VN30F1M \\
        --mode deployment \\
        --from-date 2026-01-05 \\
        --to-date 2026-01-08 \\
@@ -166,13 +166,13 @@ def consolidate_reports(
 
     1. Simplified - Consolidate reports for a symbol using default thresholds:
        python3 -m src.tools.centralized_report_generator.consolidate_reports \\
-           --symbol 41I1G1000 \\
+           --symbol VN30F1M \\
            --from-date 2026-01-05 \\
            --to-date 2026-01-08
 
     2. Full Arguments - Consolidate for a specific scenario and update settings:
        python3 -m src.tools.centralized_report_generator.consolidate_reports \\
-           --symbol 41I1G1000 \\
+           --symbol VN30F1M \\
            --mode deployment \\
            --from-date 2026-01-05 \\
            --to-date 2026-01-08 \\

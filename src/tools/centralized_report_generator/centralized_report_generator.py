@@ -21,7 +21,7 @@ Usage Examples:
 
 1. Simplified - Run backtesting for a date range with default settings:
    python3 -m src.tools.centralized_report_generator.centralized_report_generator \\
-       --execution-symbol 41I1G1000 \\
+       --execution-symbol VN30F1M \\
        --alert-sources VN30 \\
        --from-date 2026-01-05 \\
        --to-date 2026-01-08 \\
@@ -29,8 +29,8 @@ Usage Examples:
 
 2. Full Arguments - Run the complete workflow with all optional tasks:
    python3 -m src.tools.centralized_report_generator.centralized_report_generator \\
-       --execution-symbol 41I1G1000 \\
-       --alert-sources VN30 41I1G1000 \\
+       --execution-symbol VN30F1M \\
+       --alert-sources VN30 VN30F1M \\
        --from-date 2026-01-08 \\
        --to-date 2026-01-08 \\
        --mode deployment \\
@@ -234,13 +234,13 @@ if __name__ == "__main__":
         "--execution-symbol",
         type=str,
         required=True,
-        help="The symbol to simulate trading on (e.g., '41I1G1000')."
+        help="The symbol to simulate trading on (e.g., 'VN30F1M')."
     )
     parser.add_argument(
         "--alert-sources",
         nargs='+',
         required=True,
-        help="A list of symbols to use as alert sources (e.g., 'VN30' '41I1G1000')."
+        help="A list of symbols to use as alert sources (e.g., 'VN30' 'VN30F1M')."
     )
     parser.add_argument(
         "--from-date",

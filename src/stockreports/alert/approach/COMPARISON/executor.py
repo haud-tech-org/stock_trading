@@ -25,6 +25,7 @@ class ComparisonExecutor(Executor):
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         # This approach should only run for its configured primary symbol.
         if self.symbol != self.settings.primary_symbol:
+            self.logger.debug(f"[{self.__class__.__name__}] Skipping run for symbol '{self.symbol}' because it does not match the configured primary symbol '{self.settings.primary_symbol}'.")
             return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame())
 
         try:
