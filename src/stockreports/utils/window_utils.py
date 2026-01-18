@@ -155,3 +155,33 @@ def get_list_of_troughs(window_data: pd.DataFrame) -> list[tuple[pd.Series, floa
         result.append((trough_candle, prominence))
         
     return result
+
+def get_window_size_and_trend(window_data: pd.DataFrame) -> tuple[float, Trend | None]:
+    """
+    Calculates the absolute size and trend of a window.
+
+    The size is determined by the difference between the close price of the last candle
+    and the open price of the first candle.
+
+    Args:
+        window_data: The DataFrame containing the candle data.
+
+    Returns:
+        A tuple containing the calculated size (float) and the trend (Trend object or None).
+        Returns (0, None) if the window has fewer than two candles.
+    """
+    first_candle = get_first_candle(window_data)
+    last_candle = get_last_candle(window_data)
+
+    if first_candle is None or last_candle is None or first_candle.name == last_candle.name:
+        return 0, None
+
+    size = last_candle['close'] - first_candle['open']
+    
+    trend = None
+    if size > 0:
+        trend = Trend.UPTREND
+    elif size < 0:
+        trend = Trend.DOWNTREND
+        
+    return size, trend
