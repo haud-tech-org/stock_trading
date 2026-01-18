@@ -39,6 +39,35 @@ Every approach executor (`executor.py`) **MUST** be a class that inherits from `
     -   `_create_alert`: A private helper function to standardize `AlertData` object creation.
 -   **Standardized Filtering**: Optional filters (Volume, RSI, etc.) should be applied *after* the core pattern has been identified, using common functions from `src/stockreports/alert/common/`.
 -   **Class-Level Constants**: The `APPROACH_NAME` **MUST** be defined as a class-level constant.
+-   **Standardized Logging and Context**: All executors **MUST** adhere to the "Standardized Logging and Centralized Context Management" pattern. This is a strict requirement for consistency and debugging.
+    -   **Logging**: All logging related to the validation flow **MUST** use the `log()` factory from `src/stockreports/utils/log_factory.py`.
+    -   **Context Variables**: The executor **MUST** implement and manage three class-level attributes for context:
+        ```python
+        self.current_window_start_time: Optional[pd.Timestamp] = None
+        self.current_window_end_time: Optional[pd.Timestamp] = None
+        self.current_step: int = 0
+        ```
+    -   **Context Management**: These variables **MUST** be reset at the beginning of each iteration of the main analysis loop. The `self.current_step` counter must be incremented sequentially for each major validation step.
+        ```python
+        # In the _find_*_alerts method loop
+        for i in range(loop_end, loop_start - 1, -1):
+            # ...
+            # --- Reset Context for New Window ---
+            self.current_window_end_time = window_df.iloc[-1]['time']
+            self.current_window_start_time = window_df.iloc[0]['time']
+            self.current_step = 1
+
+            # --- Step 1: First Validation ---
+            if not condition:
+                log(...) # Use self.current_step
+                continue
+
+            # --- Step 2: Second Validation ---
+            self.current_step += 1
+            if not other_condition:
+                log(...) # Use self.current_step
+                continue
+        ```
 
 ## 3. Step-by-Step Implementation Guide
 

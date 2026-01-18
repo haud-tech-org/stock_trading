@@ -38,3 +38,14 @@ class PriceColumn:
     HIGH = "high"
     LOW = "low"
     CLOSE = "close"
+
+class ValidationStatus():
+    PASSED = "Passed"
+    FAILED = "Failed"
+
+class LogLevel():
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"

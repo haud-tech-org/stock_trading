@@ -141,4 +141,112 @@ All manual testing scripts in `tests\manual\` have been successfully executed an
 - **Status**: ✅ RESOLVED.
 
 ## Issues Resolved
-...
+
+# Technical Case Studies & Issue Resolution Log
+
+This document serves as a living repository of key architectural decisions, best practices, and resolutions to common technical challenges encountered during the development of the alert generation system. Its purpose is to prevent repeated mistakes, ensure consistency across the codebase, and provide clear guidance for future development and refactoring efforts.
+
+---
+
+## Case Study 1: Standardized Logging and Centralized Context Management
+
+### a. Problem Statement
+
+During the initial development of the `VRA`, `PRICE_GAP`, and `COMPARISON` executors, several issues related to logging and state management became apparent:
+
+1.  **Inconsistent Logging**: Each executor used its own style of logging (`logger.debug`, `logger.info`), with varying formats. This made it difficult to parse logs automatically and compare behavior across different approaches. Key contextual information like the analysis window, step number, and specific validation failures were often missing or formatted differently.
+2.  **State Management Complexity**: Critical context, such as the start and end times of the analysis window and the current validation step number, was passed down through multiple function calls. This led to cluttered function signatures and made the code harder to read and maintain.
+3.  **Difficult Debugging**: Without a standardized way to log validation failures, pinpointing the exact reason an alert was not generated required manually stepping through the code with a debugger, which was time-consuming.
+
+### b. Solution: The `log_factory` and Class-Level Context
+
+To address these issues, a two-part solution was implemented:
+
+1.  **Centralized `log()` Factory (`src/stockreports/utils/log_factory.py`)**:
+    *   A single, project-wide `log()` function was created to act as a wrapper around the standard `logging` library.
+    *   This function enforces a **structured and consistent log format** that includes mandatory fields:
+        *   `status`: `ValidationStatus.PASSED` or `ValidationStatus.FAILED`.
+        *   `name`: The name of the class or module (`__name__`).
+        *   `alert_time`: The timestamp of the potential alert candle.
+        *   `step`: A numeric identifier for the main validation step in the executor's workflow.
+        *   `message`: A human-readable description of the event.
+        *   `log_level`: `LogLevel.DEBUG`, `LogLevel.INFO`, etc.
+    *   It also supports optional contextual fields like `execution_symbol`, `start_time`, `end_time`, and a numeric `validation` number for sub-steps within a main step.
+
+2.  **Class-Level Context Variables**:
+    *   To simplify state management, three class-level attributes were added to the base `Executor` pattern:
+        *   `self.current_window_start_time: Optional[pd.Timestamp]`
+        *   `self.current_window_end_time: Optional[pd.Timestamp]`
+        *   `self.current_step: int`
+    *   These variables are initialized in the `__init__` method and are **reset at the beginning of each iteration** of the main analysis loop in the `_find_*_alerts` method.
+    *   This pattern eliminates the need to pass `start_time`, `end_time`, or `step` as parameters to internal methods and logging calls. The state is managed centrally at the class level for the current analysis window.
+
+### c. Implementation Example
+
+```python
+# In an Executor class...
+
+def __init__(self, symbol: str):
+    # ...
+    self.current_window_start_time: Optional[pd.Timestamp] = None
+    self.current_window_end_time: Optional[pd.Timestamp] = None
+    self.current_step: int = 0
+
+def _find_alerts(self, df: pd.DataFrame, new_candle_count: int):
+    # ...
+    for i in range(loop_end, loop_start - 1, -1):
+        # --- Reset context for the new window ---
+        window_df = df_indexed.iloc[i - window_size + 1 : i + 1]
+        self.current_window_end_time = window_df.iloc[-1]['time']
+        self.current_window_start_time = window_df.iloc[0]['time']
+        self.current_step = 1
+
+        # --- Step 1: First Validation ---
+        if not some_validation_passes():
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                message="First validation failed.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            continue
+
+        # --- Step 2: Second Validation ---
+        self.current_step += 1
+        if not self._private_validation_method():
+            continue # The private method is responsible for its own logging
+        
+        # ... more steps ...
+
+def _private_validation_method(self) -> bool:
+    if not condition:
+        log(
+            logger=self.logger,
+            status=ValidationStatus.FAILED,
+            name=self.__class__.__name__,
+            alert_time=self.current_window_end_time,
+            step=self.current_step, # Uses the class-level step
+            validation=1, # Specific sub-step validation number
+            message="Private validation sub-step 1 failed.",
+            log_level=LogLevel.DEBUG,
+            execution_symbol=self.symbol,
+            start_time=self.current_window_start_time,
+            end_time=self.current_window_end_time
+        )
+        return False
+    return True
+```
+
+### d. Mandatory Rules for All Future Implementations
+
+1.  **MUST Use `log_factory`**: All logging within any executor or its related utility functions **must** use the `log()` function from `src/stockreports/utils/log_factory.py`. Direct calls to `logger.debug`, `logger.info`, etc., are forbidden in the context of alert generation logic.
+2.  **MUST Use Class-Level Context**: All executors **must** implement the `current_window_start_time`, `current_window_end_time`, and `current_step` class-level attributes.
+3.  **MUST Reset Context in Loop**: These context variables **must** be reset at the beginning of each iteration of the main analysis loop.
+4.  **MUST Increment Step Counter**: The `self.current_step` variable **must** be incremented sequentially for each major validation step in the main `_find_*_alerts` method.
+5.  **MUST Use `validation` Parameter for Sub-steps**: For checks within helper functions or for multiple checks within a single `step`, the optional `validation` parameter in the `log()` function **must** be used to provide more granular detail.

@@ -86,7 +86,7 @@ LOGS_DIR = "logs"
 # Guidance: "INFO" provides a good balance of detail. "DEBUG" is very verbose and useful for troubleshooting. "WARNING" will only show potential problems.
 # Range: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL".
 # Example: `LOG_LEVEL = "INFO"`
-LOG_LEVEL = "WARNING"
+LOG_LEVEL = "DEBUG"
 
 
 # --- Data Source & Operational Mode ---
@@ -136,9 +136,9 @@ ALERT_APPROACHES = [
     "COMPARISON",
     #"PROMINENT_PEAK_REVERSAL",
     #"VOLUME_SPIKE_CONFIRMATION",
-    "PRICE_GAP", 
-    "VRA"
-    # "MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
+    "PRICE_GAP",
+    "VRA",
+    #"MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 
 
@@ -194,4 +194,4 @@ CONSOLIDATED_PROFITABILITY = {
 # Guidance: This is useful for testing how the system would have behaved in the past. Set this to a time within the `DEV_DATA_DATE_RANGE`.
 # Format: "YYYY-MM-DD HH:MM:SS"
 # Example: `DEBUG_REPLAY_START_TIME = "2026-01-08 09:05:00"`
-DEBUG_REPLAY_START_TIME = None
+DEBUG_REPLAY_START_TIME = "2026-01-16 13:50:00"

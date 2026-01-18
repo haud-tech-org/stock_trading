@@ -17,3 +17,5 @@ class VraSettings(BaseSettings):
         self.cooldown_window = self.get("COOLDOWN_WINDOW")
         self.enable_market_trend_validation = self.get("ENABLE_MARKET_TREND_VALIDATION")
         self.impact_symbols_min_body_to_range_ratio = self.get("IMPACT_SYMBOLS_MIN_BODY_TO_RANGE_RATIO")
+        self.consistent_volume_window = self.get("CONSISTENT_VOLUME_WINDOW")
+        self.consistent_volume_min_percentage = self.get("CONSISTENT_VOLUME_MIN_PERCENTAGE")
