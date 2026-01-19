@@ -1,4 +1,5 @@
 import pandas as pd
+from typing import Optional
 
 def find_max_volume_candle(window_df: pd.DataFrame) -> pd.Series:
     """
@@ -106,7 +107,7 @@ def is_body_smaller_than_max(candle: pd.Series, max_body_size: float) -> bool:
     """
     return abs(candle['close'] - candle['open']) <= max_body_size
 
-def get_first_candle(window_data: pd.DataFrame) -> pd.Series | None:
+def get_first_candle(window_data: pd.DataFrame) -> Optional[pd.Series]:
     """
     Gets the very first candle from the window data.
 
@@ -120,7 +121,7 @@ def get_first_candle(window_data: pd.DataFrame) -> pd.Series | None:
         return window_data.iloc[0]
     return None
 
-def get_last_candle(window_data: pd.DataFrame) -> pd.Series | None:
+def get_last_candle(window_data: pd.DataFrame) -> Optional[pd.Series]:
     """
     Gets the very last candle from the window data.
 

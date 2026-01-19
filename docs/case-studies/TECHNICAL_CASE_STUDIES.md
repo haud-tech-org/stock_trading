@@ -250,3 +250,62 @@ def _private_validation_method(self) -> bool:
 3.  **MUST Reset Context in Loop**: These context variables **must** be reset at the beginning of each iteration of the main analysis loop.
 4.  **MUST Increment Step Counter**: The `self.current_step` variable **must** be incremented sequentially for each major validation step in the main `_find_*_alerts` method.
 5.  **MUST Use `validation` Parameter for Sub-steps**: For checks within helper functions or for multiple checks within a single `step`, the optional `validation` parameter in the `log()` function **must** be used to provide more granular detail.
+
+---
+
+## Case Study 2: Python 3.9 Compatibility with Type Hinting
+
+### a. Problem Statement
+After introducing new utility functions in `candle_utils.py` and `window_utils.py`, the application crashed on startup with a `TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'`. The traceback pointed to function signatures using the `|` union operator for type hints (e.g., `def get_first_candle(...) -> pd.Series | None:`).
+
+### b. Root Cause
+The `|` union operator for type hints was officially introduced in **Python 3.10**. The runtime environment for the application was **Python 3.9**, which does not support this syntax.
+
+### c. Resolution
+The code was refactored to use the older, backward-compatible syntax from the `typing` module.
+
+1.  **Import Necessary Types**: Added `from typing import Optional, List, Tuple` to the top of the affected files (`candle_utils.py` and `window_utils.py`).
+2.  **Replace Union Operator**:
+    *   `pd.Series | None` was replaced with `Optional[pd.Series]`.
+    *   `tuple[pd.Series, float] | None` was replaced with `Optional[Tuple[pd.Series, float]]`.
+    *   `list[tuple[...]]` was replaced with `List[Tuple[...]]`.
+3.  **Validation**: After applying these changes, the application started successfully, confirming the compatibility issue was resolved.
+
+### d. Mandatory Rule
+For any code running in an environment older than Python 3.10, the `|` union operator **must not** be used. Instead, types from the `typing` module (`Optional`, `Union`, `List`, etc.) **must** be used to ensure backward compatibility.
+
+---
+
+## Case Study 3: Major Refactoring of the VRA Executor
+
+### a. Problem Statement
+The `VraExecutor`'s logic had become complex and difficult to follow. It contained inline calculations for trend analysis, volume comparisons, and reversal confirmations. This made the code hard to read and maintain, and it also duplicated logic that could be shared across other executors.
+
+### b. Solution: Leverage Shared Utilities
+A major refactoring was undertaken to simplify the executor by delegating tasks to the newly created `window_utils.py` and `candle_utils.py` modules.
+
+The new execution flow is a clear, three-step process:
+
+1.  **Step 1: Trend & Magnitude Validation**:
+    *   **Action**: Replaced manual calculations with a single call to `window_utils.get_window_size_and_trend()`.
+    *   **Benefit**: Immediately gets the overall trend and size of the window, which is then validated against the `min_trend_magnitude` setting.
+
+2.  **Step 2: Volume Validation**:
+    *   **Action**: Replaced direct `idxmax()`/`idxmin()` calls with `candle_utils.find_max_volume_candle()` and `candle_utils.find_min_volume_candle()`. The chronological order of these two candles is then checked.
+    *   **Benefit**: Abstracts away the implementation detail of finding these candles and makes the code's intent clearer.
+
+3.  **Step 3: Reversal Confirmation**:
+    *   **Action**: The logic was broken down into specific, readable checks using the utility functions:
+        *   `candle_utils.find_biggest_body_candle()` to ensure the alert candle is the most significant in the confirmation window.
+        *   `candle_utils.is_body_bigger_than_min()` to validate its size.
+        *   `candle_utils.is_green_candle()` / `is_red_candle()` to ensure its color is consistent with the initial trend.
+    *   **Benefit**: Each validation is now a single, self-documenting line of code, making the conditions for an alert explicit and easy to understand.
+
+### c. Bug Fixes During Refactoring
+The refactoring process also exposed and allowed for the correction of several subtle bugs:
+
+1.  **Incorrect `AlertData` Population**: In the process of rewriting the logic, key fields (`id`, `alert_price`, `start_price`, `magnitude`) were mistakenly removed from the `AlertData` constructor. They were subsequently restored.
+2.  **Incorrect Cooldown Logic**: The `reversal_signal` was not being passed to the `is_in_cooldown` function, and the `LATEST_ALERT` was incorrectly referenced using `self` instead of the class `VraExecutor`. Both issues were corrected to ensure the cooldown functions as a global state for the executor.
+
+### d. Outcome
+The `VraExecutor` is now significantly cleaner, more readable, and more maintainable. It serves as a prime example of how to effectively use the shared utility modules to build complex but understandable alert logic. The old, monolithic `_validate_volume_consistency` method was removed, as its responsibilities were fully absorbed by the new, clearer validation steps.

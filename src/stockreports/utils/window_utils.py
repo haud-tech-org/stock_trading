@@ -1,5 +1,6 @@
 import pandas as pd
 from scipy.signal import find_peaks
+from typing import Optional, List, Tuple
 from src.stockreports.alert.common.constants import Trend
 from src.stockreports.utils.candle_utils import get_first_candle, get_last_candle
 
@@ -21,7 +22,7 @@ def get_window_by_trend(window_data: pd.DataFrame, expected_trend: Trend) -> pd.
     
     return pd.DataFrame()
 
-def get_trend(window_data: pd.DataFrame) -> Trend | None:
+def get_trend(window_data: pd.DataFrame) -> Optional[Trend]:
     """
     Determines the overall trend of a window based on its first and last candles.
 
@@ -43,7 +44,7 @@ def get_trend(window_data: pd.DataFrame) -> Trend | None:
     else:
         return Trend.DOWNTREND
 
-def get_highest_peak(window_data: pd.DataFrame) -> tuple[pd.Series, float] | None:
+def get_highest_peak(window_data: pd.DataFrame) -> Optional[Tuple[pd.Series, float]]:
     """
     Finds the highest peak in the window data based on the 'high' prices.
 
@@ -75,7 +76,7 @@ def get_highest_peak(window_data: pd.DataFrame) -> tuple[pd.Series, float] | Non
     
     return peak_candle, prominence
 
-def get_lowest_trough(window_data: pd.DataFrame) -> tuple[pd.Series, float] | None:
+def get_lowest_trough(window_data: pd.DataFrame) -> Optional[Tuple[pd.Series, float]]:
     """
     Finds the lowest trough in the window data based on the 'low' prices.
 
@@ -108,7 +109,7 @@ def get_lowest_trough(window_data: pd.DataFrame) -> tuple[pd.Series, float] | No
     
     return trough_candle, prominence
 
-def get_list_of_peaks(window_data: pd.DataFrame) -> list[tuple[pd.Series, float]]:
+def get_list_of_peaks(window_data: pd.DataFrame) -> List[Tuple[pd.Series, float]]:
     """
     Finds all peaks in the window data based on the 'high' prices.
 
@@ -132,7 +133,7 @@ def get_list_of_peaks(window_data: pd.DataFrame) -> list[tuple[pd.Series, float]
         
     return result
 
-def get_list_of_troughs(window_data: pd.DataFrame) -> list[tuple[pd.Series, float]]:
+def get_list_of_troughs(window_data: pd.DataFrame) -> List[Tuple[pd.Series, float]]:
     """
     Finds all troughs in the window data based on the 'low' prices.
 
@@ -156,7 +157,7 @@ def get_list_of_troughs(window_data: pd.DataFrame) -> list[tuple[pd.Series, floa
         
     return result
 
-def get_window_size_and_trend(window_data: pd.DataFrame) -> tuple[float, Trend | None]:
+def get_window_size_and_trend(window_data: pd.DataFrame) -> Tuple[float, Optional[Trend]]:
     """
     Calculates the absolute size and trend of a window.
 

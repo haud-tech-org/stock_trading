@@ -19,7 +19,7 @@ PRICE_ALERTS = {
 
 # This flag determines whether to use the performance-based suggested price (if available)
 # or default to the structural price.
-USE_PERFORMANCE_BY_APPROACH = False
+USE_PERFORMANCE_BY_APPROACH = True
 
 PERFORMANCE_BY_APPROACH = {
     'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.7826},
@@ -28,19 +28,19 @@ PERFORMANCE_BY_APPROACH = {
     'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 4.9667},
     'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 1.375},
     'RCM': {'avg_worst_loss_price': 3.7333},
-    'PRICE_GAP': {'avg_worst_loss_price': 1.5},
-    'VRA': {'avg_worst_loss_price': 1.5},
-    'COMPARISON': {'avg_worst_loss_price': 1.5}
+    'PRICE_GAP': {'avg_worst_loss_price': 2.4},
+    'VRA': {'avg_worst_loss_price': 4.0},
+    'COMPARISON': {'avg_worst_loss_price': 0.3}
 }
 
 # A fixed offset added to all suggested price calculations to provide an extra buffer.
 # For BUY signals, this offset is subtracted from the calculated structural price.
 # For SELL signals, it's added.
-PRICE_LEVEL_OFFSET_FIXED = 0.2
+PRICE_LEVEL_OFFSET_FIXED = 0.1
 
 # The maximum and minimum required difference between the suggested price and the close price.
-MAX_PRICE_ADJUSTMENT_OFFSET = 1.5
-MIN_PRICE_ADJUSTMENT_OFFSET = 0.1
+MAX_PRICE_ADJUSTMENT_OFFSET = 5.0
+MIN_PRICE_ADJUSTMENT_OFFSET = 3.5
 # ==============================================================================
 # PERFORMANCE-BASED SUGGESTED PRICE SETTINGS
 # ==============================================================================
