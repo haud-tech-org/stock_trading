@@ -1,5 +1,4 @@
 import pandas as pd
-from scipy.signal import find_peaks
 import logging
 import json
 from typing import Optional
@@ -9,7 +8,6 @@ from src.stockreports.alert.common.constants import Approach, Signal, Mode, Vali
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from .settings import VraSettings
 from src.stockreports.utils.alert_utils import is_in_cooldown
-from src.stockreports.alert.common.signal.market_trend_validation import validate_concurrent_trend
 from src.stockreports.utils.log_factory import log
 from src.stockreports.utils import window_utils, candle_utils
 
@@ -102,8 +100,8 @@ class VraExecutor(Executor):
             # Step 1: Trend & Magnitude Validation
             self.current_step = 1
             
-            # First, get the general trend of the whole window
-            _, initial_trend = window_utils.get_window_size_and_trend(window_df)
+            # Get size and trend from the initial, full window
+            initial_window_size_val, initial_trend = window_utils.get_window_size_and_trend(window_df)
 
             if initial_trend is None:
                 continue
@@ -121,32 +119,24 @@ class VraExecutor(Executor):
                     highest_peak, _ = highest_peak_result
                     magnitude_window = window_df.loc[highest_peak.name:].copy()
 
-            if magnitude_window is None or magnitude_window.empty:
+            # Recalculate size and trend on the more accurate magnitude window, if available
+            window_size_val = 0.0
+            window_trend = initial_trend # Default to initial trend
+            if magnitude_window is not None and not magnitude_window.empty:
+                window_size_val, window_trend = window_utils.get_window_size_and_trend(magnitude_window)
+
+            # The validation passes if either the initial window or the refined magnitude window meets the threshold
+            is_initial_magnitude_valid = abs(initial_window_size_val) >= self.settings.min_trend_magnitude
+            is_refined_magnitude_valid = abs(window_size_val) >= self.settings.min_trend_magnitude
+
+            if not (is_initial_magnitude_valid or is_refined_magnitude_valid):
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message="Could not determine magnitude window from peak/trough.",
-                    log_level=LogLevel.DEBUG,
-                    execution_symbol=self.symbol,
-                    start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
-                )
-                continue
-
-            # Recalculate size and trend on the more accurate magnitude window
-            window_size_val, window_trend = window_utils.get_window_size_and_trend(magnitude_window)
-
-            if window_trend is None or abs(window_size_val) < self.settings.min_trend_magnitude:
-                log(
-                    logger=self.logger,
-                    status=ValidationStatus.FAILED,
-                    name=self.__class__.__name__,
-                    alert_time=self.current_window_end_time,
-                    step=self.current_step,
-                    message=f"Window trend magnitude ({abs(window_size_val):.2f}) is below threshold ({self.settings.min_trend_magnitude}).",
+                    message=f"Trend magnitude did not meet threshold. Initial: {abs(initial_window_size_val):.2f}, Refined: {abs(window_size_val):.2f}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,

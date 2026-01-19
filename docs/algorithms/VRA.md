@@ -1,59 +1,48 @@
-````markdown
-# VRA (Volume-Reversal-Anchor) Approach
+# VRA (Volume-Reversal-Anchor) Approach v2
 
 ## 1. Objective
 
-The VRA (Volume-Reversal-Anchor) approach is designed to identify significant trend reversals by pinpointing a specific sequence of market events. The core idea is to find a moment of capitulation or exhaustion, marked by a massive volume spike, which then serves as an "anchor" for a subsequent, confirmed price reversal. This strategy is particularly effective at capturing sharp turns in the market.
+The VRA (Volume-Reversal-Anchor) approach identifies high-probability trend reversals by detecting a sequence of a significant trend, a volume spike, and a decisive reversal candle. It aims to capture market turning points by ensuring the initial move has sufficient momentum (magnitude), is accompanied by a surge in volume (the "anchor"), and is followed by a clear, confirmed reversal pattern.
 
 ## 2. Key Parameters
 
-The behavior of the VRA executor is controlled by the following parameters, which are configured in `src/stockreports/config/signal_settings.py`.
+The behavior of the VRA executor is controlled by the following parameters, configured in `src/stockreports/config/signal_settings.py`.
 
-| Parameter                             | Default Value | Description                                                                                                                              |
-| ------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `LOOKBACK_WINDOW`                     | 10            | The number of candles to include in the analysis window.                                                                                 |
-| `MIN_TREND_MAGNITUDE`                 | 7.0           | The minimum price change (magnitude) required from the anchor candle to the reversal candle for the trend to be considered significant.      |
-| `VOLUME_MULTIPLIER`                   | 4.0           | The volume of the anchor candle must be at least this many times greater than the minimum volume in the preceding part of the window.       |
-| `MIN_ALERT_BODY_SIZE`                 | 0.3           | The minimum body size of the candles involved in the reversal confirmation pattern.                                                      |
-| `MAX_DISTANCE_CLOSE_PRICE`            | 2.0           | The maximum allowed price difference between the close prices of the candles in the reversal pattern.                                    |
-| `COOLDOWN_WINDOW`                     | 3             | The number of candles to wait after an alert is generated before another alert of the same type can be issued.                           |
-| `ENABLE_MARKET_TREND_VALIDATION`      | `True`        | If `True`, the alert will only be triggered if it aligns with the broader market trend (e.g., a BUY signal during a market uptrend).       |
-| `IMPACT_SYMBOLS_MIN_BODY_TO_RANGE_RATIO` | 0.3           | When validating against the market trend, this is the minimum body-to-range ratio required for the candles of impact symbols (like VN30). |
+| Parameter             | Default Value | Description                                                                                                                                                              |
+| --------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `LOOKBACK_WINDOW`     | 10            | The number of candles to include in the analysis window.                                                                                                                 |
+| `MIN_TREND_MAGNITUDE` | 7.0           | The minimum price change required for a trend to be considered significant. This is validated against both the full window and a refined window starting from a peak/trough. |
+| `VOLUME_MULTIPLIER`   | 4.0           | The volume of the highest-volume candle must be at least this many times greater than the volume of the lowest-volume candle within the lookback window.                  |
+| `MIN_ALERT_BODY_SIZE` | 1.1           | The minimum body size required for the final alert candle to be considered a valid reversal signal.                                                                      |
+| `COOLDOWN_WINDOW`     | "120min"      | A time duration (e.g., "120min") after an alert is generated during which no new alert for the same symbol and signal can be issued.                                      |
 
 ## 3. Step-by-Step Logic
 
-The VRA executor analyzes the data in a reverse loop, starting from the most recent candle and moving backward. For each analysis window, it performs the following validation steps in a specific order for maximum efficiency.
+The VRA executor analyzes data in a reverse loop, starting from the most recent candle. For each analysis window, it performs the following validation steps sequentially.
 
-1.  **Volume Spike Analysis**:
-    *   The algorithm first identifies the candle with the highest volume within the `LOOKBACK_WINDOW`. This is the "volume anchor".
-    *   It then finds the candle with the minimum volume in the period *before* the volume anchor.
-    *   **Validation**: The volume of the anchor candle must be greater than or equal to the minimum volume multiplied by the `VOLUME_MULTIPLIER`. If not, the window is discarded.
+1.  **Step 1: Trend & Magnitude Validation**
+    *   The algorithm first determines the trend and magnitude of the entire `LOOKBACK_WINDOW`.
+    *   It then refines this by identifying the highest peak (for downtrends) or lowest trough (for uptrends) and recalculating the magnitude from that point to the end of the window.
+    *   **Validation**: The check passes if **either** the initial full-window magnitude **or** the refined peak/trough-based magnitude meets the `MIN_TREND_MAGNITUDE` threshold. If not, the window is discarded.
+    *   An `original_signal` (`BUY` for an uptrend, `SELL` for a downtrend) is determined based on the validated trend.
 
-2.  **Reversal Signal Definition**:
-    *   A confirmation window is defined, starting from the volume anchor candle to the end of the lookback window.
-    *   The potential reversal signal (`BUY` or `SELL`) is determined by comparing the close price of the volume anchor to the close price of the first candle in the lookback window.
+2.  **Step 2: Volume Validation**
+    *   It identifies the candles with the maximum and minimum volume within the entire window.
+    *   **Validation A (Ratio)**: The volume of the max-volume candle must be greater than or equal to the min-volume candle's volume multiplied by `VOLUME_MULTIPLIER`.
+    *   **Validation B (Chronology)**: The min-volume candle must occur chronologically *before* the max-volume candle.
+    *   If either volume validation fails, the window is discarded.
 
-3.  **Reversal Confirmation**:
-    *   The algorithm calls the shared `validate_reversal_confirmation` utility on the confirmation window.
-    *   **Validation**: This utility checks for a valid reversal pattern (e.g., a strong bullish candle after a downtrend). It must find a valid `alert_candle` and `anchor_candle` for the reversal. If no pattern is found, the window is discarded.
+3.  **Step 3: Reversal Confirmation**
+    *   A "confirmation window" is defined, starting from the max-volume candle to the end of the lookback window. The last candle of this sub-window is the potential `alert_candle`.
+    *   **Validation A (Biggest Body)**: The `alert_candle` must have the largest body size among all candles in the confirmation window.
+    *   **Validation B (Sufficient Body Size)**: The body size of the `alert_candle` must be greater than `MIN_ALERT_BODY_SIZE`.
+    *   **Validation C (Consistent Color)**: The color of the `alert_candle` must be consistent with the initial trend (e.g., a green candle for an uptrend).
+    *   If any of these confirmations fail, the window is discarded.
 
-4.  **Market Trend Validation (Optional)**:
-    *   If `ENABLE_MARKET_TREND_VALIDATION` is `True`, the executor checks if the identified `reversal_signal` aligns with the concurrent trend of the broader market (e.g., VN30).
-    *   **Validation**: If the signal opposes the market trend, the window is discarded.
-
-5.  **Magnitude Validation**:
-    *   The magnitude of the price move is calculated.
-        *   For a `SELL` signal, it's the difference between the anchor candle's close and the lowest close in the window.
-        *   For a `BUY` signal, it's the difference between the highest close in the window and the anchor candle's close.
-    *   **Validation**: The calculated magnitude must be greater than or equal to `MIN_TREND_MAGNITUDE`.
-
-6.  **Cooldown Check**:
-    *   The algorithm checks if a similar alert (same symbol and signal) has been issued within the `COOLDOWN_WINDOW`.
-    *   **Validation**: If the alert is within the cooldown period, it is suppressed.
-
-7.  **Alert Generation**:
-    *   If all the above validations pass, a new `AlertData` object is created and stored.
-    *   In `DEPLOYMENT` mode, the function returns immediately with the new alert. In `DEVELOPMENT` mode, the loop continues to find all historical alerts.
+4.  **Step 4: Final Checks & Alert Generation**
+    *   If all previous steps pass, a `reversal_signal` is defined as the opposite of the `original_signal`.
+    *   **Cooldown Check**: The algorithm checks if a similar alert (same symbol and `reversal_signal`) has been issued within the `COOLDOWN_WINDOW`. If so, the alert is suppressed.
+    *   **Alert Generation**: If the cooldown check passes, a new `AlertData` object is created with the `reversal_signal`, and the class-level `LATEST_ALERT` is updated.
 
 ## 4. Flow Diagram
 
@@ -62,26 +51,22 @@ graph TD
     A[Start VRA Execution] --> B{Loop through candles backwards};
     B --> C{Enough data in window?};
     C -- No --> B;
-    C -- Yes --> D[Step 1: Volume Spike Analysis];
-    D --> E{Volume >= MinVolume * Multiplier?};
+    C -- Yes --> D[Step 1: Trend & Magnitude Validation];
+    D --> E{Initial OR Refined Magnitude >= MinMagnitude?};
     E -- No --> B;
-    E -- Yes --> F[Step 2: Define Reversal Signal];
-    F --> G[Step 3: Validate Reversal Confirmation];
-    G --> H{Reversal Pattern Valid?};
-    H -- No --> B;
-    H -- Yes --> I[Step 4: Market Trend Validation];
-    I --> J{Aligns with Market Trend?};
-    J -- No --> B;
-    J -- Yes --> K[Step 5: Magnitude Validation];
-    K --> L{Magnitude >= MinMagnitude?};
-    L -- No --> B;
-    L -- Yes --> M[Step 6: Cooldown Check];
-    M --> N{Is in Cooldown?};
-    N -- Yes --> B;
-    N -- No --> O[Create AlertData];
-    O --> P{Deployment Mode?};
-    P -- Yes --> Q[Return Alert];
-    P -- No --> B;
-    B -- End of Loop --> R[End Execution];
+    E -- Yes --> F[Step 2: Volume Validation];
+    F --> G{Volume Ratio & Chronology OK?};
+    G -- No --> B;
+    G -- Yes --> H[Step 3: Reversal Confirmation];
+    H --> I{Biggest Body & Sufficient Size & Correct Color?};
+    I -- No --> B;
+    I -- Yes --> J[Define Reversal Signal];
+    J --> K[Step 4: Cooldown Check];
+    K --> L{Is in Cooldown?};
+    L -- Yes --> B;
+    L -- No --> M[Create AlertData];
+    M --> N{Deployment Mode?};
+    N -- Yes --> O[Return Alert];
+    N -- No --> B;
+    B -- End of Loop --> P[End Execution];
 ```
-````
