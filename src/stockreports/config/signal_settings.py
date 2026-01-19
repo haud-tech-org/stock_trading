@@ -375,8 +375,8 @@ APPROACH_CONFIG = {
     # --- VRA (Volume-Reversal-Anchor) ---
     "VRA": {
         "LOOKBACK_WINDOW": 10,
-        "VOLUME_MULTIPLIER": 3.0,
-        "MIN_ALERT_BODY_SIZE": 0.5,
+        "VOLUME_MULTIPLIER": 4.0,
+        "MIN_ALERT_BODY_SIZE": 1.1,
         "MAX_DISTANCE_CLOSE_PRICE": 4.0,
         "MIN_TREND_MAGNITUDE": 7.0,
         "ENABLE_MARKET_TREND_VALIDATION": False,

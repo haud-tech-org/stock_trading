@@ -5,13 +5,13 @@ import json
 from typing import Optional
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel
+from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from .settings import VraSettings
-from src.stockreports.alert.common.confirmation.reversal import validate_reversal_confirmation
 from src.stockreports.utils.alert_utils import is_in_cooldown
 from src.stockreports.alert.common.signal.market_trend_validation import validate_concurrent_trend
 from src.stockreports.utils.log_factory import log
+from src.stockreports.utils import window_utils, candle_utils
 
 class VraExecutor(Executor):
     APPROACH_NAME = Approach.VRA
@@ -85,43 +85,50 @@ class VraExecutor(Executor):
 
         df_indexed = df.reset_index()
 
-        # Standardized reverse loop setup from other executors
         loop_end_index = len(df_indexed) - 1
         min_scan_index = window_size - 1
 
         if is_development_mode:
-            # In development, we analyze all possible windows
             loop_start_index = min_scan_index
         else:
-            # In production, we only analyze the latest candles
             loop_start_index = max(min_scan_index, len(df_indexed) - new_candle_count)
 
-        # Reverse loop from the most recent data to the oldest
         for i in range(loop_end_index, loop_start_index - 1, -1):
             window_start_index = i - window_size + 1
             window_df = df_indexed.iloc[window_start_index : i + 1].copy()
             self.current_window_end_time = window_df.iloc[-1]['time']
             self.current_window_start_time = window_df.iloc[0]['time']
+            
+            # Step 1: Trend & Magnitude Validation
             self.current_step = 1
-
-            # --- Validation Order for Performance ---
-
-            # Step 1: Volume Spike Analysis
-            volume_anchor_idx = window_df['volume'].idxmax()
             
-            # Define the search window for the minimum volume: from the start of the window
-            # up to (but not including) the candle with the maximum volume.
-            pre_spike_df = window_df.loc[:volume_anchor_idx - 1]
-            
-            # If there are no candles before the spike, we cannot proceed.
-            if pre_spike_df.empty:
+            # First, get the general trend of the whole window
+            _, initial_trend = window_utils.get_window_size_and_trend(window_df)
+
+            if initial_trend is None:
+                continue
+
+            # Now, find the appropriate peak or trough to measure the true magnitude from
+            magnitude_window = None
+            if initial_trend == Trend.UPTREND:
+                lowest_trough_result = window_utils.get_lowest_trough(window_df)
+                if lowest_trough_result:
+                    lowest_trough, _ = lowest_trough_result
+                    magnitude_window = window_df.loc[lowest_trough.name:].copy()
+            elif initial_trend == Trend.DOWNTREND:
+                highest_peak_result = window_utils.get_highest_peak(window_df)
+                if highest_peak_result:
+                    highest_peak, _ = highest_peak_result
+                    magnitude_window = window_df.loc[highest_peak.name:].copy()
+
+            if magnitude_window is None or magnitude_window.empty:
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message="Volume spike is the first candle; no preceding window to analyze.",
+                    message="Could not determine magnitude window from peak/trough.",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
@@ -129,130 +136,131 @@ class VraExecutor(Executor):
                 )
                 continue
 
-            # Find the minimum volume within this preceding period.
-            min_vol_idx = pre_spike_df['volume'].idxmin()
-            
-            candle_v = window_df.loc[volume_anchor_idx]
-            min_vol_in_window = pre_spike_df.loc[min_vol_idx]['volume']
-            if not (candle_v['volume'] >= self.settings.volume_multiplier * min_vol_in_window):
+            # Recalculate size and trend on the more accurate magnitude window
+            window_size_val, window_trend = window_utils.get_window_size_and_trend(magnitude_window)
+
+            if window_trend is None or abs(window_size_val) < self.settings.min_trend_magnitude:
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message=f"Volume spike ({candle_v['volume']}) did not meet the multiplier ({self.settings.volume_multiplier}) over minimum volume ({min_vol_in_window}).",
+                    message=f"Window trend magnitude ({abs(window_size_val):.2f}) is below threshold ({self.settings.min_trend_magnitude}).",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
                     end_time=self.current_window_end_time
                 )
                 continue
+            
+            original_signal = Signal.BUY if window_trend == Trend.UPTREND else Signal.SELL
 
-            # New Volume Consistency Validation
-            if not self._validate_volume_consistency(
-                pre_spike_df=pre_spike_df,
-                spike_candle=window_df.loc[volume_anchor_idx]
-            ):
-                continue
-
-            # Step 2: Reversal Confirmation Window
+            # Step 2: Volume Validation
             self.current_step += 1
-            confirmation_df = window_df.loc[volume_anchor_idx:].copy()
-            if len(confirmation_df) < 2:
+            max_vol_candle = candle_utils.find_max_volume_candle(window_df)
+            min_vol_candle = candle_utils.find_min_volume_candle(window_df)
+
+            if not candle_utils.validate_volume_ratio(max_vol_candle, min_vol_candle, self.settings.volume_multiplier):
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message="Not enough data for reversal confirmation after volume spike.",
+                    message="Max volume candle does not meet multiplier over min volume.",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
                     end_time=self.current_window_end_time
                 )
                 continue
-            
-            first_candle = window_df.iloc[0]
-            reversal_signal = Signal.SELL if candle_v['close'] > first_candle['close'] else Signal.BUY
 
-            # Step 3: Reversal Confirmation Logic
-            self.current_step += 1
-            validation_result = validate_reversal_confirmation(
-                confirmation_df=confirmation_df, 
-                reversal_signal=reversal_signal, 
-                min_alert_body_size=self.settings.min_alert_body_size, 
-                max_distance_close_price=self.settings.max_distance_close_price
-            )
-            if validation_result is None:
+            if min_vol_candle.name >= max_vol_candle.name:
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message=f"Reversal confirmation failed for {reversal_signal} signal.",
+                    message="Min volume candle did not occur before max volume candle.",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
                     end_time=self.current_window_end_time
                 )
                 continue
-            
-            alert_candle, anchor_candle = validation_result
 
-            # Step 4: Market Trend Validation
+            # Step 3: Reversal Confirmation
             self.current_step += 1
-            if self.settings.enable_market_trend_validation:
-                if not validate_concurrent_trend(
-                    expected_signal=reversal_signal,
-                    alert_time=alert_candle['time'],
-                    min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
-                    require_all=False
-                ):
-                    log(
-                        logger=self.logger,
-                        status=ValidationStatus.FAILED,
-                        name=self.__class__.__name__,
-                        alert_time=alert_candle['time'],
-                        step=self.current_step,
-                        message=f"Concurrent market trend validation failed for {reversal_signal} signal.",
-                        log_level=LogLevel.DEBUG,
-                        execution_symbol=self.symbol,
-                        start_time=self.current_window_start_time,
-                        end_time=self.current_window_end_time
-                    )
-                    continue
-            
-            # Step 5: Magnitude Validation
-            self.current_step += 1
-            if reversal_signal == Signal.SELL:
-                min_close_in_window = window_df['close'].min()
-                magnitude = abs(anchor_candle['close'] - min_close_in_window)
-            else: # BUY
-                max_close_in_window = window_df['close'].max()
-                magnitude = abs(max_close_in_window - anchor_candle['close'])
+            confirmation_window = window_df.loc[max_vol_candle.name:].copy()
+            alert_candle = candle_utils.get_last_candle(confirmation_window)
 
-            if magnitude < self.settings.min_trend_magnitude:
+            if alert_candle is None:
+                continue
+
+            # Validation A: Alert candle is the biggest body in the confirmation window
+            biggest_body_in_confirmation = candle_utils.find_biggest_body_candle(confirmation_window)
+            if alert_candle.name != biggest_body_in_confirmation.name:
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
-                    alert_time=alert_candle['time'],
+                    alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message=f"Trend magnitude ({magnitude:.2f}) was less than the minimum required ({self.settings.min_trend_magnitude}).",
+                    message="Alert candle is not the biggest body candle in the confirmation window.",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
                     end_time=self.current_window_end_time
                 )
                 continue
+
+            # Validation B: Alert candle body size is sufficient
+            if not candle_utils.is_body_bigger_than_min(alert_candle, self.settings.min_alert_body_size):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    message=f"Alert candle body size is not bigger than min size ({self.settings.min_alert_body_size}).",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                continue
+
+            # Validation C: Alert candle color matches trend
+            is_uptrend = window_trend == Trend.UPTREND
+            is_correct_color = (is_uptrend and candle_utils.is_green_candle(alert_candle)) or \
+                               (not is_uptrend and candle_utils.is_red_candle(alert_candle))
+
+            if not is_correct_color:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    message=f"Alert candle color does not match the window trend ({window_trend}).",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                continue
+
+            # --- All primary validations passed, define reversal signal ---
+            reversal_signal = Signal.SELL if original_signal == Signal.BUY else Signal.BUY
             
-            # Step 6: Cooldown Logic
+            # --- Final Checks using Reversal Signal ---
             self.current_step += 1
+            
+            # Cooldown Check
             if is_in_cooldown(
-                new_alert_time=alert_candle['time'],
+                new_alert_time=self.current_window_end_time,
                 new_signal=reversal_signal,
                 latest_alert=VraExecutor.LATEST_ALERT,
                 cooldown_window=self.settings.cooldown_window
@@ -261,9 +269,9 @@ class VraExecutor(Executor):
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
-                    alert_time=alert_candle['time'],
+                    alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message=f"Alert for {reversal_signal} is in cooldown.",
+                    message="Alert is in cooldown period.",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
@@ -271,74 +279,33 @@ class VraExecutor(Executor):
                 )
                 continue
 
-            # --- All validations passed, create alert ---
-            alert_time = alert_candle['time']
-            alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+            alert_candle = candle_utils.get_last_candle(window_df)
+            if alert_candle is None:
+                continue
+            
+            first_candle = candle_utils.get_first_candle(window_df)
+            if first_candle is None:
+                continue
+
+            alert_id = f"{self.symbol}_{self.APPROACH_NAME}_{self.current_window_end_time.strftime('%Y%m%d%H%M%S')}"
 
             alert_data = AlertData(
-                approach=self.APPROACH_NAME,
                 id=alert_id,
                 symbol=self.symbol,
+                approach=self.APPROACH_NAME,
                 signal=reversal_signal,
                 alert_price=alert_candle['close'],
-                alert_time=alert_time,
-                start_price=window_df.iloc[0]['close'],
-                start_time=window_df.iloc[0]['time'].isoformat(),
-                magnitude=magnitude,
+                alert_time=self.current_window_end_time,
+                start_price=first_candle['open'],
+                start_time=self.current_window_start_time,
+                magnitude=abs(window_size_val),
                 details=json.dumps({
-                    "volume_multiplier": self.settings.volume_multiplier,
-                    "lookback_window": self.settings.lookback_window,
-                    "anchor_candle_time": anchor_candle['time'].isoformat(),
-                    "anchor_candle_price": anchor_candle['close']
+                    "trend": window_trend,
+                    "max_volume_candle_time": str(max_vol_candle.name),
+                    "min_volume_candle_time": str(min_vol_candle.name)
                 })
             )
             alerts.append(alert_data)
             VraExecutor.LATEST_ALERT = alert_data
 
-            # In production mode, return immediately after finding the first valid alert
-            if not is_development_mode:
-                return alerts
-
         return alerts
-
-    def _validate_volume_consistency(self, pre_spike_df: pd.DataFrame, spike_candle: pd.Series) -> bool:
-        """
-        Validates that the volume spike is significant compared to the candles immediately preceding it.
-        """
-        consistent_window_size = self.settings.consistent_volume_window
-        
-        # Use as many candles as are available if the pre_spike_df is smaller than the configured window
-        window_to_check = min(len(pre_spike_df), consistent_window_size)
-
-        if window_to_check == 0:
-            # This case is already handled by the pre_spike_df.empty check, but as a safeguard:
-            return True # Or False, depending on desired strictness. Let's be lenient.
-
-        # Get the last N candles from the pre-spike dataframe
-        adjacent_candles = pre_spike_df.tail(window_to_check)
-        
-        # Count how many of these adjacent candles satisfy the volume condition
-        succeed_count = 0
-        for _, adjacent_candle in adjacent_candles.iterrows():
-            if spike_candle['volume'] >= self.settings.volume_multiplier * adjacent_candle['volume']:
-                succeed_count += 1
-        
-        # Check if the ratio of successful candles meets the minimum requirement
-        success_ratio = succeed_count / window_to_check
-        if success_ratio < self.settings.consistent_volume_min_percentage:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=1,
-                message=f"Volume consistency check failed. Ratio {success_ratio:.2f} < min {self.settings.consistent_volume_min_percentage}",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
-            )
-            return False
-            
-        return True
