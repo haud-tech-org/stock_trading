@@ -1,100 +1,77 @@
-# STRONG_CANDLE
+# STRONG_CANDLE Approach
 
-## Objective
+## 1. Objective
 
-The **Strong Candle** strategy is designed to identify moments of decisive, high-conviction momentum. It operates by identifying a specific three-part sequence that unfolds over time: a powerful initial move (the "Strong Candle"), a period of indicator-based confirmation, and finally, immediate follow-through momentum. This ensures the signal is not just a random spike but the start of a potentially sustainable move.
+The STRONG_CANDLE approach is designed to identify significant market breakouts following a period of consolidation. It operates by detecting a "strong candle"—characterized by its large body and high volume—that emerges after a "conditional window" of low volatility and tight price range. The core strategy is to capture momentum-driven moves that signal the start of a new, decisive trend.
 
-The logic uses a **backward loop**, which is more performant for real-time analysis. It starts from the most recent candle and works backward to identify if the complete pattern has just finished.
+## 2. Key Parameters
 
-## Key Parameters
+The behavior of the STRONG_CANDLE executor is controlled by the following parameters, configured in `src/stockreports/config/signal_settings.py`.
 
-This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `StrongCandleSettings`, in `src/stockreports/alert/approach/STRONG_CANDLE/settings.py` loads these parameters.
+| Parameter                          | Default Value | Description                                                                                                                              |
+| ---------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `LOOKBACK_WINDOW`                  | 6             | The total number of candles in the analysis window, which includes the conditional window plus the strong candle.                          |
+| `MIN_BODY_RATIO`                   | 0.7           | The minimum ratio of the candle's body to its total range (high-low) for it to be considered a "strong candle".                            |
+| `MIN_BODY_SIZE`                    | 1.0           | The minimum absolute size (price points) of the strong candle's body.                                                                    |
+| `MAX_CONDITIONAL_CANDLE_BODY_SIZE` | 0.8           | The maximum body size allowed for any candle within the "conditional window" (the period before the strong candle).                        |
+| `MAX_DIFFERENCE_PRICE_THRESHOLD`   | 3.0           | The maximum price range (high-low) allowed within the conditional window. This enforces that the breakout occurs from a tight consolidation. |
+| `VOLUME_MULTIPLIER`                | 1.5           | The strong candle's volume must be at least this many times greater than the maximum volume of any candle in the conditional window.       |
+| `COOLDOWN_WINDOW`                  | "120min"      | A time duration after an alert is generated during which no new alert for the same symbol and signal can be issued.                        |
 
-| Parameter | Default | Description |
-| :--- | :--- | :--- |
-| `CONFIRMATION_WINDOW` | 1 | The number of candles to look back from the confirmation candle to find the initial "Strong Candle". |
-| `MIN_ALERT_MAGNITUDE` | 4 | The minimum price change required from the **close** of the strong candle to the **close** of the momentum candle. |
-| `TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO` | 0.4 | A global setting that defines how small a candle's opposing wick must be relative to its body to be considered "strong." |
-| `USE_DIVERGENCE_CONFIRMATION` | `False` | If `True`, checks for and requires price/indicator divergence to be present for the signal to be valid. |
-| `USE_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final momentum candle to have a significant volume spike. |
-| `USE_INCREASING_VOLUME_CONFIRMATION` | `False` | If `True`, requires volume to be generally increasing across the entire pattern sequence. |
-| `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final momentum candle to have the highest volume within the pattern window. |
-| `USE_RSI_EXHAUSTION_FILTER`, `USE_MA_CONFIRMATION`, etc. | `False` | Standard confirmation flags. These are used to validate the "Confirmation Candle" and to filter the "Strong Candle". |
+## 3. Step-by-Step Logic
 
-## Step-by-Step Logic (Backward Loop)
+The executor analyzes data in a reverse loop. For each `LOOKBACK_WINDOW`, it performs the following validation steps sequentially.
 
-The core logic resides in the `StrongCandleExecutor` class in `src/stockreports/alert/approach/STRONG_CANDLE/executor.py`. The algorithm iterates backward from the most recent candle. For each candle `i`, it treats it as a potential "Momentum Candle" and applies a series of filters to see if a valid pattern has just completed.
+1.  **Step 1: Strong Candle Validation**
+    *   The last candle in the window is designated as the potential "strong candle."
+    *   **Validation A (Body Ratio)**: The candle's body-to-range ratio must be `>= MIN_BODY_RATIO`.
+    *   **Validation B (Body Size)**: The candle's absolute body size must be `>= MIN_BODY_SIZE`.
+    *   **Validation C (Trend)**: The candle must be clearly bullish (green) or bearish (red) to determine a `potential_signal` (`BUY` or `SELL`).
+    *   If any of these checks fail, the window is discarded.
 
-### Signal Generation Conditions (Filtering in Reverse)
+2.  **Step 2: Cooldown Validation**
+    *   The algorithm checks if an alert with the same symbol and `potential_signal` has already been issued within the `COOLDOWN_WINDOW`.
+    *   If it is in cooldown, the window is discarded.
 
-1.  **Identify Potential Momentum:**
-    *   The loop starts at the latest data point. Each candle `i` is a candidate for the final "Momentum Candle".
-    *   It must show momentum by closing higher than the previous candle `i-1` (for a `BUY`) or lower (for a `SELL`). If not, the pattern is invalid for this candle.
+3.  **Step 3: Conditional Window Validation**
+    *   The "conditional window" is defined as all candles in the `LOOKBACK_WINDOW` *except* for the strong candle.
+    *   **Validation A (Small Bodies)**: All candles within this conditional window must have a body size `<= MAX_CONDITIONAL_CANDLE_BODY_SIZE`.
+    *   **Validation B (Tight Range)**: The total price range (highest high to lowest low) of the conditional window must be `<= MAX_DIFFERENCE_PRICE_THRESHOLD`.
+    *   **Validation C (Volume Spike)**: The volume of the strong candle must be `>=` the maximum volume found in the conditional window, multiplied by the `VOLUME_MULTIPLIER`.
+    *   If any of these checks fail, the window is discarded.
 
-2.  **Validate the Confirmation Candle:**
-    *   The algorithm checks the "Confirmation Candle" (`i-1`).
-    *   This candle must receive a valid signal from the standard indicator checks (`is_signal_confirmed`), which evaluates MACD, MA, etc., based on the enabled flags. If the indicators do not confirm the trend on this candle, the pattern is invalid.
+4.  **Step 4: Breakout Confirmation**
+    *   This final check confirms the strong candle has decisively broken out of the conditional window's range.
+    *   **For a BUY signal**: The strong candle's `close` price must be `>` the `high` of the entire conditional window.
+    *   **For a SELL signal**: The strong candle's `close` price must be `<` the `low` of the entire conditional window.
+    *   If this check fails, the window is discarded.
 
-3.  **Initial Filtering (Volume, Divergence, Magnitude):**
-    *   Before searching for the strong candle, a series of preliminary checks are run on the momentum candle `i`:
-        *   **Volume & Divergence (Optional):** If enabled, it checks for volume spikes and price/indicator divergence.
+5.  **Step 5: Alert Generation**
+    *   If all steps pass, a new `AlertData` object is created.
+    *   The `LATEST_ALERT` is updated to manage the cooldown state for subsequent checks.
 
-4.  **Find the Initial Strong Candle:**
-    *   If the preliminary filters pass, the algorithm searches backward from candle `i-2` for up to `CONFIRMATION_WINDOW` candles to find the "Strong Candle".
-    *   A "Strong Candle" is defined as having:
-        *   A body size larger than the global `MIN_EXPECTED_PROFIT_LOSS` setting.
-        *   A small opposing wick (tail), based on `TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO`. For a BUY, the upper wick must be small; for a SELL, the lower wick must be small.
-    *   Once the first valid "Strong Candle" is found, the search stops. If none is found in the window, the pattern is invalid.
-
-### Final Validation and Signal Generation
-
-If the full backward pattern (Momentum -> Confirmation -> Strong Candle) is identified, a new set of strict conditions are checked:
-
-1.  **Momentum vs. Strong Candle Open Price:**
-    *   For a **BUY** signal, the `open` of the "Momentum Candle" must be *higher* than the `open` of the "Strong Candle".
-    *   For a **SELL** signal, the `open` of the "Momentum Candle" must be *lower* than the `open` of the "Strong Candle".
-    *   This confirms that the final momentum started from a more advantageous price point, showing clear progression.
-
-2.  **Final Magnitude Check:**
-    *   The total price change from the **`close`** of the "Strong Candle" to the **`close`** of the "Momentum Candle" is checked against `MIN_ALERT_MAGNITUDE`. This validates the strength of the entire move.
-
-3.  **RSI Exhaustion Filter:** The algorithm checks the candle *immediately preceding* the "Strong Candle" to ensure the move didn't start from an already overbought or oversold position.
-
-4.  **Final Volume Check (Optional):** If enabled, it performs a more comprehensive check for a volume spike, increasing volume, or max volume across the full window from the Strong Candle to the Momentum Candle.
-
-If all checks pass, an `AlertData` object is created, and a signal is generated.
-
-## Flow Diagram
+## 4. Flow Diagram
 
 ```mermaid
 graph TD
-    subgraph "Backward Loop (for each candle 'i')"
-        A[Start Loop at Latest Candle] --> B{1. Is 'i' a Momentum Candle?};
-        B -- No --> X[Continue to Next Candle 'i-1'];
-        B -- Yes --> C{2. Is 'i-1' a Valid Confirmation Candle?};
-        C -- No --> X;
-        C -- Yes --> D{3. Find Strong Candle before 'i-1'?};
-        D -- Not Found --> X;
-        D -- Found --> E{"Final Filters & Checks Pass?"};
-        E -- No --> X;
-        E -- Yes --> Z[Generate Alert];
-    end
-
-    subgraph "Final Filtering Steps"
-        E --> F1{1. Momentum vs Strong Candle Open Price?};
-        F1 --> F2{2. Final Magnitude Sufficient?};
-        F2 --> F3{3. RSI Not Exhausted at Start?};
-        F3 --> F4{4. Final Volume Confirmed?};
-    end
+    A[Start Execution] --> B{Loop through candles backwards};
+    B --> C{Enough data in window?};
+    C -- No --> B;
+    C -- Yes --> D[Step 1: Validate Strong Candle];
+    D --> E{Body Ratio, Size, & Trend OK?};
+    E -- No --> B;
+    E -- Yes --> F[Step 2: Cooldown Check];
+    F --> G{Is in Cooldown?};
+    G -- Yes --> B;
+    G -- No --> H[Step 3: Validate Conditional Window];
+    H --> I{Small Bodies, Tight Range, & Volume Spike OK?};
+    I -- No --> B;
+    I -- Yes --> J[Step 4: Confirm Breakout];
+    J --> K{Close breaks Conditional Range?};
+    K -- No --> B;
+    K -- Yes --> L[Step 5: Create AlertData];
+    L --> M{Deployment Mode?};
+    M -- Yes --> N[Return Alert];
+    M -- No --> B;
+    B -- End of Loop --> O[End Execution];
 ```
-
-### Diagram Explanation
-
-1.  **Start Loop at Latest Candle**: The algorithm begins at the most recent candle and works backward.
-2.  **Is 'i' a Momentum Candle?**: Checks if candle `i` shows follow-through momentum.
-3.  **Is 'i-1' a Valid Confirmation Candle?**: Validates the preceding candle (`i-1`) using standard indicators (MA, MACD, etc.).
-4.  **Find Strong Candle before 'i-1'?**: If confirmation is valid, it searches back to find the initial "Strong Candle".
-5.  **Final Filters & Checks Pass?**: If the complete pattern is found, it undergoes a final, rigorous set of checks.
-6.  **Open Price/Magnitude/RSI/Volume**: These steps validate the signal by comparing open prices, ensuring sufficient price change, checking for exhaustion, and confirming volume patterns.
-7.  **Generate Alert**: If all checks pass, an alert is generated.
-8.  **Continue to Next Candle**: If any check fails, the algorithm moves to the previous candle (`i-1`).

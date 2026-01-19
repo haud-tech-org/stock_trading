@@ -74,8 +74,8 @@ This document details which alerting approaches require looking at past data (lo
 ### `STRONG_CANDLE`
 
 *   **Lookback**:
-    *   The pattern consists of a "Momentum Candle" (at index `i`), a "Confirmation Candle" (at `i-1`), and a "Strong Candle" found by searching backward from `i-2` for `CONFIRMATION_WINDOW` candles.
-    *   The total lookback is `1 (confirmation) + 1 (gap) + CONFIRMATION_WINDOW`.
+    *   The pattern consists of a "breakout" candle and a preceding "conditional window".
+    *   The total lookback is defined by `lookback_window`, which includes the breakout candle and the conditional window. For example, a `lookback_window` of 5 consists of 1 breakout candle and 4 conditional candles.
 
 ### `SUPPORT_RESISTANCE_BREAK`
 

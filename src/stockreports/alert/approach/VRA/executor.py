@@ -151,14 +151,16 @@ class VraExecutor(Executor):
             max_vol_candle = candle_utils.find_max_volume_candle(window_df)
             min_vol_candle = candle_utils.find_min_volume_candle(window_df)
 
-            if not candle_utils.validate_volume_ratio(max_vol_candle, min_vol_candle, self.settings.volume_multiplier):
+            is_volume_ratio_valid, volume_ratio = candle_utils.validate_volume_ratio(max_vol_candle, min_vol_candle, self.settings.volume_multiplier)
+            if not is_volume_ratio_valid:
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message="Max volume candle does not meet multiplier over min volume.",
+                    validation=1,
+                    message=f"Volume ratio is not significant enough. Ratio: {volume_ratio:.2f}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
@@ -207,14 +209,15 @@ class VraExecutor(Executor):
                 continue
 
             # Validation B: Alert candle body size is sufficient
-            if not candle_utils.is_body_bigger_than_min(alert_candle, self.settings.min_alert_body_size):
+            is_body_big_enough, body_size = candle_utils.is_body_bigger_than_min(alert_candle, self.settings.min_alert_body_size)
+            if not is_body_big_enough:
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    message=f"Alert candle body size is not bigger than min size ({self.settings.min_alert_body_size}).",
+                    message=f"Alert candle body size ({body_size:.2f}) is not bigger than min size ({self.settings.min_alert_body_size}).",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,

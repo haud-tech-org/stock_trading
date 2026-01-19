@@ -1,19 +1,18 @@
 from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
 from src.stockreports.alert.common.constants import Approach
 from src.stockreports.config import loader
+from stockreports.alert.common.base_settings import BaseSettings
 
 signal_settings = loader.get_signal_settings()
 
-class StrongCandleSettings(ConfirmationSettings):
+class StrongCandleSettings(BaseSettings):
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.STRONG_CANDLE)
         
-        self.confirmation_window = self.get("CONFIRMATION_WINDOW")
-        self.min_alert_magnitude = self.get("MIN_ALERT_MAGNITUDE")
-        self.min_expected_profit_loss = self.get("MIN_EXPECTED_PROFIT_LOSS")
-        
-        self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION")
-        self.use_last_candle_max_volume_confirmation = self.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION")
-        self.use_volume_increasing_confirmation = self.get("USE_VOLUME_INCREASING_CONFIRMATION")
-        self.use_divergence_confirmation = self.get("USE_DIVERGENCE_CONFIRMATION")
-        self.trend_strength_strong_close_tail_ratio = signal_settings.TREND_STRENGTH_STRONG_CLOSE_TAIL_RATIO
+        self.lookback_window = self.get("LOOKBACK_WINDOW")
+        self.min_body_ratio = self.get("MIN_BODY_RATIO")
+        self.min_body_size = self.get("MIN_BODY_SIZE")
+        self.max_conditional_candle_body_size = self.get("MAX_CONDITIONAL_CANDLE_BODY_SIZE")
+        self.max_difference_price_threshold = self.get("MAX_DIFFERENCE_PRICE_THRESHOLD")
+        self.volume_multiplier = self.get("VOLUME_MULTIPLIER")
+        self.cooldown_window = self.get("COOLDOWN_WINDOW")

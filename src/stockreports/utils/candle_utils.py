@@ -42,7 +42,7 @@ def find_biggest_body_candle(window_df: pd.DataFrame) -> pd.Series:
     biggest_body_idx = body_sizes.idxmax()
     return window_df.loc[biggest_body_idx]
 
-def validate_volume_ratio(large_volume_candle: pd.Series, small_volume_candle: pd.Series, min_volume_multiplier: float) -> bool:
+def validate_volume_ratio(large_volume_candle: pd.Series, small_volume_candle: pd.Series, min_volume_multiplier: float) -> tuple[bool, float]:
     """
     Validates if the volume of a larger candle is greater than or equal to a multiplier
     of a smaller candle's volume.
@@ -53,9 +53,25 @@ def validate_volume_ratio(large_volume_candle: pd.Series, small_volume_candle: p
         min_volume_multiplier: The multiplier to use for the comparison.
 
     Returns:
-        True if the validation passes, False otherwise.
+        A tuple containing:
+        - bool: True if the validation passes, False otherwise.
+        - float: The calculated volume ratio.
     """
-    return large_volume_candle['volume'] >= small_volume_candle['volume'] * min_volume_multiplier
+    if small_volume_candle['volume'] == 0:
+        # If the small candle's volume is 0, the ratio is infinite if the large candle's volume is > 0.
+        # We can consider the validation passed if the large volume is also 0, otherwise it's infinitely larger.
+        # The ratio is effectively infinite, so we can return a large number or handle as a special case.
+        # Let's return 0.0 for the ratio to avoid division by zero, and the status will depend on the logic.
+        # If large_volume_candle['volume'] is also 0, then ratio is undefined, let's say 1.0 and status is True if min_volume_multiplier <= 1
+        # If large_volume_candle['volume'] > 0, ratio is infinite, so status is True.
+        if large_volume_candle['volume'] > 0:
+            return True, float('inf')
+        else:
+            return True, 1.0  # Or handle as per specific requirements for 0/0
+
+    ratio = large_volume_candle['volume'] / small_volume_candle['volume']
+    status = ratio >= min_volume_multiplier
+    return status, ratio
 
 def is_green_candle(candle: pd.Series) -> bool:
     """
@@ -81,7 +97,7 @@ def is_red_candle(candle: pd.Series) -> bool:
     """
     return candle['close'] < candle['open']
 
-def is_body_bigger_than_min(candle: pd.Series, min_body_size: float) -> bool:
+def is_body_bigger_than_min(candle: pd.Series, min_body_size: float) -> tuple[bool, float]:
     """
     Validates if a candle's body size is bigger than a minimum requirement.
 
@@ -90,9 +106,13 @@ def is_body_bigger_than_min(candle: pd.Series, min_body_size: float) -> bool:
         min_body_size: The minimum required body size.
 
     Returns:
-        True if the candle's body size is greater than or equal to the minimum, False otherwise.
+        A tuple containing:
+        - bool: True if the candle's body size is greater than or equal to the minimum, False otherwise.
+        - float: The calculated body size.
     """
-    return abs(candle['close'] - candle['open']) >= min_body_size
+    body_size = abs(candle['close'] - candle['open'])
+    status = body_size >= min_body_size
+    return status, body_size
 
 def is_body_smaller_than_max(candle: pd.Series, max_body_size: float) -> bool:
     """
@@ -167,7 +187,7 @@ def is_last_candle_in_window(candle: pd.Series, window_data: pd.DataFrame) -> bo
     last_candle = get_last_candle(window_data)
     return last_candle is not None and candle.name == last_candle.name
 
-def is_body_ratio_bigger_than_min(candle: pd.Series, min_body_ratio: float) -> bool:
+def is_body_ratio_bigger_than_min(candle: pd.Series, min_body_ratio: float) -> tuple[bool, float]:
     """
     Validates if the ratio of a candle's body to its entire range meets a minimum requirement.
 
@@ -176,15 +196,21 @@ def is_body_ratio_bigger_than_min(candle: pd.Series, min_body_ratio: float) -> b
         min_body_ratio: The minimum required ratio (0.0 to 1.0).
 
     Returns:
-        True if the body ratio is greater than or equal to the minimum, False otherwise.
+        A tuple containing:
+        - bool: True if the body ratio is greater than or equal to the minimum, False otherwise.
+        - float: The calculated body ratio.
     """
     body_size = abs(candle['close'] - candle['open'])
     entire_range = candle['high'] - candle['low']
 
     if entire_range == 0:
-        return min_body_ratio == 0
+        ratio = 0.0 if body_size == 0 else float('inf')
+        status = ratio >= min_body_ratio
+        return status, ratio
 
-    return (body_size / entire_range) >= min_body_ratio
+    ratio = body_size / entire_range
+    status = ratio >= min_body_ratio
+    return status, ratio
 
 def is_body_ratio_smaller_than_max(candle: pd.Series, max_body_ratio: float) -> bool:
     """

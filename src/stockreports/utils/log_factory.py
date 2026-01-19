@@ -4,12 +4,12 @@ from src.stockreports.alert.common.constants import LogLevel, ValidationStatus
 
 def log(
     logger: logging.Logger,
-    status: ValidationStatus,
     name: str,
-    alert_time: str,
     step: int,
     message: str,
     log_level: LogLevel,
+    status: Optional[ValidationStatus] = None,
+    alert_time: Optional[str] = None,
     execution_symbol: Optional[str] = None,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
@@ -23,12 +23,14 @@ def log(
         log_items.append(f"[Symbol: {execution_symbol}]")
     
     log_items.append(f"[{name}]")
-    log_items.append(f"[{alert_time}]")
+    if alert_time:
+        log_items.append(f"[{alert_time}]")
 
     if start_time and end_time:
         log_items.append(f"[Window: {start_time} to {end_time}]")
 
-    log_items.append(f"[Status: {status}]")
+    if status:
+        log_items.append(f"[Status: {status}]")
 
     if validation:
         log_items.append(f"[Validation: {validation}]")

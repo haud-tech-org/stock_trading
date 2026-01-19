@@ -14,7 +14,7 @@ The following table details the maximum lookback and the length of the pattern f
 | Approach Name              | Max Lookback Period                 | Max Pattern Length (Delay) | How it Works                                                                                                                            |
 | :------------------------- | :---------------------------------- | :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------- |
 | **`SUPPORT_RESISTANCE_BREAK`** | 60 periods (`LOOKBACK_PERIOD`)      | **4 candles** (`CONFIRMATION_WINDOW` + 1) | A level is established over 60 candles. A break occurs on candle `i-3`, and the pattern is confirmed over the next 3 candles, alerting on candle `i`. |
-| **`STRONG_CANDLE`**        | ~26 periods (for MACD/RSI) + 4      | **~5 candles** (`CONFIRMATION_WINDOW` + 2) | A strong candle appears, then it waits up to 4 candles for an indicator confirmation, and the alert triggers on the next momentum candle. |
+| **`STRONG_CANDLE`**        | `lookback_window` (e.g., 5)         | **`lookback_window` candles** | A strong "breakout" candle must be preceded by a "conditional window" of `lookback_window - 1` candles that have small bodies and low volatility. The alert triggers on the breakout candle. |
 | **`RCM`**                  | Full history (for peaks) + 3        | **4 candles** (`CONFIRMATION_WINDOW` + 1) | A reversal peak/trough is found, and the system waits up to 3 candles for a confirmation signal, alerting on the 4th. |
 | **`CONSISTENT_MOMENTUM`**  | 30 periods (`PEAK_BOTTOM_LOOKBACK_PERIOD`) | **3 candles** (`CONFIRMATION_WINDOW`) | The alert triggers on the last candle of a 3-candle consistent momentum window.                                                         |
 | **`MOMENTUM_EXHAUSTION`**  | 4 periods (`MOMENTUM` + `EXHAUSTION`) | **4 candles** (Full pattern length) | A 2-candle momentum phase is followed by a 2-candle exhaustion phase, reversal, and confirmation. The alert triggers on the final candle. |
@@ -27,11 +27,11 @@ The following table details the maximum lookback and the length of the pattern f
 
 ## Conclusion for Deployment Logic
 
-The analysis shows that the longest possible pattern length is approximately **5 candles**, originating from the `STRONG_CANDLE` approach. This means an alert's initial trigger could have occurred 5 candles before the final confirmation.
+The analysis shows that the longest possible pattern length is approximately **4 candles**, originating from the `SUPPORT_RESISTANCE_BREAK` and `RCM` approaches. This means an alert's initial trigger could have occurred 4 candles before the final confirmation.
 
-To guarantee that no recently-matured alerts are missed in `DEPLOYMENT` mode, a "grace period" buffer must be added to the `active_region_start` calculation. Based on this analysis, the recommended buffer size is **5**.
+To guarantee that no recently-matured alerts are missed in `DEPLOYMENT` mode, a "grace period" buffer must be added to the `active_region_start` calculation. Based on this analysis, the recommended buffer size is **4**.
 
 The corrected logic for defining the active scan region should be:
-`active_region_start = len(df_indexed) - new_candle_count - 5`
+`active_region_start = len(df_indexed) - new_candle_count - 4`
 
 This ensures that even the slowest-to-confirm alert is captured and processed correctly if its pattern completes within the newly arrived data.
