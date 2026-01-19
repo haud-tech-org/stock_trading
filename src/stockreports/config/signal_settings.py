@@ -314,6 +314,16 @@ APPROACH_CONFIG = {
         "IMPACT_SYMBOLS_MIN_BODY_TO_RANGE_RATIO": 0.3,
         "VOLUME_MULTIPLIER": 2.0
     },
+    # --- VRA (Volume-Reversal-Anchor) ---
+    "VRA": {
+        "LOOKBACK_WINDOW": 10,
+        "VOLUME_MULTIPLIER": 4.0,
+        "MIN_ALERT_BODY_SIZE": 1.1,
+        "MIN_TREND_MAGNITUDE": 7.0,
+        "COOLDOWN_WINDOW": 3
+    },
+
+    # --- COMPARISON ---
     "COMPARISON": {
         "PRIMARY_SYMBOL": "VN30F1M",
         "REFERENCE_SYMBOL": "VN30",
@@ -371,19 +381,6 @@ APPROACH_CONFIG = {
         # --- Optional Signal Disabling ---
         "DISABLE_BUY_SIGNAL": False,
         "DISABLE_SELL_SIGNAL": False
-    },
-    # --- VRA (Volume-Reversal-Anchor) ---
-    "VRA": {
-        "LOOKBACK_WINDOW": 10,
-        "VOLUME_MULTIPLIER": 4.0,
-        "MIN_ALERT_BODY_SIZE": 1.1,
-        "MAX_DISTANCE_CLOSE_PRICE": 4.0,
-        "MIN_TREND_MAGNITUDE": 7.0,
-        "ENABLE_MARKET_TREND_VALIDATION": False,
-        "IMPACT_SYMBOLS_MIN_BODY_TO_RANGE_RATIO": 0.3,
-        "COOLDOWN_WINDOW": 3,
-        "CONSISTENT_VOLUME_WINDOW": 2,
-        "CONSISTENT_VOLUME_MIN_PERCENTAGE": 0.7
     },
 }
 
