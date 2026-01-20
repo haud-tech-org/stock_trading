@@ -250,6 +250,7 @@ def _private_validation_method(self) -> bool:
 3.  **MUST Reset Context in Loop**: These context variables **must** be reset at the beginning of each iteration of the main analysis loop.
 4.  **MUST Increment Step Counter**: The `self.current_step` variable **must** be incremented sequentially for each major validation step in the main `_find_*_alerts` method.
 5.  **MUST Use `validation` Parameter for Sub-steps**: For checks within helper functions or for multiple checks within a single `step`, the optional `validation` parameter in the `log()` function **must** be used to provide more granular detail.
+6.  **MUST Format Log Parameters**: To ensure readability and consistency, all parameters in a `log()` function call **must** be placed on a new line. This formatting pattern is mandatory for all new and refactored code.
 
 ---
 
