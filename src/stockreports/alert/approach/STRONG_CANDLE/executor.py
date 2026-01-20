@@ -198,19 +198,6 @@ class StrongCandleExecutor(Executor):
                     end_time=self.current_window_end_time
                 )
                 continue
-            
-            log(
-                logger=self.logger,
-                status=ValidationStatus.PASSED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                message="Cooldown check passed.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
-            )
 
             # --- Step 3: Validate the conditional window (More expensive checks) ---
             self.current_step += 1
@@ -322,19 +309,6 @@ class StrongCandleExecutor(Executor):
                         end_time=self.current_window_end_time
                     )
                     continue
-            
-            log(
-                logger=self.logger,
-                status=ValidationStatus.PASSED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                message="Alert trend confirmed.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
-            )
 
             # --- Create and append alert ---
             alert_time = strong_candle['time']

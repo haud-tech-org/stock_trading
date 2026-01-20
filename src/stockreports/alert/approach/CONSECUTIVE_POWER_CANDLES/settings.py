@@ -1,15 +1,16 @@
-from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
 from src.stockreports.alert.common.constants import Approach
+from stockreports.alert.common.base_settings import BaseSettings
 
-class ConsecutivePowerCandlesSettings(ConfirmationSettings):
+class ConsecutivePowerCandlesSettings(BaseSettings):
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.CONSECUTIVE_POWER_CANDLES)
         
-        self.candle_count = self.get("CANDLE_COUNT")
-        self.min_body_to_range_ratio = self.get("MIN_BODY_TO_RANGE_RATIO")
-        self.min_pre_candle_body_sizes = self.get("MIN_PRE_CANDLE_BODY_SIZES")
-        
-        self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION")
-        self.use_last_candle_max_volume_confirmation = self.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION")
-        
-        self.use_rsi_exhaustion_filter = self.get("USE_RSI_CONFIRMATION")
+        self.lookback_window = self.get('LOOKBACK_WINDOW')
+        self.consecutive_window_size = self.get('CONSECUTIVE_WINDOW_SIZE')
+        self.min_consolidated_body_ratio = self.get('MIN_CONSOLIDATED_BODY_RATIO')
+        self.min_consecutive_candle_body_size = self.get('MIN_CONSECUTIVE_CANDLE_BODY_SIZE')
+        self.min_consolidated_body_size = self.get('MIN_CONSOLIDATED_BODY_SIZE')
+        self.max_conditional_candle_body_size = self.get('MAX_CONDITIONAL_CANDLE_BODY_SIZE')
+        self.max_difference_price_threshold = self.get('MAX_DIFFERENCE_PRICE_THRESHOLD')
+        self.volume_multiplier = self.get('VOLUME_MULTIPLIER')
+        self.cooldown_window = self.get('COOLDOWN_WINDOW')
