@@ -227,7 +227,9 @@ class ConsecutivePowerCandlesExecutor(Executor):
                 continue
 
             max_volume_in_conditional = candle_utils.find_max_volume_candle(conditional_window_df)
-            is_volume_confirmed, volume_ratio = candle_utils.validate_volume_ratio(large_volume_candle=consolidated_candle, small_volume_candle=max_volume_in_conditional, min_volume_multiplier=self.settings.volume_multiplier)
+            min_volume_in_consecutive = candle_utils.find_min_volume_candle(consecutive_window_df)
+            
+            is_volume_confirmed, volume_ratio = candle_utils.validate_volume_ratio(large_volume_candle=min_volume_in_consecutive, small_volume_candle=max_volume_in_conditional, min_volume_multiplier=self.settings.volume_multiplier)
             if not is_volume_confirmed:
                 log(
                     logger=self.logger,
