@@ -155,6 +155,48 @@ def get_last_candle(window_data: pd.DataFrame) -> Optional[pd.Series]:
         return window_data.iloc[-1]
     return None
 
+def create_consolidated_candle(candles: pd.DataFrame) -> Optional[pd.Series]:
+    """
+    Creates a virtual 'consolidated' candle from a DataFrame of multiple candles.
+
+    The consolidated candle has:
+    - open/close: The min and max of all open/close prices.
+    - high: The highest high.
+    - low: The lowest low.
+    - volume: The average volume.
+
+    Args:
+        candles: A DataFrame of candles to consolidate.
+
+    Returns:
+        A pd.Series representing the consolidated candle, or None if input is empty.
+    """
+    if candles.empty:
+        return None
+
+    open_close_prices = pd.concat([candles['open'], candles['close']])
+    
+    consolidated_open = open_close_prices.min()
+    consolidated_close = open_close_prices.max()
+    
+    consolidated_high = candles['high'].max()
+    consolidated_low = candles['low'].min()
+    
+    # Use sum of volume as requested for data consistency
+    consolidated_volume = candles['volume'].sum()
+
+    # The timestamp of the last candle is used for context
+    last_time = candles.iloc[-1]['time']
+
+    return pd.Series({
+        'time': last_time,
+        'open': consolidated_open,
+        'high': consolidated_high,
+        'low': consolidated_low,
+        'close': consolidated_close,
+        'volume': consolidated_volume
+    })
+
 def is_first_candle_in_window(candle: pd.Series, window_data: pd.DataFrame) -> bool:
     """
     Checks if a given candle is the very first candle in the window.

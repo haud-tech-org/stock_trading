@@ -10,7 +10,7 @@ from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from .settings import PriceGapSettings
-from src.stockreports.alert.common.confirmation.reversal import validate_reversal_confirmation
+from src.stockreports.utils import candle_utils
 from src.stockreports.utils.alert_utils import is_in_cooldown
 from src.stockreports.alert.common.signal.market_trend_validation import validate_concurrent_trend
 from src.stockreports.utils.log_factory import log
@@ -137,40 +137,15 @@ class PriceGapExecutor(Executor):
                     anchor_candle_A = current_candle
                     gap_trend_signal = Signal.BUY if gap > 0 else Signal.SELL
 
-                    # Step 2: Cooldown Check for initial gap
-                    self.current_step += 1
-                    if is_in_cooldown(
-                        new_alert_time=current_candle['time'],
-                        new_signal=gap_trend_signal,
-                        latest_alert=PriceGapExecutor.LATEST_ALERT,
-                        cooldown_window=cooldown_window
-                    ):
-                        log(
-                            logger=self.logger,
-                            status=ValidationStatus.FAILED,
-                            name=self.__class__.__name__,
-                            alert_time=self.current_window_end_time,
-                            step=self.current_step,
-                            message=f"Initial gap at {current_candle['time']} is in cooldown.",
-                            log_level=LogLevel.DEBUG,
-                            execution_symbol=self.symbol,
-                            start_time=self.current_window_start_time,
-                            end_time=self.current_window_end_time
-                        )
-                        continue
-
                     # --- Scenario 1: Continuation Alert ---
                     if anchor_candle_A.name == window_df.index[-1]:
-                        # Step 3a: Validate the gap candle for the Continuation Alert.
+                        # Cooldown Check for Continuation
                         self.current_step += 1
-                        if not validate_concurrent_trend(
-                            expected_signal=gap_trend_signal,
-                            alert_time=current_candle['time'],
-                            symbols=[self.symbol],
-                            min_body_size=self.settings.min_alert_body_size,
-                            min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
-                            require_all=True,
-                            candles_data={self.symbol: current_candle}
+                        if is_in_cooldown(
+                            new_alert_time=current_candle['time'],
+                            new_signal=gap_trend_signal,
+                            latest_alert=PriceGapExecutor.LATEST_ALERT,
+                            cooldown_window=cooldown_window
                         ):
                             log(
                                 logger=self.logger,
@@ -178,13 +153,38 @@ class PriceGapExecutor(Executor):
                                 name=self.__class__.__name__,
                                 alert_time=self.current_window_end_time,
                                 step=self.current_step,
-                                message=f"The gap candle for Continuation Alert at {current_candle['time']} did not meet criteria.",
+                                message=f"Continuation alert at {current_candle['time']} is in cooldown.",
                                 log_level=LogLevel.DEBUG,
                                 execution_symbol=self.symbol,
                                 start_time=self.current_window_start_time,
                                 end_time=self.current_window_end_time
                             )
                             continue
+
+                        # # Step 3a: Validate the gap candle for the Continuation Alert.
+                        # self.current_step += 1
+                        # if not validate_concurrent_trend(
+                        #     expected_signal=gap_trend_signal,
+                        #     alert_time=current_candle['time'],
+                        #     symbols=[self.symbol],
+                        #     min_body_size=self.settings.min_alert_body_size,
+                        #     min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
+                        #     require_all=True,
+                        #     candles_data={self.symbol: current_candle}
+                        # ):
+                        #     log(
+                        #         logger=self.logger,
+                        #         status=ValidationStatus.FAILED,
+                        #         name=self.__class__.__name__,
+                        #         alert_time=self.current_window_end_time,
+                        #         step=self.current_step,
+                        #         message=f"The gap candle for Continuation Alert at {current_candle['time']} did not meet criteria.",
+                        #         log_level=LogLevel.DEBUG,
+                        #         execution_symbol=self.symbol,
+                        #         start_time=self.current_window_start_time,
+                        #         end_time=self.current_window_end_time
+                        #     )
+                        #     continue
 
                         # Step 4a: Market Trend Validation for Continuation
                         self.current_step += 1
@@ -236,36 +236,18 @@ class PriceGapExecutor(Executor):
 
                     # --- Scenario 2: Reversal Alert ---
                     else:
-                        confirmation_df = window_df.loc[anchor_candle_A.name:].copy()
-                        reversal_signal = Signal.SELL if gap_trend_signal == Signal.BUY else Signal.SELL
+                        reversal_signal = Signal.SELL if gap_trend_signal == Signal.BUY else Signal.BUY
                         
                         # Step 3b: Validate reversal confirmation
                         self.current_step += 1
-                        validation_result = validate_reversal_confirmation(
-                            confirmation_df=confirmation_df, 
-                            reversal_signal=reversal_signal, 
-                            min_alert_body_size=self.settings.min_alert_body_size,
-                            max_distance_close_price=self.settings.max_distance_close_price,
-                            min_volume_multiplier=self.settings.volume_multiplier
+                        alert_candle = self._validate_reversal_by_volume(
+                            window_df=window_df,
+                            anchor_candle_A=anchor_candle_A
                         )
                         
-                        if validation_result is None:
-                            log(
-                                logger=self.logger,
-                                status=ValidationStatus.FAILED,
-                                name=self.__class__.__name__,
-                                alert_time=self.current_window_end_time,
-                                step=self.current_step,
-                                validation=2,
-                                message="Reversal confirmation failed after gap.",
-                                log_level=LogLevel.DEBUG,
-                                execution_symbol=self.symbol,
-                                start_time=self.current_window_start_time,
-                                end_time=self.current_window_end_time
-                            )
+                        if alert_candle is None:
+                            # Detailed logging is handled within the private method
                             continue
-
-                        alert_candle, reversal_anchor = validation_result
 
                         # Step 4b: Cooldown Check for reversal
                         self.current_step += 1
@@ -289,29 +271,6 @@ class PriceGapExecutor(Executor):
                             )
                             continue
 
-                        # Step 5b: Market Trend Validation for Reversal
-                        self.current_step += 1
-                        if self.settings.enable_market_trend_validation:
-                            if not validate_concurrent_trend(
-                                expected_signal=reversal_signal,
-                                alert_time=alert_candle['time'],
-                                min_body_to_range_ratio=self.settings.impact_symbols_min_body_to_range_ratio,
-                                require_all=False
-                            ):
-                                log(
-                                    logger=self.logger,
-                                    status=ValidationStatus.FAILED,
-                                    name=self.__class__.__name__,
-                                    alert_time=alert_candle['time'],
-                                    step=self.current_step,
-                                    message="Concurrent market trend validation failed for Reversal alert.",
-                                    log_level=LogLevel.DEBUG,
-                                    execution_symbol=self.symbol,
-                                    start_time=self.current_window_start_time,
-                                    end_time=self.current_window_end_time
-                                )
-                                continue
-
                         alert_data = self._create_alert_data(
                             signal=reversal_signal,
                             alert_candle=alert_candle,
@@ -319,7 +278,7 @@ class PriceGapExecutor(Executor):
                             gap=gap,
                             alert_type="Reversal",
                             gap_anchor_candle=anchor_candle_A,
-                            reversal_anchor_candle=reversal_anchor
+                            reversal_anchor_candle=alert_candle # The alert candle is the reversal anchor
                         )
                         alerts.append(alert_data)
                         PriceGapExecutor.LATEST_ALERT = alert_data
@@ -352,6 +311,88 @@ class PriceGapExecutor(Executor):
                 )
 
         return alerts
+
+    def _validate_reversal_by_volume(self, window_df: pd.DataFrame, anchor_candle_A: pd.Series) -> Optional[pd.Series]:
+        """
+        Validates a reversal signal based on volume analysis after a price gap.
+        """
+        # Validation 1: The alert candle must be the last candle in the window.
+        alert_candle = candle_utils.get_last_candle(window_df)
+        if alert_candle is None or alert_candle.name != window_df.index[-1]:
+            # This scenario should not happen if the anchor is not the last candle, but it's a good safeguard.
+            return None
+
+        # Validation 2: Define windows
+        reversal_window = window_df.loc[anchor_candle_A.name:]
+        pre_reversal_window = window_df.loc[:anchor_candle_A.name - 1]
+
+        if pre_reversal_window.empty:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=1,
+                message="Pre-reversal window is empty, cannot calculate average volume.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return None
+
+        # Validation 3: Calculate average volume of the pre-reversal window
+        avg_volume_pre_reversal = pre_reversal_window['volume'].mean()
+
+        # Validation 4: Find max volume candle in the reversal window
+        max_volume_candle_in_reversal = candle_utils.find_max_volume_candle(reversal_window)
+        if max_volume_candle_in_reversal is None:
+            return None
+
+        # Validation 5: Final Volume Confirmation
+        # 5a: Max volume candle must be the alert candle (the last candle)
+        if max_volume_candle_in_reversal.name != alert_candle.name:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=2,
+                message=f"Max volume candle in reversal window is not the alert candle.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return None
+
+        # 5b: Volume of the alert candle must meet the threshold by comparing with the average of the pre-reversal window.
+        avg_volume_candle = pd.Series({'volume': avg_volume_pre_reversal})
+        is_volume_confirmed, volume_ratio = candle_utils.validate_volume_ratio(
+            large_volume_candle=alert_candle,
+            small_volume_candle=avg_volume_candle,
+            min_volume_multiplier=self.settings.volume_multiplier
+        )
+
+        if not is_volume_confirmed:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=3,
+                message=f"Alert candle volume confirmation failed. Ratio to average: {volume_ratio:.2f}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return None
+            
+        return alert_candle
 
     def _create_alert_data(self, signal: Signal, alert_candle: pd.Series, previous_candle: pd.Series, gap: float, alert_type: str, gap_anchor_candle: pd.Series = None, reversal_anchor_candle: pd.Series = None) -> AlertData:
         """

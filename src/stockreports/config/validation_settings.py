@@ -41,7 +41,7 @@ MAX_TIME_TO_TRIGGER_MINUTES = 5
 # Meaning: The price difference from the entry point that triggers a "Success" (take-profit) exit.
 # Guidance: Defines the reward target for a trade.
 # Range: Float > 0.
-VALIDATION_PRICE_THRESHOLD_PROFIT = [3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0]
+VALIDATION_PRICE_THRESHOLD_PROFIT = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0]
 # Validation Price Threshold for Stop-Loss
 # Meaning: The price difference from the entry point that triggers a "Failed" (stop-loss) exit.
 # Guidance: Defines the risk tolerance for a trade.
