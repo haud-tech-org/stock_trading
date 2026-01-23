@@ -11,6 +11,6 @@ class VraSettings(BaseSettings):
         # --- Main Logic Parameters ---
         self.lookback_window = self.get("LOOKBACK_WINDOW")
         self.volume_multiplier = self.get("VOLUME_MULTIPLIER")
-        self.min_alert_body_size = self.get("MIN_ALERT_BODY_SIZE")
         self.min_trend_magnitude = self.get("MIN_TREND_MAGNITUDE")
+        self.trend_window_edge_slice = self.get("TREND_WINDOW_EDGE_SLICE")
         self.cooldown_window = self.get("COOLDOWN_WINDOW")

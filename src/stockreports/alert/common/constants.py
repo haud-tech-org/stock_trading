@@ -42,6 +42,7 @@ class PriceColumn:
 class ValidationStatus():
     PASSED = "Passed"
     FAILED = "Failed"
+    IN_PROGRESS = "In-Progress"
 
 class LogLevel():
     DEBUG = "DEBUG"

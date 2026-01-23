@@ -20,10 +20,6 @@ class ConsecutivePowerCandlesExecutor(Executor):
         self.settings = ConsecutivePowerCandlesSettings(symbol)
         super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
-        
-        self.current_window_start_time: Optional[pd.Timestamp] = None
-        self.current_window_end_time: Optional[pd.Timestamp] = None
-        self.current_step: int = 0
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         try:
@@ -87,12 +83,10 @@ class ConsecutivePowerCandlesExecutor(Executor):
             lookback_window_df = df_indexed.iloc[i - lookback_window_size : i]
             self.current_window_start_time = lookback_window_df.iloc[0]['time']
             self.current_window_end_time = lookback_window_df.iloc[-1]['time']
+            self.current_step = 0
 
             consecutive_window_df = lookback_window_df.tail(consecutive_window_size)
             conditional_window_df = lookback_window_df.iloc[:-consecutive_window_size]
-
-            # --- Step 1: Find and validate the consolidated candle ---
-            self.current_step = 1
             
             # Pre-validation: All consecutive candles must have the same trend, determined by the last candle.
             last_candle_in_consecutive = consecutive_window_df.iloc[-1]
@@ -135,6 +129,8 @@ class ConsecutivePowerCandlesExecutor(Executor):
             if consolidated_candle is None:
                 continue
 
+            # --- Step 1: Find and validate the consolidated candle ---
+            self.next_step()
             is_thick_body, body_ratio = candle_utils.is_body_ratio_bigger_than_min(consolidated_candle, self.settings.min_consolidated_body_ratio)
             if not is_thick_body:
                 log(
@@ -143,7 +139,7 @@ class ConsecutivePowerCandlesExecutor(Executor):
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    validation=2,
+                    validation=self.validation_step,
                     message=f"Consolidated body ratio not thick enough. Ratio: {body_ratio:.2f}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
@@ -152,6 +148,7 @@ class ConsecutivePowerCandlesExecutor(Executor):
                 )
                 continue
 
+            self.validation_step += 1
             is_min_body_size, body_size = candle_utils.is_body_bigger_than_min(consolidated_candle, self.settings.min_consolidated_body_size)
             if not is_min_body_size:
                 log(
@@ -160,7 +157,7 @@ class ConsecutivePowerCandlesExecutor(Executor):
                     name=self.__class__.__name__,
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
-                    validation=3,
+                    validation=self.validation_step,
                     message=f"Consolidated body size does not meet minimum. Size: {body_size:.2f}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
@@ -172,7 +169,6 @@ class ConsecutivePowerCandlesExecutor(Executor):
             potential_signal = Signal.BUY if last_candle_is_green else Signal.SELL
 
             # --- Step 2: Cooldown Validation ---
-            self.current_step += 1
             last_candle = candle_utils.get_last_candle(lookback_window_df)
             if last_candle is None: continue
 
@@ -192,7 +188,7 @@ class ConsecutivePowerCandlesExecutor(Executor):
                 continue
 
             # --- Step 3: Validate the conditional window ---
-            self.current_step += 1
+            self.next_step()
             if not all(candle_utils.is_body_smaller_than_max(row, self.settings.max_conditional_candle_body_size) for _, row in conditional_window_df.iterrows()):
                 log(
                     logger=self.logger,
@@ -209,7 +205,9 @@ class ConsecutivePowerCandlesExecutor(Executor):
                 )
                 continue
 
-            price_range = conditional_window_df['high'].max() - conditional_window_df['low'].min()
+            # Update: price range is bounded by the highest and lowest of the close/open price of candles in the conditional_window_df
+            all_prices = pd.concat([conditional_window_df['open'], conditional_window_df['close']])
+            price_range = all_prices.max() - all_prices.min()
             if price_range > self.settings.max_difference_price_threshold:
                 log(
                     logger=self.logger,
@@ -226,28 +224,28 @@ class ConsecutivePowerCandlesExecutor(Executor):
                 )
                 continue
 
-            max_volume_in_conditional = candle_utils.find_max_volume_candle(conditional_window_df)
-            min_volume_in_consecutive = candle_utils.find_min_volume_candle(consecutive_window_df)
+            # max_volume_in_conditional = candle_utils.find_max_volume_candle(conditional_window_df)
+            # min_volume_in_consecutive = candle_utils.find_min_volume_candle(consecutive_window_df)
             
-            is_volume_confirmed, volume_ratio = candle_utils.validate_volume_ratio(large_volume_candle=min_volume_in_consecutive, small_volume_candle=max_volume_in_conditional, min_volume_multiplier=self.settings.volume_multiplier)
-            if not is_volume_confirmed:
-                log(
-                    logger=self.logger,
-                    status=ValidationStatus.FAILED,
-                    name=self.__class__.__name__,
-                    alert_time=self.current_window_end_time,
-                    step=self.current_step,
-                    validation=3,
-                    message=f"Volume confirmation failed. Ratio: {volume_ratio:.2f}",
-                    log_level=LogLevel.DEBUG,
-                    execution_symbol=self.symbol,
-                    start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
-                )
-                continue
+            # is_volume_confirmed, volume_ratio = candle_utils.validate_volume_ratio(large_volume_candle=min_volume_in_consecutive, small_volume_candle=max_volume_in_conditional, min_volume_multiplier=self.settings.volume_multiplier)
+            # if not is_volume_confirmed:
+            #     log(
+            #         logger=self.logger,
+            #         status=ValidationStatus.FAILED,
+            #         name=self.__class__.__name__,
+            #         alert_time=self.current_window_end_time,
+            #         step=self.current_step,
+            #         validation=3,
+            #         message=f"Volume confirmation failed. Ratio: {volume_ratio:.2f}",
+            #         log_level=LogLevel.DEBUG,
+            #         execution_symbol=self.symbol,
+            #         start_time=self.current_window_start_time,
+            #         end_time=self.current_window_end_time
+            #     )
+            #     continue
             
             # --- Step 4: Final Alert Confirmation (Breakout) ---
-            self.current_step += 1
+            self.next_step()
             if potential_signal == Signal.BUY:
                 if last_candle['close'] < conditional_window_df['high'].max():
                     log(
@@ -283,7 +281,7 @@ class ConsecutivePowerCandlesExecutor(Executor):
 
             # --- Create and append alert ---
             alert_time = last_candle['time']
-            alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+            alert_id = str(int(alert_time.timestamp()))
             details = {"consolidated_body_ratio": round(body_ratio, 2), "conditional_window_price_range": round(price_range, 2)}
 
             first_candle = candle_utils.get_first_candle(lookback_window_df)
