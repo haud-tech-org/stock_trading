@@ -78,30 +78,31 @@ class VraExecutor(Executor):
             )
             return alerts
 
-        df_indexed = df.reset_index()
+        # --- Standardized loop setup ---
+        # Use base class utility to prepare indexed DataFrame and loop boundaries
+        df_indexed, loop_start, loop_end = self.get_loop_setup(
+            is_development_mode,
+            df,
+            new_candle_count,
+            window_size
+        )
 
-        loop_end_index = len(df_indexed) - 1
-        min_scan_index = window_size - 1
-
-        if is_development_mode:
-            loop_start_index = min_scan_index
-        else:
-            loop_start_index = max(min_scan_index, len(df_indexed) - new_candle_count)
-
-        for i in range(loop_end_index, loop_start_index - 1, -1):
-            window_start_index = i - window_size + 1
-            window_df = df_indexed.iloc[window_start_index : i + 1].copy()
-            self.current_window_end_time = window_df.iloc[-1]['time']
-            self.current_window_start_time = window_df.iloc[0]['time']
-            self.current_step = 1
-            
-            first_candle = candle_utils.get_first_candle(window_df)
-            if first_candle is None:
-                continue
-
-            # Potential alert candle is the very last candle in the lookback window
-            alert_candle = candle_utils.get_last_candle(window_df)
-            if alert_candle is None:
+        for i in range(loop_end, loop_start - 1, -1):
+            # --- Standardized window context extraction ---
+            # Use base class utility to extract lookback window, boundary candles, and context variables
+            (
+                window_df,
+                first_candle,
+                alert_candle,
+                self.current_window_start_time,
+                self.current_window_end_time,
+                self.current_step
+            ) = self.get_window_context(
+                i,
+                df_indexed,
+                window_size
+            )
+            if window_df is None or first_candle is None or alert_candle is None:
                 continue
             
             # Step 1: Volume Validation

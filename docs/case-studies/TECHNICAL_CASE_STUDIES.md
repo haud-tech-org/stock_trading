@@ -174,12 +174,14 @@ To address these issues, a two-part solution was implemented:
     *   It also supports optional contextual fields like `execution_symbol`, `start_time`, `end_time`, and a numeric `validation` number for sub-steps within a main step.
 
 2.  **Class-Level Context Variables**:
-    *   To simplify state management, three class-level attributes were added to the base `Executor` pattern:
+    *   To simplify state management, four class-level attributes and one method are used in the base `Executor` pattern:
         *   `self.current_window_start_time: Optional[pd.Timestamp]`
         *   `self.current_window_end_time: Optional[pd.Timestamp]`
-        *   `self.current_step: int`
-    *   These variables are initialized in the `__init__` method and are **reset at the beginning of each iteration** of the main analysis loop in the `_find_*_alerts` method.
-    *   This pattern eliminates the need to pass `start_time`, `end_time`, or `step` as parameters to internal methods and logging calls. The state is managed centrally at the class level for the current analysis window.
+        *   `self.current_step: int` — Tracks the current major validation step. Set to 0 at the start of each window, incremented by `self.next_step()` at the start of each major validation block.
+        *   `self.validation_step: int` — Tracks the sub-validation within each major step. Incremented by `self.next_step()` and before each sub-validation, and may be reset to 1 at the start of a new step.
+        *   `self.next_step()` — Advances to the next major validation step, incrementing both `self.current_step` and `self.validation_step` by 1. This should be called at the start of each major validation block.
+    *   These variables are initialized in the `__init__` method and are **reset at the beginning of each iteration** of the main analysis loop in the `_find_*_alerts` method. `self.next_step()` is used to advance steps.
+    *   This pattern eliminates the need to pass `start_time`, `end_time`, `step`, or `validation` as parameters to internal methods and logging calls. The state is managed centrally at the class level for the current analysis window.
 
 ### c. Implementation Example
 
@@ -199,9 +201,11 @@ def _find_alerts(self, df: pd.DataFrame, new_candle_count: int):
         window_df = df_indexed.iloc[i - window_size + 1 : i + 1]
         self.current_window_end_time = window_df.iloc[-1]['time']
         self.current_window_start_time = window_df.iloc[0]['time']
-        self.current_step = 1
+
+        self.current_step = 0
 
         # --- Step 1: First Validation ---
+        self.next_step()
         if not some_validation_passes():
             log(
                 logger=self.logger,
@@ -209,6 +213,7 @@ def _find_alerts(self, df: pd.DataFrame, new_candle_count: int):
                 name=self.__class__.__name__,
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
+                validation=self.validation_step,
                 message="First validation failed.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
@@ -218,7 +223,7 @@ def _find_alerts(self, df: pd.DataFrame, new_candle_count: int):
             continue
 
         # --- Step 2: Second Validation ---
-        self.current_step += 1
+        self.next_step()
         if not self._private_validation_method():
             continue # The private method is responsible for its own logging
         
@@ -226,13 +231,14 @@ def _find_alerts(self, df: pd.DataFrame, new_candle_count: int):
 
 def _private_validation_method(self) -> bool:
     if not condition:
+        self.validation_step += 1
         log(
             logger=self.logger,
             status=ValidationStatus.FAILED,
             name=self.__class__.__name__,
             alert_time=self.current_window_end_time,
             step=self.current_step, # Uses the class-level step
-            validation=1, # Specific sub-step validation number
+            validation=self.validation_step, # Uses the class-level validation step
             message="Private validation sub-step 1 failed.",
             log_level=LogLevel.DEBUG,
             execution_symbol=self.symbol,
@@ -246,11 +252,53 @@ def _private_validation_method(self) -> bool:
 ### d. Mandatory Rules for All Future Implementations
 
 1.  **MUST Use `log_factory`**: All logging within any executor or its related utility functions **must** use the `log()` function from `src/stockreports/utils/log_factory.py`. Direct calls to `logger.debug`, `logger.info`, etc., are forbidden in the context of alert generation logic.
-2.  **MUST Use Class-Level Context**: All executors **must** implement the `current_window_start_time`, `current_window_end_time`, and `current_step` class-level attributes.
+2.  **MUST Use Class-Level Context**: All executors **must** implement the `current_window_start_time`, `current_window_end_time`, `current_step`, and `validation_step` class-level attributes, and the `next_step()` method.
 3.  **MUST Reset Context in Loop**: These context variables **must** be reset at the beginning of each iteration of the main analysis loop.
-4.  **MUST Increment Step Counter**: The `self.current_step` variable **must** be incremented sequentially for each major validation step in the main `_find_*_alerts` method.
-5.  **MUST Use `validation` Parameter for Sub-steps**: For checks within helper functions or for multiple checks within a single `step`, the optional `validation` parameter in the `log()` function **must** be used to provide more granular detail.
+4.  **MUST Use `next_step()`**: The `self.next_step()` method **must** be called at the start of each major validation step in the main `_find_*_alerts` method to increment both `current_step` and `validation_step`.
+5.  **MUST Use `validation` Parameter for Sub-steps**: For checks within helper functions or for multiple checks within a single `step`, the optional `validation` parameter in the `log()` function **must** be used to provide more granular detail, and `self.validation_step` should be incremented for each sub-validation.
 6.  **MUST Format Log Parameters**: To ensure readability and consistency, all parameters in a `log()` function call **must** be placed on a new line. This formatting pattern is mandatory for all new and refactored code.
+7.  **MUST Use Standardized Loop and Window Context Utilities**: All executor implementations must use the base class utility functions for loop setup and window context extraction:
+    - `get_loop_setup`: For preparing the indexed DataFrame and loop boundaries.
+    - `get_window_context`: For extracting the lookback window, boundary candles, and context variables.
+    - These calls must be accompanied by standardized comments explaining their purpose, e.g.:
+        ```python
+        # --- Standardized loop setup ---
+        # Use base class utility to prepare indexed DataFrame and loop boundaries
+        df_indexed, loop_start, loop_end = self.get_loop_setup(...)
+
+        for i in range(loop_end, loop_start - 1, -1):
+            # --- Standardized window context extraction ---
+            # Use base class utility to extract lookback window, boundary candles, and context variables
+            (
+                lookback_window_df,
+                first_candle,
+                last_candle,
+                self.current_window_start_time,
+                self.current_window_end_time,
+                self.current_step
+            ) = self.get_window_context(i, df_indexed, lookback_window_size)
+        ```
+    - Manual extraction of loop boundaries or window context is forbidden; always use the base class utilities.
+
+### e. Window Boundary Candle Extraction Pattern
+
+At the start of each window iteration in your executor, always extract the first and last candle using:
+
+```python
+first_candle = candle_utils.get_first_candle(window_df)
+if first_candle is None:
+    continue
+last_candle = candle_utils.get_last_candle(window_df)
+if last_candle is None:
+    continue
+```
+
+This ensures robust window boundary handling and prevents errors in downstream validation and alert logic. Use these variables for:
+- Setting alert start/end times and prices
+- Validation logic (e.g., trend, breakout, magnitude)
+- Logging and alert details
+
+**Best Practice:** Always check for `None` after calling the utility functions, and skip the window if either is missing.
 
 ---
 

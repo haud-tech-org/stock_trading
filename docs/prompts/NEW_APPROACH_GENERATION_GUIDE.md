@@ -5,7 +5,6 @@
 This document provides a comprehensive template and a step-by-step guide for creating a new trading approach by inheriting from the base `Executor` class. By following this pattern, developers can ensure that new strategies are consistent, maintainable, and integrate seamlessly with the existing alert generation, configuration, and analysis systems.
 
 ## 2. Core Principles of an Approach Executor
-
 Every approach executor (`executor.py`) **MUST** be a class that inherits from `src.stockreports.alert.executor.Executor` and adheres to the following principles:
 
 -   **Configuration-Driven**: All key parameters (lookback periods, thresholds, feature flags) **MUST** be defined in `src/stockreports/config/signal_settings.py` and loaded via a dedicated settings class for the approach. Hard-coded "magic numbers" are **STRICTLY FORBIDDEN**.
@@ -68,6 +67,29 @@ Every approach executor (`executor.py`) **MUST** be a class that inherits from `
                 log(...) # Use self.current_step
                 continue
         ```
+-   **Standardized Logging and Context**: All executors **MUST** adhere to the "Standardized Logging and Centralized Context Management" pattern. This is a strict requirement for consistency and debugging.
+    -   **Standardized Loop and Window Context Utilities**: All executors **MUST** use the base class utility functions for loop setup and window context extraction:
+        - `get_loop_setup`: For preparing the indexed DataFrame and loop boundaries.
+        - `get_window_context`: For extracting the lookback window, boundary candles, and context variables.
+        - These calls must be accompanied by standardized comments explaining their purpose, e.g.:
+            ```python
+            # --- Standardized loop setup ---
+            # Use base class utility to prepare indexed DataFrame and loop boundaries
+            df_indexed, loop_start, loop_end = self.get_loop_setup(...)
+
+            for i in range(loop_end, loop_start - 1, -1):
+                # --- Standardized window context extraction ---
+                # Use base class utility to extract lookback window, boundary candles, and context variables
+                (
+                    lookback_window_df,
+                    first_candle,
+                    last_candle,
+                    self.current_window_start_time,
+                    self.current_window_end_time,
+                    self.current_step
+                ) = self.get_window_context(i, df_indexed, lookback_window_size)
+            ```
+        - Manual extraction of loop boundaries or window context is forbidden; always use the base class utilities.
 
 ## 3. Step-by-Step Implementation Guide
 
