@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import Optional
+from src.stockreports.alert.common.constants import Trend
 
 def find_max_volume_candle(window_df: pd.DataFrame) -> pd.Series:
     """
@@ -72,6 +73,36 @@ def validate_volume_ratio(large_volume_candle: pd.Series, small_volume_candle: p
     ratio = large_volume_candle['volume'] / small_volume_candle['volume']
     status = ratio >= min_volume_multiplier
     return status, ratio
+
+def get_candle_body_size(candle: pd.Series) -> float:
+    """
+    Calculates the absolute body size of a single candle.
+
+    Args:
+        candle: The candle (as a Series) to measure.
+
+    Returns:
+        The absolute difference between the close and open price.
+    """
+    return abs(candle['close'] - candle['open'])
+
+def is_candle_trend_consistent(candle: pd.Series, expected_trend: Trend) -> bool:
+    """
+    Validates if the candle's color is consistent with the expected trend.
+
+    Args:
+        candle: The candle to check.
+        expected_trend: The trend to validate against (e.g., Trend.UPTREND).
+
+    Returns:
+        True if the candle's trend is consistent, False otherwise.
+    """
+
+    if expected_trend == Trend.UPTREND and is_green_candle(candle):
+        return True
+    if expected_trend == Trend.DOWNTREND and is_red_candle(candle):
+        return True
+    return False
 
 def is_green_candle(candle: pd.Series) -> bool:
     """

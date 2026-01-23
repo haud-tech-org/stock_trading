@@ -140,3 +140,23 @@ class ProfitabilityReport:
     def to_dict(self):
         """Converts the report to a dictionary for JSON serialization."""
         return asdict(self)
+    
+
+class Validation:
+    def __init__(self, name: str, step: int, validation: int, message: str):
+        self._name = name
+        self._step = step
+        self._validation = validation
+        self._message = message
+
+    def get_name(self) -> str:
+        return self._name
+
+    def get_step(self) -> int:
+        return self._step
+
+    def get_validation(self) -> int:
+        return self._validation
+
+    def get_message(self) -> str:
+        return self._message

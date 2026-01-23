@@ -6,7 +6,7 @@ from typing import Optional
 
 # --- Project Imports ---
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.common.constants import Approach, Mode, Signal, ValidationStatus, LogLevel
+from src.stockreports.alert.common.constants import Approach, Mode, Signal, ValidationStatus, LogLevel, Trend
 from src.stockreports.alert.common.data_utils import can_apply_analysis
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.utils import candle_utils
@@ -23,11 +23,9 @@ class StrongCandleExecutor(Executor):
         self.settings = StrongCandleSettings(symbol)
         super().__init__(symbol, self.settings)
         self.logger = logging.getLogger(__name__)
-        
-        # Initialize context variables
-        self.current_window_start_time: Optional[pd.Timestamp] = None
-        self.current_window_end_time: Optional[pd.Timestamp] = None
-        self.current_step: int = 0
+
+        # Stores Validation objects for each validation passed at each step
+        validations: list = []             
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -100,6 +98,8 @@ class StrongCandleExecutor(Executor):
             self.current_window_start_time = lookback_window_df.iloc[0]['time']
             self.current_window_end_time = lookback_window_df.iloc[-1]['time']
 
+            first_candle = candle_utils.get_first_candle(lookback_window_df)
+
             # --- Step 1: Find and validate the strong candle 'A' (Cheapest checks first) ---
             self.current_step = 1
             strong_candle = candle_utils.get_last_candle(lookback_window_df)
@@ -123,6 +123,7 @@ class StrongCandleExecutor(Executor):
                 )
                 continue
 
+            self.validation_step += 1
             is_min_body_size, body_size = candle_utils.is_body_bigger_than_min(strong_candle, self.settings.min_body_size)
             if not is_min_body_size:
                 log(
@@ -164,21 +165,29 @@ class StrongCandleExecutor(Executor):
                 )
                 continue
 
-            log(
-                logger=self.logger,
-                status=ValidationStatus.PASSED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                message="Strong candle validated.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
-            )
+            # --- Last Validation in Step 1: Volume of strong candle <= previous candle * max_volume_multiplier ---
+            self.validation_step += 1
+            prev_idx = -2  # strong_candle is always the last row in lookback_window_df
+            prev_candle = lookback_window_df.iloc[prev_idx]
+            max_volume = prev_candle['volume'] * self.settings.max_volume_multiplier
+            if strong_candle['volume'] > max_volume:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Strong candle volume {strong_candle['volume']} exceeds previous candle volume {prev_candle['volume']} * max_volume_multiplier {self.settings.max_volume_multiplier}.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                continue
 
             # --- Step 2: Cooldown Validation (Cheap check) ---
-            self.current_step += 1
+            self.next_step()
             if is_in_cooldown(
                 new_alert_time=strong_candle['time'],
                 new_signal=potential_signal,
@@ -201,8 +210,63 @@ class StrongCandleExecutor(Executor):
 
             # --- Step 3: Validate the conditional window (More expensive checks) ---
             self.current_step += 1
+            self.validation_step = 1
             conditional_window_df = lookback_window_df.iloc[:-1]
+
+            # Validation: Open price extremes and their positions (copied from VRA)
+            window_size_val, window_trend = self._validate_open_extremes(conditional_window_df)
+            if window_size_val is None or window_trend is None:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message="Open price extremes validation failed.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                continue
+
+            # New Validation: Window trend and strong candle color must be consistent
+            self.validation_step += 1
+            if not candle_utils.is_candle_trend_consistent(strong_candle, window_trend):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message="Window trend and strong candle color are not consistent.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                continue
+
             
+            if window_size_val > self.settings.max_difference_price_threshold:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=2,
+                    message=f"Conditional price range {window_size_val} exceeds threshold.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                continue
+
+            self.validation_step += 1
             all_small_bodies = all(
                 candle_utils.is_body_smaller_than_max(row, self.settings.max_conditional_candle_body_size)
                 for _, row in conditional_window_df.iterrows()
@@ -223,60 +287,31 @@ class StrongCandleExecutor(Executor):
                 )
                 continue
 
-            price_range = conditional_window_df['high'].max() - conditional_window_df['low'].min()
-            if price_range > self.settings.max_difference_price_threshold:
-                log(
-                    logger=self.logger,
-                    status=ValidationStatus.FAILED,
-                    name=self.__class__.__name__,
-                    alert_time=self.current_window_end_time,
-                    step=self.current_step,
-                    validation=2,
-                    message=f"Conditional price range {price_range} exceeds threshold.",
-                    log_level=LogLevel.DEBUG,
-                    execution_symbol=self.symbol,
-                    start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
-                )
-                continue
-
-            max_volume_candle_in_conditional = candle_utils.find_max_volume_candle(conditional_window_df)
-            is_volume_confirmed, volume_ratio = candle_utils.validate_volume_ratio(
-                large_volume_candle=strong_candle,
-                small_volume_candle=max_volume_candle_in_conditional,
-                min_volume_multiplier=self.settings.volume_multiplier
-            )
-            if not is_volume_confirmed:
-                log(
-                    logger=self.logger,
-                    status=ValidationStatus.FAILED,
-                    name=self.__class__.__name__,
-                    alert_time=self.current_window_end_time,
-                    step=self.current_step,
-                    validation=3,
-                    message=f"Volume confirmation failed. Ratio: {volume_ratio:.2f}",
-                    log_level=LogLevel.DEBUG,
-                    execution_symbol=self.symbol,
-                    start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
-                )
-                continue
-            
-            log(
-                logger=self.logger,
-                status=ValidationStatus.PASSED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                message="Conditional window validated.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
-            )
+            # max_volume_candle_in_conditional = candle_utils.find_max_volume_candle(conditional_window_df)
+            # is_volume_confirmed, volume_ratio = candle_utils.validate_volume_ratio(
+            #     large_volume_candle=strong_candle,
+            #     small_volume_candle=max_volume_candle_in_conditional,
+            #     min_volume_multiplier=self.settings.volume_multiplier
+            # )
+            # if not is_volume_confirmed:
+            #     log(
+            #         logger=self.logger,
+            #         status=ValidationStatus.FAILED,
+            #         name=self.__class__.__name__,
+            #         alert_time=self.current_window_end_time,
+            #         step=self.current_step,
+            #         validation=3,
+            #         message=f"Volume confirmation failed. Ratio: {volume_ratio:.2f}",
+            #         log_level=LogLevel.DEBUG,
+            #         execution_symbol=self.symbol,
+            #         start_time=self.current_window_start_time,
+            #         end_time=self.current_window_end_time
+            #     )
+            #     continue
 
             # --- Step 4: Final Alert Confirmation (Breakout) ---
             self.current_step += 1
+            self.validation_step = 1
             if potential_signal == Signal.BUY:
                 if strong_candle['close'] < conditional_window_df['high'].max():
                     log(
@@ -312,12 +347,12 @@ class StrongCandleExecutor(Executor):
 
             # --- Create and append alert ---
             alert_time = strong_candle['time']
-            alert_id = str(int(alert_time.tz_convert('UTC').timestamp()))
+            alert_id = str(int(alert_time.timestamp()))
 
             details = {
                 "strong_candle_time": strong_candle['time'].isoformat(),
                 "strong_candle_body_ratio": round(body_ratio, 2),
-                "conditional_window_price_range": round(price_range, 2)
+                "conditional_window_price_range": round(window_size_val, 2)
             }
 
             alert_data = AlertData(
@@ -327,8 +362,8 @@ class StrongCandleExecutor(Executor):
                 signal=potential_signal,
                 alert_price=strong_candle['close'],
                 alert_time=alert_time,
-                start_price=strong_candle['open'],
-                start_time=strong_candle['time'],
+                start_price=first_candle['open'],
+                start_time=first_candle['time'],
                 magnitude=body_size,
                 details=json.dumps(details)
             )
@@ -339,3 +374,140 @@ class StrongCandleExecutor(Executor):
                 return alerts
                 
         return alerts[::-1]
+    
+    def _validate_open_extremes(self, window_df: pd.DataFrame) -> Optional[tuple[float, Trend]]:
+        n = self.settings.trend_window_edge_slice
+        open_prices = window_df['open']
+        L_idx = open_prices.idxmin()
+        H_idx = open_prices.idxmax()
+        L_pos = window_df.index.get_loc(L_idx)
+        H_pos = window_df.index.get_loc(H_idx)
+        first_pos = 0
+        last_pos = len(window_df) - 1
+        from src.stockreports.utils import window_utils
+        window_size_val, window_trend = window_utils.get_window_size_and_trend(window_df)
+        self.validation_step += 1
+
+        if window_trend is None:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message="Open extremes validation failed: could not determine trend.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return (None, None)
+        if window_trend == Trend.UPTREND:
+            if not (L_pos < H_pos):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message="Open extremes validation failed: L is not before H in uptrend.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                return (None, None)
+            if not (L_pos - first_pos <= n):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Open extremes validation failed: L is too far from start in uptrend: {L_pos} > {n}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                return (None, None)
+            if not (last_pos - H_pos <= n):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Open extremes validation failed: H is too far from end in uptrend: {last_pos - H_pos} > {n}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                return (None, None)
+        elif window_trend == Trend.DOWNTREND:
+            if not (H_pos < L_pos):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message="Open extremes validation failed: H is not before L in downtrend.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                return (None, None)
+            if not (H_pos - first_pos <= n):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Open extremes validation failed: H is too far from start in downtrend: {H_pos} > {n}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                return (None, None)
+            if not (last_pos - L_pos <= n):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Open extremes validation failed: L is too far from end in downtrend: {last_pos - L_pos} > {n}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+                return (None, None)
+        else:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message="Open extremes validation failed: unknown trend direction.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return (None, None)
+        return (window_size_val, window_trend)

@@ -14,5 +14,6 @@ class StrongCandleSettings(BaseSettings):
         self.min_body_size = self.get("MIN_BODY_SIZE")
         self.max_conditional_candle_body_size = self.get("MAX_CONDITIONAL_CANDLE_BODY_SIZE")
         self.max_difference_price_threshold = self.get("MAX_DIFFERENCE_PRICE_THRESHOLD")
-        self.volume_multiplier = self.get("VOLUME_MULTIPLIER")
+        self.trend_window_edge_slice = self.get("TREND_WINDOW_EDGE_SLICE")
+        self.max_volume_multiplier = self.get("MAX_VOLUME_MULTIPLIER")
         self.cooldown_window = self.get("COOLDOWN_WINDOW")

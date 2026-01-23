@@ -16,6 +16,12 @@ class Executor(ABC):
 
         self.logger = logging.getLogger(self.__class__.__name__)
 
+        # Initialize context variables
+        self.current_window_start_time: Optional[pd.Timestamp] = None
+        self.current_window_end_time: Optional[pd.Timestamp] = None
+        self.current_step: int = 0
+        self.validation_step: int = 0
+
     def _confirm_breakout_price(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal, lookback_period: int, prominence: float) -> bool:
         """
         Analyzes the backward window to find a breakout price and confirms if the alert candle breaks it.
@@ -81,3 +87,11 @@ class Executor(ABC):
         time_since_last_alert = (current_time_naive - last_alert_time).total_seconds() / 60
 
         return time_since_last_alert < cooldown_period
+    
+    def next_step(self):
+        """
+        Increments the current step and resets validation_step to 1.
+        Intended for use in derived classes to track validation/performance steps.
+        """
+        self.current_step += 1
+        self.validation_step = 1
