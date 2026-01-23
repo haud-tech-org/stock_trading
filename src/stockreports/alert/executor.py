@@ -22,6 +22,7 @@ class Executor(ABC):
         self.current_window_end_time: Optional[pd.Timestamp] = None
         self.current_step: int = 0
         self.validation_step: int = 0
+        self.validations: list = []
 
     def _confirm_breakout_price(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal, lookback_period: int, prominence: float) -> bool:
         """
@@ -95,7 +96,13 @@ class Executor(ABC):
         Intended for use in derived classes to track validation/performance steps.
         """
         self.current_step += 1
-        self.validation_step = 1
+        self.validation_step = 0
+
+    def next_validation(self):
+        """
+        Increments the validation_step by 1. Use this to track sub-step validations within a main step.
+        """
+        self.validation_step += 1
 
     def get_loop_setup(
         self,
