@@ -300,6 +300,41 @@ This ensures robust window boundary handling and prevents errors in downstream v
 
 **Best Practice:** Always check for `None` after calling the utility functions, and skip the window if either is missing.
 
+### f. Standardized Validation Tracking and Serialization (2026)
+
+- **Issue**: Validation tracking in executors was inconsistent—sometimes logic-only checks were tracked, and naming was manual or unclear. This made alert details hard to interpret and maintain.
+- **Resolution Pattern**:
+    1. **Setting-Based Only**: Only create `Validation` objects for checks directly tied to a configuration setting (e.g., thresholds, window sizes). Logic-only checks are logged but not tracked as `Validation` objects.
+    2. **Automated Naming**: Use `varname`'s `nameof` to set the `name` field of each `Validation` to the config variable name.
+    3. **Serialization**: When constructing `AlertData`, serialize all validations using `[v.to_json() for v in self.validations]` and include this in the `details` field.
+    4. **Canonical Example**: The VRA executor implements this pattern.
+
+    **Example:**
+    ```python
+    self.validations.append(Validation(
+        name=nameof(self.settings.volume_multiplier),
+        step=self.current_step,
+        validation=self.validation_step,
+        message="Volume ratio is significant.",
+        status=ValidationStatus.PASSED
+    ))
+    alert_data = AlertData(
+        # ...
+        details=json.dumps({
+            # ...
+            "validations": [v.to_json() for v in self.validations]
+        })
+    )
+    ```
+
+    - **Benefits**: Ensures clarity, maintainability, and consistency in alert details and validation tracking across all executors.
+
+#### g. Step and Validation Tracking Guidance
+
+- Call `self.next_step()` at the start of each major step in the main alert-finding loop (e.g., `_find_*_alerts`).
+- Call `self.next_validation()` immediately before each sub-validation or check inside step/helper functions.
+- Do not call `next_step()` inside step/helper functions, and do not call `next_validation()` in the main loop.
+
 ---
 
 ## Case Study 2: Python 3.9 Compatibility with Type Hinting
@@ -358,3 +393,5 @@ The refactoring process also exposed and allowed for the correction of several s
 
 ### d. Outcome
 The `VraExecutor` is now significantly cleaner, more readable, and more maintainable. It serves as a prime example of how to effectively use the shared utility modules to build complex but understandable alert logic. The old, monolithic `_validate_volume_consistency` method was removed, as its responsibilities were fully absorbed by the new, clearer validation steps.
+
+---

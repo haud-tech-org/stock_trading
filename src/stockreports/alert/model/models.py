@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional
 import pandas as pd
-import json
+from src.stockreports.alert.common.constants import ValidationStatus
 
 @dataclass
 class AlertData:
@@ -143,11 +143,15 @@ class ProfitabilityReport:
     
 
 class Validation:
-    def __init__(self, name: str, step: int, validation: int, message: str):
-        self._name = name
+    def __init__(self, step: int, validation: int, message: str, status: ValidationStatus, name: str = None):
         self._step = step
         self._validation = validation
         self._message = message
+        self._status = status
+        if name is not None:
+            self._name = name
+        else:
+            self._name = f"step_{step}_validation_{validation}"
 
     def get_name(self) -> str:
         return self._name
@@ -160,3 +164,15 @@ class Validation:
 
     def get_message(self) -> str:
         return self._message
+
+    def get_status(self) -> str:
+        return self._status
+    
+    def to_json(self):
+        return {
+            "name": self.get_name(),
+            "step": self.get_step(),
+            "validation": self.get_validation(),
+            "message": self.get_message(),
+            "status": self.get_status()
+        }

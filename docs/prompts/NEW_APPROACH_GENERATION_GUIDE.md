@@ -5,6 +5,37 @@
 This document provides a comprehensive template and a step-by-step guide for creating a new trading approach by inheriting from the base `Executor` class. By following this pattern, developers can ensure that new strategies are consistent, maintainable, and integrate seamlessly with the existing alert generation, configuration, and analysis systems.
 
 ## 2. Core Principles of an Approach Executor
+
+### 2A. Standardized Validation Tracking and Serialization
+
+All approach executors **MUST** follow these rules for validation tracking and serialization:
+
+1. **Setting-Based Validation Only**: Only create `Validation` objects for checks that are directly tied to a configuration setting (e.g., thresholds, window sizes, multipliers). For logic-only checks (not tied to a setting), do **not** create a `Validation` object—log the failure only.
+2. **Automated Naming**: Use the `varname` library's `nameof` function to set the `name` field of each `Validation` to the exact config variable name (e.g., `nameof(self.settings.volume_multiplier)`).
+3. **Serialization**: When constructing `AlertData`, serialize all validations using `[v.to_json() for v in self.validations]` and include this in the `details` field (as a JSON array under the key `validations`).
+4. **Canonical Example**: See the VRA executor for a reference implementation of this pattern.
+
+#### Example:
+```python
+self.validations.append(Validation(
+    name=nameof(self.settings.volume_multiplier),
+    step=self.current_step,
+    validation=self.validation_step,
+    message="Volume ratio is significant.",
+    status=ValidationStatus.PASSED
+))
+
+alert_data = AlertData(
+    # ...
+    details=json.dumps({
+        # ...
+        "validations": [v.to_json() for v in self.validations]
+    })
+)
+```
+
+### 2B. Structural inheritance class
+
 Every approach executor (`executor.py`) **MUST** be a class that inherits from `src.stockreports.alert.executor.Executor` and adheres to the following principles:
 
 -   **Configuration-Driven**: All key parameters (lookback periods, thresholds, feature flags) **MUST** be defined in `src/stockreports/config/signal_settings.py` and loaded via a dedicated settings class for the approach. Hard-coded "magic numbers" are **STRICTLY FORBIDDEN**.
@@ -90,6 +121,12 @@ Every approach executor (`executor.py`) **MUST** be a class that inherits from `
                 ) = self.get_window_context(i, df_indexed, lookback_window_size)
             ```
         - Manual extraction of loop boundaries or window context is forbidden; always use the base class utilities.
+
+### 2C. Step and Validation Tracking Guidance
+
+- Call `self.next_step()` at the start of each major step in the main alert-finding loop (e.g., `_find_*_alerts`).
+- Call `self.next_validation()` immediately before each sub-validation or check inside step/helper functions.
+- Do not call `next_step()` inside step/helper functions, and do not call `next_validation()` in the main loop.
 
 ## 3. Step-by-Step Implementation Guide
 
