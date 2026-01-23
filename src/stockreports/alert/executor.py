@@ -7,6 +7,7 @@ from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceColumn
 from src.stockreports.alert.common.data_utils import find_extreme_point
 from src.stockreports.alert.common.base_settings import BaseSettings
+from src.stockreports.utils import candle_utils
 
 
 class Executor(ABC):
@@ -95,3 +96,46 @@ class Executor(ABC):
         """
         self.current_step += 1
         self.validation_step = 1
+
+    def get_loop_setup(
+        self,
+        is_development_mode: bool,
+        df: pd.DataFrame,
+        new_candle_count: int,
+        lookback_window_size: int
+    ) -> tuple[pd.DataFrame, int, int]:
+        """
+        Common utility for executors: prepares indexed DataFrame and loop boundaries.
+        Returns (df_indexed, loop_start, loop_end).
+        """
+        df_indexed = df.reset_index()
+        loop_end = len(df_indexed)
+        min_scan_index = lookback_window_size
+        if is_development_mode:
+            loop_start = min_scan_index
+        else:
+            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
+        return df_indexed, loop_start, loop_end
+    
+    def get_window_context(
+        self,
+        scan_index: int,
+        df_indexed: pd.DataFrame,
+        lookback_window_size: int
+    ) -> tuple[pd.DataFrame, Optional[pd.Series], Optional[pd.Series], Optional[pd.Timestamp], Optional[pd.Timestamp], int]:
+        """
+        Utility to extract lookback window and boundary candles for a given scan index.
+        Returns (lookback_window_df, first_candle, last_candle, current_window_start_time, current_step).
+        """
+        if df_indexed is None or df_indexed.empty:
+            return None, None, None, None, None, 0
+        lookback_window_df = df_indexed.iloc[scan_index - lookback_window_size : scan_index]
+        if lookback_window_df.empty:
+            return lookback_window_df, None, None, None, None, 0
+        current_window_start_time = lookback_window_df.iloc[0]['time']
+        current_window_end_time = lookback_window_df.iloc[-1]['time']
+        current_step = 0
+        
+        first_candle = candle_utils.get_first_candle(lookback_window_df)
+        last_candle = candle_utils.get_last_candle(lookback_window_df)
+        return lookback_window_df, first_candle, last_candle, current_window_start_time, current_window_end_time, current_step

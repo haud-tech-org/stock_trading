@@ -10,7 +10,38 @@ Before making any code changes, you **must** review the [Technical Case Studies 
 
 The refactoring must strictly adhere to the following:
 
-#### Rule 1: Implement Standardized Logging and Centralized Context Management
+-#### Rule 1: Implement Standardized Logging and Centralized Context Management
+-   **Reference**: Case Study `1. Standardized Logging and Centralized Context Management`.
+-   **Action**: The executor **MUST** be refactored to use the project's standard logging and context management pattern. This is the highest priority.
+#### Rule 1: Implement Standardized Logging, Loop, and Window Context Management
+   **Reference**: Case Study `1. Standardized Logging and Centralized Context Management`.
+   **Action**: The executor **MUST** be refactored to use the project's standard logging, loop setup, and window context management pattern. This is the highest priority.
+    -   All logging calls **MUST** use the `log()` factory from `src/stockreports/utils/log_factory.py`.
+    -   The class **MUST** implement and use the `current_step`, `current_window_start_time`, and `current_window_end_time` attributes.
+    -   The main loop **MUST** use the base class utility `get_loop_setup` to prepare the indexed DataFrame and loop boundaries, with standardized comments:
+        ```python
+        # --- Standardized loop setup ---
+        # Use base class utility to prepare indexed DataFrame and loop boundaries
+        df_indexed, loop_start, loop_end = self.get_loop_setup(...)
+        ```
+    -   Each window iteration **MUST** use the base class utility `get_window_context` to extract the lookback window, boundary candles, and context variables, with standardized comments:
+        ```python
+        # --- Standardized window context extraction ---
+        # Use base class utility to extract lookback window, boundary candles, and context variables
+        (
+            lookback_window_df,
+            first_candle,
+            last_candle,
+            self.current_window_start_time,
+            self.current_window_end_time,
+            self.current_step
+        ) = self.get_window_context(i, df_indexed, lookback_window_size)
+        ```
+    -   Manual extraction of loop boundaries or window context is forbidden; always use the base class utilities.
+    -   These context variables **MUST** be reset at the beginning of each main loop iteration.
+    -   The `current_step` **MUST** be incremented sequentially for each validation step.
+
+#### Rule 2: Implement Standardized Logging and Centralized Context Management
 -   **Reference**: Case Study `1. Standardized Logging and Centralized Context Management`.
 -   **Action**: The executor **MUST** be refactored to use the project's standard logging and context management pattern. This is the highest priority.
     -   All logging calls **MUST** use the `log()` factory from `src/stockreports/utils/log_factory.py`.
@@ -18,26 +49,26 @@ The refactoring must strictly adhere to the following:
     -   These context variables **MUST** be reset at the beginning of each main loop iteration.
     -   The `current_step` **MUST** be incremented sequentially for each validation step.
 
-#### Rule 2: Implement the Standardized Cooldown Logic
+#### Rule 3: Implement the Standardized Cooldown Logic
 -   **Reference**: Case Study `c. Standardized Cooldown Logic for Alert Generation`.
 -   **Action**: The executor **must** use the standard cooldown pattern. This includes:
     -   A class-level `LATEST_ALERT: Optional[AlertData]` variable.
     -   A pre-alert check that validates both the `cooldown_window` and the `signal` type.
     -   Updating `LATEST_ALERT` only after a new alert is successfully generated.
 
-#### Rule 3: Encapsulate AlertData Creation
+#### Rule 4: Encapsulate AlertData Creation
 -   **Reference**: Case Study `d. Best Practice: Encapsulate Complex Object Creation`.
 -   **Action**: The creation of `AlertData` objects **must** be moved into a dedicated private helper method (e.g., `_create_alert_data`). The main algorithm loop should be clean and focused on signal detection, not object population.
 
-#### Rule 4: Prioritize Shared Utilities
+#### Rule 5: Prioritize Shared Utilities
 -   **Reference**: Case Study `e. Best Practice: Prioritize Shared Utilities Over Custom Logic`.
 -   **Action**: You **must** identify any custom or duplicated logic within the executor that could be replaced by a shared utility. For example, if the executor has its own reversal logic, it must be replaced with a call to the standard `validate_reversal_confirmation` function.
 
-#### Rule 5: Adhere to the Standard Documentation Format
+#### Rule 6: Adhere to the Standard Documentation Format
 -   **Reference**: [VRA Approach Documentation](../algorithms/VRA.md)
 -   **Action**: Any new or updated documentation for an approach **must** follow the established content structure. This includes the `Objective`, `Key Parameters` (in a table), `Step-by-Step Logic`, and `Flow Diagram` sections.
 
-#### Rule 6: Ensure Complete and Consistent Data
+#### Rule 7: Ensure Complete and Consistent Data
 -   **Action**: Every `AlertData` object generated by the executor **must** be fully populated. This includes, but is not limited to, `start_time`, `start_price`, and `magnitude`. The logic for calculating these values must be consistent with the definitions established in other standardized executors.
 
 ## 3. Refactoring Workflow
