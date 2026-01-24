@@ -2,6 +2,8 @@
 import logging
 import pandas as pd
 from typing import Optional, Tuple
+
+from src.stockreports.alert.common.constants import Trend, Signal
 # Import the settings to access the performance data
 from src.stockreports.config import price_alert_settings, settings
 from src.stockreports.utils.historical_data_manager import get_historical_data
@@ -12,6 +14,30 @@ from src.stockreports.alert.common.constants import Signal
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+def get_reversal_trend(trend: Trend) -> Trend:
+    """
+    Returns the reversal of the given trend.
+    DOWNTREND -> UPTREND, UPTREND -> DOWNTREND, else NEUTRAL.
+    """
+    if trend == Trend.DOWNTREND:
+        return Trend.UPTREND
+    elif trend == Trend.UPTREND:
+        return Trend.DOWNTREND
+    else:
+        return Trend.NEUTRAL
+
+def get_reversal_signal(signal: Signal) -> Signal:
+    """
+    Returns the reversal of the given signal.
+    BUY -> SELL, SELL -> BUY, else NEUTRAL.
+    """
+    if signal == Signal.BUY:
+        return Signal.SELL
+    elif signal == Signal.SELL:
+        return Signal.BUY
+    else:
+        return Signal.NEUTRAL
 
 def _apply_price_offset(base_price: float, adjustment: float, signal: str, min_offset: float, max_offset: float) -> float:
     """

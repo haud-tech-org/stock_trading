@@ -20,10 +20,12 @@ class Mode:
 class Signal:
     BUY = "BUY"
     SELL = "SELL"
+    NEUTRAL = "NEUTRAL"
 
 class Trend:
     UPTREND = "uptrend"
     DOWNTREND = "downtrend"
+    NEUTRAL = "neutral"
 
 class AlertKeys:
     TREND = "trend"

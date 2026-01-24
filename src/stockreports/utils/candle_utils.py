@@ -1,6 +1,9 @@
 import pandas as pd
+
 from typing import Optional
 from src.stockreports.alert.common.constants import Trend
+from src.stockreports.alert.common.constants import Signal
+from src.stockreports.utils.alert_utils import get_reversal_trend
 
 def find_max_volume_candle(window_df: pd.DataFrame) -> pd.Series:
     """
@@ -103,6 +106,56 @@ def is_candle_trend_consistent(candle: pd.Series, expected_trend: Trend) -> bool
     if expected_trend == Trend.DOWNTREND and is_red_candle(candle):
         return True
     return False
+
+def get_signal_from_candle(candle: pd.Series) -> Optional[Signal]:
+    """
+    Returns the Signal (BUY or SELL) based on the trend of the candle.
+    Uses get_trend_from_candle to determine the trend.
+    Returns None if the candle is neutral (doji).
+    """
+    trend = get_trend_from_candle(candle)
+    if trend == Trend.UPTREND:
+        return Signal.BUY
+    elif trend == Trend.DOWNTREND:
+        return Signal.SELL
+    else:
+        return None
+    
+def get_signal_from_trend(trend: Trend) -> Signal:
+    """
+    Returns the Signal (BUY or SELL) based on the trend of the candle.
+    Uses get_trend_from_candle to determine the trend.
+    Returns None if the candle is neutral (doji).
+    """
+    
+    if trend == Trend.UPTREND:
+        return Signal.BUY
+    elif trend == Trend.DOWNTREND:
+        return Signal.SELL
+    else:
+        return Signal.NEUTRAL
+    
+def get_trend_from_candle(candle: pd.Series) -> Optional[Trend]:
+    """
+    Returns the Trend (UPTREND or DOWNTREND) based on the color of the candle.
+    Returns None if the candle is neutral (doji).
+    """
+    if is_green_candle(candle):
+        return Trend.UPTREND
+    elif is_red_candle(candle):
+        return Trend.DOWNTREND
+    else:
+        return Trend.NEUTRAL
+
+def get_reversal_trend_signal(candle: pd.Series) -> tuple[Optional[Trend], Optional[Signal]]:
+        """
+        Handles the reversal process: computes original_trend, reversal_trend, and reversal_signal.
+        Returns (reversal_trend, reversal_signal) if not None.
+        """
+        trend = get_trend_from_candle(candle)
+        reversal_trend = get_reversal_trend(trend)
+        reversal_signal = get_signal_from_trend(reversal_trend)
+        return reversal_trend, reversal_signal
 
 def is_green_candle(candle: pd.Series) -> bool:
     """
