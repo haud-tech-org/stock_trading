@@ -1,201 +1,259 @@
+
 import pandas as pd
 import logging
 import json
-from typing import Optional, List, Tuple
-
-from scipy.signal import find_peaks
+from typing import Optional, List
+from varname import nameof
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.common.constants import Approach, Mode, Signal
+from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
+from src.stockreports.alert.common.constants import Approach, Mode, Signal, ValidationStatus, LogLevel, Trend
 from src.stockreports.alert.common.data_utils import can_apply_analysis
 from src.stockreports.utils.time_utils import to_iso8601_with_tz
+from src.stockreports.utils.log_factory import log
 from .settings import VolumeSpikeConfirmationSettings
-from src.stockreports.alert.confirmation.reversal_trend.executor import ReversalConfirmationExecutor
+from src.stockreports.utils.candle_utils import is_green_candle, is_red_candle, get_last_candle
+from src.stockreports.utils.candle_utils import get_signal_from_candle
+from src.stockreports.utils.window_utils import get_window_size_and_trend
+from src.stockreports.utils.candle_utils import find_max_volume_candle, find_min_volume_candle, validate_volume_ratio
 
-class VolumeSpikeConfirmationExecutor(ReversalConfirmationExecutor):
-    APPROACH_NAME = Approach.VOLUME_SPIKE_CONFIRMATION
-    LATEST_ALERT_TIMESTAMP: Optional[pd.Timestamp] = None
+class VolumeSpikeConfirmationExecutor(Executor):
+    # APPROACH_NAME = Approach.VOLUME_SPIKE_CONFIRMATION
 
     def __init__(self, symbol: str):
-        settings = VolumeSpikeConfirmationSettings(symbol)
-        super().__init__(symbol, settings)
+        self.settings = VolumeSpikeConfirmationSettings(symbol)
+        approach_name = Approach.VOLUME_SPIKE_CONFIRMATION
+        super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
 
-    def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
-        """
-        Entry point for the VOLUME_SPIKE_CONFIRMATION approach.
-        Identifies reversal signals based on a two-phase "Climax and Reversal" logic.
-        """
-        try:
-            self.logger.info(f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...")
-            
-            alerts_data = self._find_alerts(df, new_candle_count)
-            self.logger.info(f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts_data)} alerts.")
-
-            alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
-
-            return AlertResult(
-                approach_name=self.APPROACH_NAME,
-                alerts=alerts_df
-            )
-        except Exception as e:
-            self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
-            return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame(), status="FAILED", message=str(e))
-
-    def _validate_climax_event(self, lookback_window: pd.DataFrame) -> Optional[Tuple[pd.Series, Signal]]:
-        """
-        Identifies and validates a climax event within a lookback window.
-        Returns the climax candle and the expected reversal signal if valid.
-        """
-        # Find the candle with the maximum volume in the window
-        max_vol_candle = lookback_window.loc[lookback_window['volume'].idxmax()]
-        max_vol_idx = lookback_window.index.get_loc(max_vol_candle.name)
-
-        # Ensure the max volume candle is not too early or late in the window
-        if max_vol_idx < 2 or max_vol_idx >= len(lookback_window) - 1:
-            return None
-
-        # --- Volume Validation ---
-        prev_candle_1 = lookback_window.iloc[max_vol_idx - 1]
-        prev_candle_2 = lookback_window.iloc[max_vol_idx - 2]
-        
-        vol_mult = self.settings.previous_candles_volume_multiplier
-        if not (max_vol_candle['volume'] >= prev_candle_1['volume'] * vol_mult or
-                max_vol_candle['volume'] >= prev_candle_2['volume'] * vol_mult):
-            return None
-
-        avg_volume_window = lookback_window['volume'].mean()
-        if max_vol_candle['volume'] < self.settings.avg_volume_multiplier * avg_volume_window:
-            return None
-
-        # --- Trend Confirmation: Determine the trend based on the max volume candle ---
-        is_bullish_climax = max_vol_candle['close'] > max_vol_candle['open']
-        is_bearish_climax = max_vol_candle['close'] < max_vol_candle['open']
-
-        # A bullish climax (uptrend) suggests a future SELL reversal. The climax signal is BUY.
-        if is_bullish_climax:
-            self.logger.debug(f"[{max_vol_candle.name}] Bullish climax candle detected. Expecting SELL reversal.")
-            return max_vol_candle, Signal.BUY
-        
-        # A bearish climax (downtrend) suggests a future BUY reversal. The climax signal is SELL.
-        if is_bearish_climax:
-            self.logger.debug(f"[{max_vol_candle.name}] Bearish climax candle detected. Expecting BUY reversal.")
-            return max_vol_candle, Signal.SELL
-        
-        return None
-
     def _find_alerts(self, df: pd.DataFrame, new_candle_count: int) -> List[AlertData]:
-        """
-        Main loop to find alerts based on the 'Climax and Search-to-End Reversal' pattern.
-        """
         alerts = []
-        lookback_window_size = self.settings.lookback_window
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
-        
-        if not can_apply_analysis(df, self.APPROACH_NAME, required_rows=lookback_window_size):
-            return alerts
+        window_size = self.settings.lookback_window
 
-        df_indexed = df.set_index('time')
-
-        # --- Cooldown Check at the beginning ---
-        if self.is_in_cooldown(
-            latest_alert_timestamp=VolumeSpikeConfirmationExecutor.LATEST_ALERT_TIMESTAMP,
-            current_time=df_indexed.index[-1],
-            cooldown_period=self.settings.cooldown_period
-        ):
-            # The check is true, so we are in cooldown. Log it.
-            last_alert_time = VolumeSpikeConfirmationExecutor.LATEST_ALERT_TIMESTAMP.tz_convert(None)
-            current_time_naive = df_indexed.index[-1].tz_convert(None)
-            time_since_last_alert = (current_time_naive - last_alert_time).total_seconds() / 60
-            self.logger.info(
-                f"'{self.APPROACH_NAME}' for {self.symbol} is in cooldown. "
-                f"Last alert was {time_since_last_alert:.2f} minutes ago. "
-                f"Cooldown is {self.settings.cooldown_period} minutes."
-            )
-            return alerts
-
-        loop_end = len(df_indexed) - 1
-        min_scan_index = lookback_window_size - 1
-        
-        if is_development_mode:
-            loop_start = min_scan_index
-        else:
-            # In deployment, only scan recent windows
-            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - 1)
+        # --- Standardized loop setup ---
+        df_indexed, loop_start, loop_end = self.get_loop_setup(
+            is_development_mode,
+            df,
+            new_candle_count,
+            window_size
+        )
 
         for i in range(loop_end, loop_start - 1, -1):
-            window_start_index = i - lookback_window_size + 1
-            if window_start_index < 0: continue
-            
-            lookback_window = df_indexed.iloc[window_start_index : i + 1]
-            
-            climax_result = self._validate_climax_event(lookback_window)
-            if not climax_result:
+            # --- Standardized window context extraction ---
+            (
+                window_df,
+                first_candle,
+                potential_alert_candle,
+                self.current_window_start_time,
+                self.current_window_end_time,
+                self.current_step
+            ) = self.get_window_context(i, df_indexed, window_size)
+            if window_df is None or first_candle is None or potential_alert_candle is None:
                 continue
 
-            max_vol_candle, climax_signal = climax_result
-            
-            # Define the search space for the reversal candle (all candles after the climax)
-            max_vol_candle_full_df_idx = df_indexed.index.get_loc(max_vol_candle.name)
-            reversal_forward_window = df_indexed.iloc[max_vol_candle_full_df_idx:]
-
-            # The forward search space must be within the max size and contain at least 2 candles
-            # (the climax candle and at least one subsequent candle for reversal).
-            if len(reversal_forward_window) > self.settings.max_forward_window_size or len(reversal_forward_window) < 2:
+            # Step 1: Trend window extraction
+            self.next_step()
+            trend_window = self._step1_extract_and_validate_trend_window(window_df)
+            if trend_window is None:
                 continue
 
-            reversal_candle = self._find_reversal_candle(reversal_forward_window, climax_signal)
-            final_signal = None
+            # Step 2: Volume validation in trend window
+            self.next_step()
+            volume_validation_result = self._step2_validate_volume_spike(trend_window)
+            if volume_validation_result is None:
+                continue
+            max_vol_candle, min_vol_candle = volume_validation_result
 
-            if reversal_candle is not None:
-                # The final alert signal is the OPPOSITE of the climax signal
-                final_signal = Signal.SELL if climax_signal == Signal.BUY else Signal.BUY
-            else:
-                # If the primary reversal check fails, try the inherited confirmation method
-                reversal_result = self._confirm_reversal_in_forward_window(
-                    df_indexed=df_indexed,
-                    alert_candle_index=max_vol_candle_full_df_idx,
-                    signal=climax_signal
+            # Step 3: Cooldown check
+            self.next_step()
+            if self._is_in_cooldown(potential_alert_candle):
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message="Alert is in cooldown period.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
                 )
-                if reversal_result:
-                    reversal_candle, final_signal = reversal_result
+                continue
+            self.validations.append(Validation(
+                name=nameof(self.settings.cooldown_period),
+                step=self.current_step,
+                validation=self.validation_step,
+                message="Alert is not in cooldown period.",
+                status=ValidationStatus.PASSED
+            ))
 
-            if reversal_candle is not None and final_signal is not None:
-                start_candle_of_window = df_indexed.iloc[window_start_index]
-                latest_candle_time = df_indexed.index[-1]
-
-                details_dict = {
-                    "reason": f"Volume Climax Reversal ({final_signal})",
-                    "climax_time": to_iso8601_with_tz(max_vol_candle.name),
-                    "processed_time": to_iso8601_with_tz(latest_candle_time)
-                }
-
-                alert = AlertData(
-                    approach=self.APPROACH_NAME,
-                    id=str(int(reversal_candle.name.tz_convert('UTC').timestamp())),
-                    symbol=self.symbol,
-                    alert_time=reversal_candle.name,
-                    signal=final_signal,
-                    alert_price=reversal_candle['close'],
-                    start_price=start_candle_of_window['close'],
-                    start_time=start_candle_of_window.name,
-                    magnitude=round(abs(reversal_candle['close'] - start_candle_of_window['close']), 2),
-                    details=json.dumps(details_dict)
-                )
-
-                # To prevent re-triggering on the same event in development mode
-                # we can check if the new alert's climax time is the same as the last one.
-                if is_development_mode and VolumeSpikeConfirmationExecutor.LATEST_ALERT_TIMESTAMP:
-                    # This check is now more complex as we don't store the full alert.
-                    # For dev mode, we might need a more robust way to avoid duplicates if this becomes an issue.
-                    # For now, we'll rely on the cooldown.
-                    pass
-
-                alerts.append(alert)
-                VolumeSpikeConfirmationExecutor.LATEST_ALERT_TIMESTAMP = latest_candle_time
-
-                if not is_development_mode:
-                    return alerts
-
+            # Step 4: Alert creation
+            alert_data = self._create_alert_data(
+                first_candle=first_candle,
+                alert_candle=potential_alert_candle,
+                trend_window=trend_window,
+                max_vol_candle=max_vol_candle,
+                min_vol_candle=min_vol_candle
+            )
+            alerts.append(alert_data)
+            self.LATEST_ALERT = alert_data
+            if not is_development_mode:
+                return alerts
         return alerts[::-1]
+
+    def _step1_extract_and_validate_trend_window(self, window_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        self.next_validation()
+        trend_window = self._extract_trend_window(window_df)
+
+        if trend_window is None or len(trend_window) < self.settings.min_trend_candle_slices:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Trend window too short: {len(trend_window) if trend_window is not None else 0}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return None
+
+        window_size, _ = get_window_size_and_trend(trend_window)
+        if window_size < self.settings.min_trend_window_size:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Trend window size {window_size} < min required {self.settings.min_trend_window_size}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return None
+        self.validations.append(Validation(
+            name=nameof(self.settings.min_trend_window_size),
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Trend window size OK: {len(trend_window)}",
+            status=ValidationStatus.PASSED
+        ))
+        return trend_window
+
+    def _extract_trend_window(self, window_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """
+        Extracts the trend confirmation window: consecutive same-color candles from the end.
+        Returns the trend window DataFrame or None if not enough candles.
+        """
+        if window_df.empty:
+            return None
+        
+        last_candle = get_last_candle(window_df)
+
+        # Determine the trend color of the last candle
+        if is_green_candle(last_candle):
+            is_trend_candle = is_green_candle
+        elif is_red_candle(last_candle):
+            is_trend_candle = is_red_candle
+        else:
+            # If the last candle is neutral (doji), no trend window
+            return None
+
+        # Collect indices of consecutive candles matching the trend color, starting from the end
+        trend_indices = [window_df.index[-1]]
+        for idx in range(len(window_df) - 2, -1, -1):
+            candle = window_df.iloc[idx]
+            if is_trend_candle(candle):
+                trend_indices.append(window_df.index[idx])
+            else:
+                break
+
+        # Return the DataFrame of the trend window, sorted in ascending order
+        trend_indices = sorted(trend_indices)
+        return window_df.loc[trend_indices]
+    
+    def _step2_validate_volume_spike(self, trend_window: pd.DataFrame) -> Optional[tuple[pd.Series, pd.Series]]:
+        self.next_validation()
+        max_vol_candle = find_max_volume_candle(trend_window)
+        min_vol_candle = find_min_volume_candle(trend_window)
+        # New validation: min volume candle must be before max volume candle
+        min_idx = trend_window.index.get_loc(min_vol_candle.name)
+        max_idx = trend_window.index.get_loc(max_vol_candle.name)
+        if min_idx >= max_idx:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Min volume candle (idx={min_idx}) does not occur before max volume candle (idx={max_idx}) in trend window.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return None
+        
+        status, ratio = validate_volume_ratio(max_vol_candle, min_vol_candle, self.settings.trend_volume_multiplier)
+        if not status:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Max volume {max_vol_candle['volume']} < min volume {min_vol_candle['volume']} * multiplier {self.settings.trend_volume_multiplier} (ratio: {ratio})",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return None
+        self.validations.append(Validation(
+            name=nameof(self.settings.trend_volume_multiplier),
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Volume spike confirmed: {max_vol_candle['volume']} >= {min_vol_candle['volume']} * {self.settings.trend_volume_multiplier} (ratio: {ratio})",
+            status=ValidationStatus.PASSED
+        ))
+        
+        return max_vol_candle, min_vol_candle
+
+    def _is_in_cooldown(self, alert_candle) -> bool:
+        signal = get_signal_from_candle(alert_candle)
+        return not self._step_cooldown_check(
+            signal=signal,
+            cooldown_window=self.settings.cooldown_period
+        )
+
+    def _create_alert_data(self, first_candle, alert_candle, trend_window, max_vol_candle, min_vol_candle) -> AlertData:
+        alert_id = str(int(self.current_window_end_time.timestamp()))
+        return AlertData(
+            id=alert_id,
+            symbol=self.symbol,
+            approach=self.APPROACH_NAME,
+            signal=Signal.BUY if alert_candle['close'] > alert_candle['open'] else Signal.SELL,
+            alert_price=alert_candle['close'],
+            alert_time=self.current_window_end_time,
+            start_price=first_candle['open'],
+            start_time=self.current_window_start_time,
+            magnitude=abs(alert_candle['close'] - first_candle['open']),
+            details=json.dumps({
+                "trend_window_size": len(trend_window),
+                "max_volume": max_vol_candle['volume'],
+                "min_volume": min_vol_candle['volume'],
+                "validations": [v.to_json() for v in self.validations]
+            })
+        )
+
