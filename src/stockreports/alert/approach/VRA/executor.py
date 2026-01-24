@@ -10,7 +10,8 @@ from src.stockreports.alert.common.constants import Approach, Signal, Mode, Vali
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.model.models import Validation
 from .settings import VraSettings
-from src.stockreports.utils.alert_utils import is_in_cooldown
+from src.stockreports.utils.alert_utils import is_in_cooldown, get_reversal_signal, get_reversal_trend
+from src.stockreports.utils.candle_utils import get_reversal_trend_signal
 from src.stockreports.utils.log_factory import log
 from src.stockreports.utils import window_utils, candle_utils
 
@@ -20,54 +21,14 @@ class VraExecutor(Executor):
 
     def __init__(self, symbol: str):
         self.settings = VraSettings(symbol)
-        super().__init__(symbol, self.settings)
+        approach_name = Approach.VRA
+        super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
 
-    def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
-        try:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.PASSED,
-                name=self.__class__.__name__,
-                alert_time="N/A",
-                step=0,
-                message=f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...",
-                log_level=LogLevel.INFO,
-                execution_symbol=self.symbol
-            )
-            
-            alerts_data = self._find_vra_alerts(df, new_candle_count)
-            log(
-                logger=self.logger,
-                status=ValidationStatus.PASSED,
-                name=self.__class__.__name__,
-                alert_time="N/A",
-                step=0,
-                message=f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts_data)} alerts.",
-                log_level=LogLevel.INFO,
-                execution_symbol=self.symbol
-            )
-
-            alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
-
-            return AlertResult(
-                approach_name=self.APPROACH_NAME,
-                alerts=alerts_df
-            )
-        except Exception as e:
-            self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
-            return AlertResult(
-                approach_name=self.APPROACH_NAME,
-                alerts=pd.DataFrame(),
-                status="FAILED",
-                message=str(e)
-            )
-
-
-    def _find_vra_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
+    def _find_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
         alerts = []
         is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
-        window_size = self.settings.lookback_window
+        window_size = self.settings.lookback_window      
 
         if len(df) < window_size:
             log(
@@ -93,7 +54,7 @@ class VraExecutor(Executor):
             (
                 window_df,
                 first_candle,
-                alert_candle,
+                potential_alert_candle,
                 self.current_window_start_time,
                 self.current_window_end_time,
                 self.current_step
@@ -102,12 +63,12 @@ class VraExecutor(Executor):
                 df_indexed,
                 window_size
             )
-            if window_df is None or first_candle is None or alert_candle is None:
+            if window_df is None or first_candle is None or potential_alert_candle is None:
                 continue
 
             # Step 1: Volume Validation
             self.next_step()
-            vol_result = self._step_volume_validation(window_df, alert_candle)
+            vol_result = self._step_volume_validation(window_df, potential_alert_candle)
             if vol_result is None:
                 continue
             max_vol_candle, min_vol_candle = vol_result
@@ -119,18 +80,25 @@ class VraExecutor(Executor):
                 continue
             window_trend, window_size_val = trend_result
 
-            reversal_signal = Signal.SELL if window_trend == Trend.UPTREND else Signal.BUY
+            reversal_trend = get_reversal_trend(window_trend)
+            reversal_signal = candle_utils.get_signal_from_trend(reversal_trend)
 
             # Step 3: Cooldown Check
             self.next_step()
             if not self._step_cooldown_check(reversal_signal):
                 continue
 
+            # set latest alert info
+            self.set_final_alert_info(
+                signal=reversal_signal,
+                trend=reversal_trend,
+                alert_candle=potential_alert_candle
+            )
+            
             # Step 4: Alert Creation
             self.next_step()
             alert_data = self._step_create_alert(
                 first_candle,
-                alert_candle,
                 window_trend,
                 window_size_val,
                 max_vol_candle,
@@ -260,11 +228,19 @@ class VraExecutor(Executor):
         if window_trend is None or window_size_val is None:
             return None
         return window_trend, window_size_val
+    
+    def _step3_reversal_process(self, potential_alert_candle):
+        """
+        Handles the reversal process: uses get_reversal_trend_signal from candle_utils to get reversal_trend and reversal_signal.
+        Returns (reversal_trend, reversal_signal) if not None.
+        """
+        reversal_trend, reversal_signal = get_reversal_trend_signal(potential_alert_candle)
+        return reversal_trend, reversal_signal
 
-    def _step_cooldown_check(self, reversal_signal: Signal) -> bool:
+    def _step_cooldown_check(self, signal: Signal) -> bool:
         if is_in_cooldown(
             new_alert_time=self.current_window_end_time,
-            new_signal=reversal_signal,
+            new_signal=signal,
             latest_alert=VraExecutor.LATEST_ALERT,
             cooldown_window=self.settings.cooldown_window
         ):
@@ -294,7 +270,6 @@ class VraExecutor(Executor):
     def _step_create_alert(
         self,
         first_candle: pd.Series,
-        alert_candle: pd.Series,
         window_trend: Trend,
         window_size_val: float,
         max_vol_candle: pd.Series,
@@ -302,12 +277,15 @@ class VraExecutor(Executor):
         reversal_signal: Signal
     ) -> AlertData:
         alert_id = str(int(self.current_window_end_time.timestamp()))
+        # Use the final signal, trend, and alert_candle from the base class
+        final_signal, final_trend, final_alert_candle = self.get_final_alert_info()
         return AlertData(
             id=alert_id,
             symbol=self.symbol,
             approach=self.APPROACH_NAME,
-            signal=reversal_signal,
-            alert_price=alert_candle['close'],
+            signal=final_signal,
+            trend=final_trend,
+            alert_price=final_alert_candle['close'],
             alert_time=self.current_window_end_time,
             start_price=first_candle['open'],
             start_time=self.current_window_start_time,

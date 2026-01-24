@@ -331,33 +331,11 @@ APPROACH_CONFIG = {
         "DISABLE_BUY_SIGNAL": False
     },
     "VOLUME_SPIKE_CONFIRMATION": {
-        # --- Main Lookback & Cooldown ---
         "LOOKBACK_WINDOW": 10,
-        "COOLDOWN_PERIOD": 3,
-        "MAX_FORWARD_WINDOW_SIZE": 5,
-
-        # --- Climax Event (Max Volume Candle) Conditions ---
-        "PREVIOUS_CANDLES_VOLUME_MULTIPLIER": 3.0,
-        "AVG_VOLUME_MULTIPLIER": 3.0,
-
-        # --- Trend Confirmation Conditions (leading up to climax) ---
-        "PEAK_TROUGH_PROMINENCE": 0.5,
-
-        # --- Reversal Confirmation Conditions ---
-        "MIN_REVERSAL_BODY_SIZE": 0.3,
-
-        # --- Inherited from ReversalConfirmationSettings ---
-        "LONG_FORWARD_WINDOW": 9,
-        "SHORT_FORWARD_WINDOW": 6,
-        "GAP_PRICE": 0.5,
-        "ADJACENT_GAP_PRICE": 0.5,
-        "REVERSAL_VOLUME_MULTIPLIER": 2.5,
-        "REVERSAL_PRICE_DIFF_THRESHOLD": 3.0,
-        "REVERSAL_BODY_RATIO_THRESHOLD": 0.6,
-
-        # --- Optional Signal Disabling ---
-        "DISABLE_BUY_SIGNAL": False,
-        "DISABLE_SELL_SIGNAL": False
+        "COOLDOWN_WINDOW": 3,
+        "MIN_TREND_WINDOW_SIZE": 5.0,
+        "MIN_TREND_CANDLE_SLICES": 3,
+        "TREND_VOLUME_MULTIPLIER": 5.0
     },
 }
 

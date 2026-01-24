@@ -18,6 +18,7 @@ class AlertData:
     start_time: pd.Timestamp
     magnitude: float
     details: str  # The original, approach-specific dictionary as a JSON string
+    trend: Optional[str] = None
     profit_loss: Optional[float] = None
     period_time: Optional[int] = None
     status: Optional[str] = None

@@ -2,6 +2,8 @@
 import pandas as pd
 import logging
 import json
+import src.stockreports.utils.alert_utils as alert_utils
+
 from typing import Optional, List
 from varname import nameof
 
@@ -13,7 +15,7 @@ from src.stockreports.utils.time_utils import to_iso8601_with_tz
 from src.stockreports.utils.log_factory import log
 from .settings import VolumeSpikeConfirmationSettings
 from src.stockreports.utils.candle_utils import is_green_candle, is_red_candle, get_last_candle
-from src.stockreports.utils.candle_utils import get_signal_from_candle
+from src.stockreports.utils.candle_utils import get_reversal_trend_signal
 from src.stockreports.utils.window_utils import get_window_size_and_trend
 from src.stockreports.utils.candle_utils import find_max_volume_candle, find_min_volume_candle, validate_volume_ratio
 
@@ -65,9 +67,13 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 continue
             max_vol_candle, min_vol_candle = volume_validation_result
 
-            # Step 3: Cooldown check
+
+            # Step 3: Reversal process
+            reversal_trend, reversal_signal = self._step3_reversal_process(potential_alert_candle)
+
+            # Step 4: Cooldown check
             self.next_step()
-            if self._is_in_cooldown(potential_alert_candle):
+            if self._is_in_cooldown(reversal_signal):
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
@@ -90,10 +96,16 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 status=ValidationStatus.PASSED
             ))
 
+            # set latest alert info
+            self.set_final_alert_info(
+                signal=reversal_signal,
+                trend=reversal_trend,
+                alert_candle=potential_alert_candle
+            )
+
             # Step 4: Alert creation
             alert_data = self._create_alert_data(
                 first_candle=first_candle,
-                alert_candle=potential_alert_candle,
                 trend_window=trend_window,
                 max_vol_candle=max_vol_candle,
                 min_vol_candle=min_vol_candle
@@ -105,9 +117,9 @@ class VolumeSpikeConfirmationExecutor(Executor):
         return alerts[::-1]
 
     def _step1_extract_and_validate_trend_window(self, window_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        self.next_validation()
         trend_window = self._extract_trend_window(window_df)
 
+        self.next_validation()
         if trend_window is None or len(trend_window) < self.settings.min_trend_candle_slices:
             log(
                 logger=self.logger,
@@ -125,6 +137,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
             return None
 
         window_size, _ = get_window_size_and_trend(trend_window)
+
+        self.next_validation()
         if window_size < self.settings.min_trend_window_size:
             log(
                 logger=self.logger,
@@ -182,9 +196,9 @@ class VolumeSpikeConfirmationExecutor(Executor):
         return window_df.loc[trend_indices]
     
     def _step2_validate_volume_spike(self, trend_window: pd.DataFrame) -> Optional[tuple[pd.Series, pd.Series]]:
-        self.next_validation()
         max_vol_candle = find_max_volume_candle(trend_window)
         min_vol_candle = find_min_volume_candle(trend_window)
+
         # New validation: min volume candle must be before max volume candle
         min_idx = trend_window.index.get_loc(min_vol_candle.name)
         max_idx = trend_window.index.get_loc(max_vol_candle.name)
@@ -204,6 +218,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
             )
             return None
         
+        self.next_validation()
         status, ratio = validate_volume_ratio(max_vol_candle, min_vol_candle, self.settings.trend_volume_multiplier)
         if not status:
             log(
@@ -230,25 +245,35 @@ class VolumeSpikeConfirmationExecutor(Executor):
         
         return max_vol_candle, min_vol_candle
 
-    def _is_in_cooldown(self, alert_candle) -> bool:
-        signal = get_signal_from_candle(alert_candle)
+    def _step3_reversal_process(self, potential_alert_candle):
+        """
+        Handles the reversal process: uses get_reversal_trend_signal from candle_utils to get reversal_trend and reversal_signal.
+        Returns (reversal_trend, reversal_signal) if not None.
+        """
+        reversal_trend, reversal_signal = get_reversal_trend_signal(potential_alert_candle)
+        return reversal_trend, reversal_signal
+    
+    def _is_in_cooldown(self, signal: Signal) -> bool:
         return not self._step_cooldown_check(
             signal=signal,
             cooldown_window=self.settings.cooldown_period
         )
 
-    def _create_alert_data(self, first_candle, alert_candle, trend_window, max_vol_candle, min_vol_candle) -> AlertData:
+    def _create_alert_data(self, first_candle, trend_window, max_vol_candle, min_vol_candle) -> AlertData:
         alert_id = str(int(self.current_window_end_time.timestamp()))
+        # Use the final signal, trend, and alert_candle from the base class
+        final_signal, final_trend, final_alert_candle = self.get_final_alert_info()
         return AlertData(
             id=alert_id,
             symbol=self.symbol,
             approach=self.APPROACH_NAME,
-            signal=Signal.BUY if alert_candle['close'] > alert_candle['open'] else Signal.SELL,
-            alert_price=alert_candle['close'],
+            signal=final_signal,
+            trend=final_trend,
+            alert_price=final_alert_candle['close'] if final_alert_candle is not None else None,
             alert_time=self.current_window_end_time,
             start_price=first_candle['open'],
             start_time=self.current_window_start_time,
-            magnitude=abs(alert_candle['close'] - first_candle['open']),
+            magnitude=abs(final_alert_candle['close'] - first_candle['open']) if final_alert_candle is not None else None,
             details=json.dumps({
                 "trend_window_size": len(trend_window),
                 "max_volume": max_vol_candle['volume'],

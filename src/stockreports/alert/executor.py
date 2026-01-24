@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Tuple
 import pandas as pd
 import logging
 from src.stockreports.utils.log_factory import log
@@ -67,10 +67,11 @@ class Executor(ABC):
             self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
             return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame(), status="FAILED", message=str(e))
 
-    def _step_cooldown_check(self, reversal_signal: Signal, cooldown_window) -> bool:
+    def _step_cooldown_check(self, signal: Signal, cooldown_window) -> bool:
+        self.next_validation()
         if is_in_cooldown(
             new_alert_time=self.current_window_end_time,
-            new_signal=reversal_signal,
+            new_signal=signal,
             latest_alert=self.LATEST_ALERT,
             cooldown_window=cooldown_window
         ):
@@ -97,19 +98,29 @@ class Executor(ABC):
         ))
         return True
     
-    def set_final_alert_info(self, signal, trend, alert_candle):
+    def set_final_alert_info(
+        self,
+        signal: Signal,
+        trend: Trend,
+        alert_candle: Optional[pd.Series]
+    ) -> None:
         """
         Set the final signal, trend, and alert candle for this executor instance.
+
+        Args:
+            signal (Signal): The final signal (BUY, SELL, or NEUTRAL).
+            trend (Trend): The final trend (UPTREND, DOWNTREND, or NEUTRAL).
+            alert_candle (Optional[pd.Series]): The final alert candle as a pandas Series, or None.
         """
         self.final_signal = signal
         self.final_trend = trend
         self.final_alert_candle = alert_candle
 
-    def get_final_alert_info(self):
+    def get_final_alert_info(self) -> Tuple[Signal, Trend, Optional[pd.Series]]:
         """
         Get the final signal, trend, and alert candle for this executor instance.
         Returns:
-            tuple: (final_signal, final_trend, final_alert_candle)
+            Tuple[Signal, Trend, Optional[pd.Series]]: (final_signal, final_trend, final_alert_candle)
         """
         return self.final_signal, self.final_trend, self.final_alert_candle
     
@@ -157,7 +168,7 @@ class Executor(ABC):
         return True
 
     @abstractmethod
-    def run(self, df: pd.DataFrame, new_candle_count: int) -> AlertResult:
+    def _find_alerts(self, df: pd.DataFrame, new_candle_count: int) -> AlertResult:
         pass
 
     def is_in_cooldown(
@@ -218,10 +229,17 @@ class Executor(ABC):
         scan_index: int,
         df_indexed: pd.DataFrame,
         lookback_window_size: int
-    ) -> tuple[pd.DataFrame, Optional[pd.Series], Optional[pd.Series], Optional[pd.Timestamp], Optional[pd.Timestamp], int]:
+    ) -> Tuple[
+        Optional[pd.DataFrame],
+        Optional[pd.Series],
+        Optional[pd.Series],
+        Optional[pd.Timestamp],
+        Optional[pd.Timestamp],
+        int
+    ]:
         """
         Utility to extract lookback window and boundary candles for a given scan index.
-        Returns (lookback_window_df, first_candle, last_candle, current_window_start_time, current_step).
+        Returns (lookback_window_df, first_candle, last_candle, current_window_start_time, current_window_end_time, current_step).
         """
         if df_indexed is None or df_indexed.empty:
             return None, None, None, None, None, 0
@@ -231,7 +249,6 @@ class Executor(ABC):
         current_window_start_time = lookback_window_df.iloc[0]['time']
         current_window_end_time = lookback_window_df.iloc[-1]['time']
         current_step = 0
-        
         first_candle = candle_utils.get_first_candle(lookback_window_df)
         last_candle = candle_utils.get_last_candle(lookback_window_df)
         return lookback_window_df, first_candle, last_candle, current_window_start_time, current_window_end_time, current_step
