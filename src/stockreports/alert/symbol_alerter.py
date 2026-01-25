@@ -114,7 +114,7 @@ class SymbolAlerter:
             self._run_development_mode()
         elif settings.MODE == "DEPLOYMENT":
             self._run_deployment_mode()
-        self.logger.warning(f"Execution finished for symbol: {self.symbol}.")
+        self.logger.critical(f"Execution finished for symbol: {self.symbol}.")
 
     def _enrich_and_save_reports(self, result: AlertResult, processing_date: str):
         """
@@ -302,6 +302,7 @@ class SymbolAlerter:
                     # Step 1: Enrich the result with both suggested prices.
                     perf_prices = []
                     struct_prices = []
+                    suggested_profit_thresholds = []
                     for _, alert_row in result.alerts.iterrows():
                         alert_time_obj = pd.to_datetime(alert_row['alert_time'])
                         perf_price, struct_price = calculate_suggested_prices(
@@ -311,9 +312,11 @@ class SymbolAlerter:
                         )
                         perf_prices.append(perf_price)
                         struct_prices.append(struct_price)
-                    
+                        suggested_profit_thresholds.append(alert_row['suggested_profit_threshold'])
+
                     result.alerts['performance_suggested_price'] = perf_prices
                     result.alerts['structural_suggested_price'] = struct_prices
+                    result.alerts['suggested_profit_threshold'] = suggested_profit_thresholds
 
                     # Step 2: Send notification with the now-enriched data.
                     self.notification_manager.process_and_notify(result, self.symbol)
@@ -373,6 +376,7 @@ class SymbolAlerter:
                 # Step 1: Enrich the result with both suggested prices.
                 perf_prices = []
                 struct_prices = []
+                suggested_profit_thresholds = []
                 for _, alert_row in result.alerts.iterrows():
                     alert_time_obj = pd.to_datetime(alert_row['alert_time'])
                     perf_price, struct_price = calculate_suggested_prices(
@@ -382,9 +386,11 @@ class SymbolAlerter:
                     )
                     perf_prices.append(perf_price)
                     struct_prices.append(struct_price)
-                
+                    suggested_profit_thresholds.append(alert_row['suggested_profit_threshold'])
+
                 result.alerts['performance_suggested_price'] = perf_prices
                 result.alerts['structural_suggested_price'] = struct_prices
+                result.alerts['suggested_profit_threshold'] = suggested_profit_thresholds
 
                 # Step 2: Send notifications (fire-and-forget)
                 self.notification_manager.process_and_notify(result, self.symbol)

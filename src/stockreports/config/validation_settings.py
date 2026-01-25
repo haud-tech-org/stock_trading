@@ -37,17 +37,34 @@ VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity 
 # Example: `MAX_TIME_TO_TRIGGER_MINUTES = 5`
 MAX_TIME_TO_TRIGGER_MINUTES = 5
 
+
+########################################################################################################
 # Validation Price Threshold for Take-Profit
 # Meaning: The price difference from the entry point that triggers a "Success" (take-profit) exit.
-# Guidance: Defines the reward target for a trade.
+# Guidance: Historically, this was the static reward target for a trade. In the current logic, the take-profit threshold is set dynamically per trade, based on the alert's 'magnitude' (see individual_trade_simulator.py). This config is retained for reference/compatibility but is not directly used in validation.
 # Range: Float > 0.
-VALIDATION_PRICE_THRESHOLD_PROFIT = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0]
+# Example: VALIDATION_PRICE_THRESHOLD_PROFIT = [2.0]
+VALIDATION_PRICE_THRESHOLD_PROFIT = [2.0]  # Not directly used; see per-trade dynamic logic in simulator.
+
+# Dynamic Magnitude Profit Factor
+# Meaning: The factor to multiply with alert 'magnitude' to determine the per-trade take-profit threshold.
+# Guidance: Used in simulation to set profit threshold dynamically per alert. Allows easy tuning of profit logic.
+# Range: Float > 0 and < 1 (e.g., 0.6 means 60% of magnitude)
+# Example: VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.6 means use max(magnitude * 0.6, 2.0)
+VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.65
+
+# Validation Minimum Profit Threshold for Success
+# Meaning: The minimum profit (in points) required for a trade to be considered a "Success" when exited at the last candle's close (i.e., neither target is hit).
+# Guidance: If neither take-profit nor stop-loss is hit, this threshold is used to determine if the trade is a 'Success' (profit >= threshold) or 'Failed' (profit < threshold).
+# Range: Float > 0.
+# Example: VALIDATION_MIN_PROFIT_FOR_SUCCESS = 2.0 means the trade must have at least 2.0 points profit to be considered successful if it times out.
+VALIDATION_MIN_PROFIT_FOR_SUCCESS = 2.0
+
 # Validation Price Threshold for Stop-Loss
 # Meaning: The price difference from the entry point that triggers a "Failed" (stop-loss) exit.
 # Guidance: Defines the risk tolerance for a trade.
 # Range: Float > 0.
 VALIDATION_PRICE_THRESHOLD_LOSS = [2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
-
 
 # --- Data Source Configuration ---
 

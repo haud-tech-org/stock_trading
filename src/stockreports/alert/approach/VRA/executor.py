@@ -16,7 +16,7 @@ from src.stockreports.utils.log_factory import log
 from src.stockreports.utils import window_utils, candle_utils
 
 class VraExecutor(Executor):
-    APPROACH_NAME = Approach.VRA
+    #APPROACH_NAME = Approach.VRA
     LATEST_ALERT: Optional[AlertData] = None
 
     def __init__(self, symbol: str):
@@ -26,8 +26,6 @@ class VraExecutor(Executor):
         self.logger = logging.getLogger(__name__)
 
     def _find_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
-        alerts = []
-        is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
         window_size = self.settings.lookback_window      
 
         if len(df) < window_size:
@@ -41,41 +39,33 @@ class VraExecutor(Executor):
                 log_level=LogLevel.WARNING,
                 execution_symbol=self.symbol
             )
-            return alerts
+            return self.alerts
 
         df_indexed, loop_start, loop_end = self.get_loop_setup(
-            is_development_mode,
-            df,
-            new_candle_count,
-            window_size
+            df=df,
+            new_candle_count=new_candle_count,
+            lookback_window_size=window_size
         )
 
         for i in range(loop_end, loop_start - 1, -1):
-            (
-                window_df,
-                first_candle,
-                potential_alert_candle,
-                self.current_window_start_time,
-                self.current_window_end_time,
-                self.current_step
-            ) = self.get_window_context(
+            self.get_window_context(
                 i,
                 df_indexed,
                 window_size
             )
-            if window_df is None or first_candle is None or potential_alert_candle is None:
+            if self.lookback_window_df is None:
                 continue
 
             # Step 1: Volume Validation
             self.next_step()
-            vol_result = self._step_volume_validation(window_df, potential_alert_candle)
+            vol_result = self._step_volume_validation(self.lookback_window_df, self.last_candle)
             if vol_result is None:
                 continue
             max_vol_candle, min_vol_candle = vol_result
 
             # Step 2: Trend & Magnitude Validation
             self.next_step()
-            trend_result = self._step_trend_and_magnitude_validation(window_df, min_vol_candle, max_vol_candle)
+            trend_result = self._step_trend_and_magnitude_validation(self.lookback_window_df, min_vol_candle, max_vol_candle)
             if trend_result is None:
                 continue
             window_trend, window_size_val = trend_result
@@ -85,32 +75,46 @@ class VraExecutor(Executor):
 
             # Step 3: Cooldown Check
             self.next_step()
-            if not self._step_cooldown_check(reversal_signal):
+            if not self._step_is_cooldown_check(reversal_signal):
                 continue
-
-            # set latest alert info
-            self.set_final_alert_info(
-                signal=reversal_signal,
-                trend=reversal_trend,
-                alert_candle=potential_alert_candle
-            )
             
             # Step 4: Alert Creation
             self.next_step()
-            alert_data = self._step_create_alert(
-                first_candle,
-                window_trend,
-                window_size_val,
-                max_vol_candle,
-                min_vol_candle,
-                reversal_signal
+            details_alert_dict = self._add_details_for_alert(
+                window_trend=window_trend,
+                max_vol_candle=max_vol_candle,
+                min_vol_candle=min_vol_candle
             )
-            alerts.append(alert_data)
+
+            # finalize alert info
+            alert_data = self._create_alert_with_details(
+                final_signal=reversal_signal,
+                final_trend=reversal_trend,
+                final_alert_candle=self.last_candle,
+                final_magnitude=window_size_val,
+                details=details_alert_dict
+            )
+            self.alerts.append(alert_data)
             VraExecutor.LATEST_ALERT = alert_data
+            if not self.is_development_mode:
+                return self.alerts
 
-        return alerts
+        return self.alerts[::-1]
+    
+    def _finalize_alert(self,
+        signal: Signal,
+        trend: Trend,
+        alert_candle: Optional[pd.Series],
+        magnitude: Optional[float] = None,
+        details: Optional[dict] = None
+    ) -> AlertData:
+        return self._create_alert_with_details(final_signal=signal,
+            final_trend=trend,
+            final_alert_candle=alert_candle,
+            final_magnitude=magnitude,
+            details=details)
 
-    def _step_volume_validation(self, window_df, alert_candle) -> Optional[tuple[pd.Series, pd.Series]]:
+    def _step_volume_validation(self, window_df: pd.DataFrame, alert_candle: pd.Series) -> Optional[tuple[pd.Series, pd.Series]]:
         # Step 1: Find the max volume candle in the window
         self.next_validation()
         max_vol_candle = candle_utils.find_max_volume_candle(window_df)
@@ -237,66 +241,25 @@ class VraExecutor(Executor):
         reversal_trend, reversal_signal = get_reversal_trend_signal(potential_alert_candle)
         return reversal_trend, reversal_signal
 
-    def _step_cooldown_check(self, signal: Signal) -> bool:
-        if is_in_cooldown(
-            new_alert_time=self.current_window_end_time,
-            new_signal=signal,
-            latest_alert=VraExecutor.LATEST_ALERT,
+    def _step_is_cooldown_check(self, signal: Signal) -> bool:
+        return not self._step_cooldown_check(
+            last_alert = VraExecutor.LATEST_ALERT,
+            signal=signal,
             cooldown_window=self.settings.cooldown_window
-        ):
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message="Alert is in cooldown period.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
-            )
-            return False
-        self.validations.append(Validation(
-            name=nameof(self.settings.cooldown_window),
-            step=self.current_step,
-            validation=self.validation_step,
-            message="Alert is not in cooldown period.",
-            status=ValidationStatus.PASSED
-        ))
-        return True
+        )
 
-    def _step_create_alert(
+    def _add_details_for_alert(
         self,
-        first_candle: pd.Series,
         window_trend: Trend,
-        window_size_val: float,
         max_vol_candle: pd.Series,
         min_vol_candle: pd.Series,
-        reversal_signal: Signal
-    ) -> AlertData:
-        alert_id = str(int(self.current_window_end_time.timestamp()))
-        # Use the final signal, trend, and alert_candle from the base class
-        final_signal, final_trend, final_alert_candle = self.get_final_alert_info()
-        return AlertData(
-            id=alert_id,
-            symbol=self.symbol,
-            approach=self.APPROACH_NAME,
-            signal=final_signal,
-            trend=final_trend,
-            alert_price=final_alert_candle['close'],
-            alert_time=self.current_window_end_time,
-            start_price=first_candle['open'],
-            start_time=self.current_window_start_time,
-            magnitude=abs(window_size_val),
-            details=json.dumps({
-                "trend": window_trend,
-                "max_volume_candle_time": str(max_vol_candle['time']),
-                "min_volume_candle_time": str(min_vol_candle['time']),
-                "validations": [v.to_json() for v in self.validations]
-            })
-        )
+    ) -> dict:
+        details = {
+            "trend": window_trend,
+            "max_volume_candle_time": str(max_vol_candle['time']),
+            "min_volume_candle_time": str(min_vol_candle['time'])
+        }
+        return details
 
     def _validate_trend_and_magnitude(self, trend_window) -> Optional[tuple[Trend, float]]:
         """
@@ -317,7 +280,7 @@ class VraExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Trend magnitude did not meet threshold. Value: {window_size_val:.2f}",
+                message=f"Trend magnitude did not meet threshold. Value: {window_size_val:.2f}, Required: {self.settings.min_trend_magnitude}",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -352,7 +315,7 @@ class VraExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message="In uptrend, L is not before H.",
+                    message=f"In uptrend, L is not before H. L_pos: {L_pos}, H_pos: {H_pos}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
@@ -368,7 +331,7 @@ class VraExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message=f"In uptrend, L is too far from start: {L_pos} > {trend_window_edge_size}",
+                    message=f"In uptrend, L is too far from start: {L_pos} - {first_pos} = {L_pos - first_pos} > {trend_window_edge_size}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
@@ -391,7 +354,7 @@ class VraExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message=f"In uptrend, H is too far from end: {last_pos - H_pos} > {trend_window_edge_size}",
+                    message=f"In uptrend, H is too far from end: {last_pos} - {H_pos} = {last_pos - H_pos} > {trend_window_edge_size}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
@@ -415,7 +378,7 @@ class VraExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message="In downtrend, H is not before L.",
+                    message=f"In downtrend, H is not before L. H_pos: {H_pos}, L_pos: {L_pos}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
@@ -431,7 +394,7 @@ class VraExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message=f"In downtrend, H is too far from start: {H_pos} > {trend_window_edge_size}",
+                    message=f"In downtrend, H is too far from start: {H_pos} - {first_pos} = {H_pos - first_pos} > {trend_window_edge_size}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
@@ -454,7 +417,7 @@ class VraExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message=f"In downtrend, L is too far from end: {last_pos - L_pos} > {trend_window_edge_size}",
+                    message=f"In downtrend, L is too far from end: {last_pos} - {L_pos} = {last_pos - L_pos} > {trend_window_edge_size}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,

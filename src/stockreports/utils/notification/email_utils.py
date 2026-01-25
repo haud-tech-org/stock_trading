@@ -28,7 +28,12 @@ def format_email_subject(notification: AlertNotification) -> str:
     except Exception:
         alert_price = str(notification.alert_price)
 
-    return f"{notification.signal} - {notification.symbol} - Suggest: {suggested} - at signal price {alert_price} ({notification.approach})"
+    
+
+    profit_thresh = ""
+    if notification.suggested_profit_threshold is not None:
+            profit_thresh = f" | Profit Threshold: {notification.suggested_profit_threshold:.2f}"
+    return f"{notification.signal} - {notification.symbol} - Suggest: {suggested} - {profit_thresh} - at signal price {alert_price} ({notification.approach})"
 
 
 def format_email_body(notification: AlertNotification) -> str:
@@ -49,6 +54,8 @@ def format_email_body(notification: AlertNotification) -> str:
     body += f"Signal:     {notification.signal}\nPrice:      {alert_price}\n"
     if suggested_price is not None:
         body += f"Suggested:  {suggested_price}\n"
+    if notification.suggested_profit_threshold is not None:
+        body += f"Profit Threshold: {notification.suggested_profit_threshold:.2f}\n"
 
     # Handle alert_time safely (could be pd.Timestamp, datetime, or already a string)
     alert_time_str = "N/A"

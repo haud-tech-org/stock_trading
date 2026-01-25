@@ -11,5 +11,5 @@ class VolumeSpikeConfirmationSettings(BaseSettings):
 
         # --- Trend Confirmation Window ---
         self.min_trend_window_size = self.get("MIN_TREND_WINDOW_SIZE")  # int: Minimum window size for trend confirmation
-        self.min_trend_candle_slices = self.get("MIN_TREND_CANDLE_SLICES")  # int: Minimum number of same-color candles
+        self.min_trend_candle_slice = self.get("MIN_TREND_CANDLE_SLICE")  # int: Minimum number of same-color candles
         self.trend_volume_multiplier = self.get("TREND_VOLUME_MULTIPLIER")  # float: Volume multiplier for trend window

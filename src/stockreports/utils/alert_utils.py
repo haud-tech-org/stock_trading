@@ -3,6 +3,8 @@ import logging
 import pandas as pd
 from typing import Optional, Tuple
 
+from src.stockreports.config.validation_settings import VALIDATION_MIN_PROFIT_FOR_SUCCESS, VALIDATION_MAGNITUDE_PROFIT_FACTOR
+
 from src.stockreports.alert.common.constants import Trend, Signal
 # Import the settings to access the performance data
 from src.stockreports.config import price_alert_settings, settings
@@ -38,6 +40,19 @@ def get_reversal_signal(signal: Signal) -> Signal:
         return Signal.BUY
     else:
         return Signal.NEUTRAL
+
+def get_suggested_take_profit(magnitude: float) -> float:
+    """
+    Returns the suggested take-profit (success) threshold for the given alert.
+    Logic:
+        - If alert_data.magnitude is set, use max(magnitude * VALIDATION_MAGNITUDE_PROFIT_FACTOR, VALIDATION_MIN_PROFIT_FOR_SUCCESS)
+        - Otherwise, use VALIDATION_MIN_PROFIT_FOR_SUCCESS
+    Args:
+        alert_data (AlertData): The alert data object (can be updated by logic if needed)
+    Returns:
+        float: The suggested take-profit threshold for this alert
+    """
+    return max(magnitude * VALIDATION_MAGNITUDE_PROFIT_FACTOR, VALIDATION_MIN_PROFIT_FOR_SUCCESS)
 
 def _apply_price_offset(base_price: float, adjustment: float, signal: str, min_offset: float, max_offset: float) -> float:
     """

@@ -52,6 +52,8 @@ class NotificationManager:
         # Use the new utility function to get the single, correct price for the notification.
         suggested_price = get_primary_suggested_price(latest_alert_row)
 
+        suggested_profit_threshold = latest_alert_row['suggested_profit_threshold'] if 'suggested_profit_threshold' in latest_alert_row else None
+
         # Ensure alert_time is a datetime object before creating the notification
         alert_time_obj = pd.to_datetime(latest_alert_row['alert_time'])
 
@@ -62,7 +64,8 @@ class NotificationManager:
             alert_time=alert_time_obj,
             approach=latest_alert_row['approach'],
             details=details_dict,
-            suggested_price=suggested_price
+            suggested_price=suggested_price,
+            suggested_profit_threshold=suggested_profit_threshold
         )
         
         self._send_alert(notification)

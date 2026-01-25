@@ -14,7 +14,10 @@ except ImportError:
 
 def format_sms_body(notification: AlertNotification) -> str:
     """Formats the body for an SMS alert."""
-    return f"{notification.signal} - {notification.symbol} - Suggest: {notification.suggested_price:.2f} - at signal price {notification.alert_price:.2f} ({notification.approach})"
+    profit_thresh = ""
+    if notification.suggested_profit_threshold is not None:
+        profit_thresh = f" | Profit Threshold: {notification.suggested_profit_threshold:.2f}"
+    return f"{notification.signal} - {notification.symbol} - Suggest: {notification.suggested_price:.2f}{profit_thresh} - at signal price {notification.alert_price:.2f} ({notification.approach})"
 
 
 def send_sms(message_body: str):

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 import pandas as pd
+import json
 import logging
 from src.stockreports.utils.log_factory import log
 from varname import nameof
@@ -10,10 +11,11 @@ from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceCol
 from src.stockreports.alert.common.data_utils import find_extreme_point
 from src.stockreports.alert.common.base_settings import BaseSettings
 from src.stockreports.utils import candle_utils
-from src.stockreports.alert.common.constants import ValidationStatus  # Add this import
-from src.stockreports.utils.alert_utils import is_in_cooldown
+from src.stockreports.alert.common.constants import ValidationStatus, Mode  # Add this import
+from src.stockreports.utils.alert_utils import is_in_cooldown, calculate_suggested_prices, get_suggested_take_profit
 
 class Executor(ABC):
+
     def __init__(self, symbol: str, approach: str, settings: Optional[BaseSettings] = None):
         self.symbol = symbol
         self.APPROACH_NAME = approach
@@ -22,15 +24,16 @@ class Executor(ABC):
         self.logger = logging.getLogger(self.__class__.__name__)
 
         # Initialize context variables
-        self.final_signal = Signal.NEUTRAL
-        self.final_trend = Trend.NEUTRAL
-        self.final_alert_candle = None
         self.current_window_start_time: Optional[pd.Timestamp] = None
         self.current_window_end_time: Optional[pd.Timestamp] = None
+        self.first_candle: Optional[pd.Series] = None
+        self.last_candle: Optional[pd.Series] = None
+        self.lookback_window_df: Optional[pd.DataFrame] = None
         self.current_step: int = 0
         self.validation_step: int = 0
         self.validations: list = []
-        self.LATEST_ALERT: Optional[AlertData] = None
+        self.alerts: list[AlertData] = []
+        self.is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
@@ -61,18 +64,19 @@ class Executor(ABC):
             alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
             return AlertResult(
                 approach_name=self.APPROACH_NAME,
-                alerts=alerts_df
+                alerts=alerts_df,
+                confirmed_alerts=alerts_data
             )
         except Exception as e:
             self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
             return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame(), status="FAILED", message=str(e))
 
-    def _step_cooldown_check(self, signal: Signal, cooldown_window) -> bool:
+    def _step_cooldown_check(self, last_alert: AlertData, signal: Signal, cooldown_window) -> bool:
         self.next_validation()
         if is_in_cooldown(
             new_alert_time=self.current_window_end_time,
             new_signal=signal,
-            latest_alert=self.LATEST_ALERT,
+            latest_alert=last_alert,
             cooldown_window=cooldown_window
         ):
             log(
@@ -97,33 +101,21 @@ class Executor(ABC):
             status=ValidationStatus.PASSED
         ))
         return True
-    
-    def set_final_alert_info(
-        self,
-        signal: Signal,
-        trend: Trend,
-        alert_candle: Optional[pd.Series]
-    ) -> None:
-        """
-        Set the final signal, trend, and alert candle for this executor instance.
 
-        Args:
-            signal (Signal): The final signal (BUY, SELL, or NEUTRAL).
-            trend (Trend): The final trend (UPTREND, DOWNTREND, or NEUTRAL).
-            alert_candle (Optional[pd.Series]): The final alert candle as a pandas Series, or None.
+    def update_alert_suggestions(self, alert: AlertData) -> None:
         """
-        self.final_signal = signal
-        self.final_trend = trend
-        self.final_alert_candle = alert_candle
+        Updates the given alert in-place with structural_suggested_price, performance_suggested_price, and suggested_profit_threshold.
+        """
+        performance_suggested_price, structural_suggested_price = calculate_suggested_prices(
+            alert.signal,
+            alert.alert_time,
+            alert.approach
+        )
+        suggested_profit_threshold = get_suggested_take_profit(alert.magnitude)
+        alert.structural_suggested_price = structural_suggested_price
+        alert.performance_suggested_price = performance_suggested_price
+        alert.suggested_profit_threshold = suggested_profit_threshold
 
-    def get_final_alert_info(self) -> Tuple[Signal, Trend, Optional[pd.Series]]:
-        """
-        Get the final signal, trend, and alert candle for this executor instance.
-        Returns:
-            Tuple[Signal, Trend, Optional[pd.Series]]: (final_signal, final_trend, final_alert_candle)
-        """
-        return self.final_signal, self.final_trend, self.final_alert_candle
-    
     def _confirm_breakout_price(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal, lookback_period: int, prominence: float) -> bool:
         """
         Analyzes the backward window to find a breakout price and confirms if the alert candle breaks it.
@@ -206,7 +198,6 @@ class Executor(ABC):
 
     def get_loop_setup(
         self,
-        is_development_mode: bool,
         df: pd.DataFrame,
         new_candle_count: int,
         lookback_window_size: int
@@ -218,7 +209,7 @@ class Executor(ABC):
         df_indexed = df.reset_index()
         loop_end = len(df_indexed)
         min_scan_index = lookback_window_size
-        if is_development_mode:
+        if self.is_development_mode:
             loop_start = min_scan_index
         else:
             loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
@@ -229,26 +220,47 @@ class Executor(ABC):
         scan_index: int,
         df_indexed: pd.DataFrame,
         lookback_window_size: int
-    ) -> Tuple[
-        Optional[pd.DataFrame],
-        Optional[pd.Series],
-        Optional[pd.Series],
-        Optional[pd.Timestamp],
-        Optional[pd.Timestamp],
-        int
-    ]:
+    ) -> None:
         """
         Utility to extract lookback window and boundary candles for a given scan index.
         Returns (lookback_window_df, first_candle, last_candle, current_window_start_time, current_window_end_time, current_step).
         """
         if df_indexed is None or df_indexed.empty:
-            return None, None, None, None, None, 0
-        lookback_window_df = df_indexed.iloc[scan_index - lookback_window_size : scan_index]
-        if lookback_window_df.empty:
-            return lookback_window_df, None, None, None, None, 0
-        current_window_start_time = lookback_window_df.iloc[0]['time']
-        current_window_end_time = lookback_window_df.iloc[-1]['time']
-        current_step = 0
-        first_candle = candle_utils.get_first_candle(lookback_window_df)
-        last_candle = candle_utils.get_last_candle(lookback_window_df)
-        return lookback_window_df, first_candle, last_candle, current_window_start_time, current_window_end_time, current_step
+            return None
+        self.lookback_window_df = df_indexed.iloc[scan_index - lookback_window_size : scan_index]
+        self.current_window_start_time = self.lookback_window_df.iloc[0]['time']
+        self.current_window_end_time = self.lookback_window_df.iloc[-1]['time']
+        self.current_step = 0
+        self.first_candle = candle_utils.get_first_candle(self.lookback_window_df)
+        self.last_candle = candle_utils.get_last_candle(self.lookback_window_df)
+
+    def _create_alert_with_details(
+        self,
+        final_signal: Signal,
+        final_trend: Trend,
+        details: dict,
+        final_alert_candle: Optional[pd.Series],
+        final_magnitude: Optional[float] = None
+    ) -> AlertData:
+        """
+        Common alert creation method: appends validations to details and creates AlertData.
+        """
+        # Always append validations to details
+        details = dict(details)  # Make a copy to avoid mutating caller's dict
+        details["validations"] = [v.to_json() for v in self.validations]
+        alert_id = str(int(self.current_window_end_time.timestamp()))
+        alert = AlertData(
+            id=alert_id,
+            symbol=self.symbol,
+            approach=self.APPROACH_NAME,
+            signal=final_signal,
+            trend=final_trend,
+            alert_price=final_alert_candle['close'] if final_alert_candle is not None else None,
+            alert_time=self.current_window_end_time,
+            start_price=self.first_candle['open'],
+            start_time=self.current_window_start_time,
+            magnitude=final_magnitude,
+            details=json.dumps(details)
+        )
+        self.update_alert_suggestions(alert)
+        return alert

@@ -291,9 +291,9 @@ APPROACH_CONFIG = {
     },
     # --- VRA (Volume-Reversal-Anchor) ---
     "VRA": {
-        "LOOKBACK_WINDOW": 10,
+        "LOOKBACK_WINDOW": 7,
         "VOLUME_MULTIPLIER": 5.0,
-        "MIN_TREND_MAGNITUDE": 7.0,
+        "MIN_TREND_MAGNITUDE": 6.5,
 
         # --- VRA Trend Window Edge Slice ---
         "TREND_WINDOW_EDGE_SLICE": 3,  # Number of candles from the edge for open price extremes validation in VRA
@@ -331,10 +331,10 @@ APPROACH_CONFIG = {
         "DISABLE_BUY_SIGNAL": False
     },
     "VOLUME_SPIKE_CONFIRMATION": {
-        "LOOKBACK_WINDOW": 10,
+        "LOOKBACK_WINDOW": 5,
         "COOLDOWN_WINDOW": 3,
         "MIN_TREND_WINDOW_SIZE": 5.0,
-        "MIN_TREND_CANDLE_SLICES": 3,
+        "MIN_TREND_CANDLE_SLICE": 3,
         "TREND_VOLUME_MULTIPLIER": 5.0
     },
 }
