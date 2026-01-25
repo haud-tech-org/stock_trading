@@ -35,6 +35,13 @@ class Executor(ABC):
         self.alerts: list[AlertData] = []
         self.is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
 
+    def _add_details_for_alert(self, **kwargs) -> dict:
+        """
+        Common method to build alert details dictionary dynamically from keyword arguments.
+        Subclasses can override for custom logic.
+        """
+        return kwargs
+    
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         """
         Entry point for the VOLUME_SPIKE_CONFIRMATION approach (trend window version).
@@ -215,15 +222,14 @@ class Executor(ABC):
             loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
         return df_indexed, loop_start, loop_end
     
-    def get_window_context(
+    def set_window_context(
         self,
         scan_index: int,
         df_indexed: pd.DataFrame,
         lookback_window_size: int
     ) -> None:
         """
-        Utility to extract lookback window and boundary candles for a given scan index.
-        Returns (lookback_window_df, first_candle, last_candle, current_window_start_time, current_window_end_time, current_step).
+        Sets object-level variables for the lookback window and boundary candles for a given scan index.
         """
         if df_indexed is None or df_indexed.empty:
             return None
@@ -248,6 +254,21 @@ class Executor(ABC):
         # Always append validations to details
         details = dict(details)  # Make a copy to avoid mutating caller's dict
         details["validations"] = [v.to_json() for v in self.validations]
+
+        # Recursively convert pandas Series to dicts and pandas Timestamps to ISO strings for JSON serialization
+        def make_json_safe(obj):
+            if isinstance(obj, pd.Series):
+                return {k: make_json_safe(v) for k, v in obj.to_dict().items()}
+            elif isinstance(obj, pd.Timestamp):
+                return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {k: make_json_safe(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [make_json_safe(v) for v in obj]
+            else:
+                return obj
+        details = make_json_safe(details)
+
         alert_id = str(int(self.current_window_end_time.timestamp()))
         alert = AlertData(
             id=alert_id,

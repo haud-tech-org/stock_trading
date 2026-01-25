@@ -16,7 +16,6 @@ from src.stockreports.utils.log_factory import log
 from src.stockreports.utils import window_utils, candle_utils
 
 class VraExecutor(Executor):
-    #APPROACH_NAME = Approach.VRA
     LATEST_ALERT: Optional[AlertData] = None
 
     def __init__(self, symbol: str):
@@ -48,7 +47,7 @@ class VraExecutor(Executor):
         )
 
         for i in range(loop_end, loop_start - 1, -1):
-            self.get_window_context(
+            self.set_window_context(
                 i,
                 df_indexed,
                 window_size
@@ -75,7 +74,11 @@ class VraExecutor(Executor):
 
             # Step 3: Cooldown Check
             self.next_step()
-            if not self._step_is_cooldown_check(reversal_signal):
+            if not self._step_cooldown_check(
+                last_alert=VraExecutor.LATEST_ALERT,
+                signal=reversal_signal,
+                cooldown_window=self.settings.cooldown_window
+            ):
                 continue
             
             # Step 4: Alert Creation
@@ -96,23 +99,11 @@ class VraExecutor(Executor):
             )
             self.alerts.append(alert_data)
             VraExecutor.LATEST_ALERT = alert_data
+
             if not self.is_development_mode:
                 return self.alerts
 
         return self.alerts[::-1]
-    
-    def _finalize_alert(self,
-        signal: Signal,
-        trend: Trend,
-        alert_candle: Optional[pd.Series],
-        magnitude: Optional[float] = None,
-        details: Optional[dict] = None
-    ) -> AlertData:
-        return self._create_alert_with_details(final_signal=signal,
-            final_trend=trend,
-            final_alert_candle=alert_candle,
-            final_magnitude=magnitude,
-            details=details)
 
     def _step_volume_validation(self, window_df: pd.DataFrame, alert_candle: pd.Series) -> Optional[tuple[pd.Series, pd.Series]]:
         # Step 1: Find the max volume candle in the window
@@ -241,25 +232,6 @@ class VraExecutor(Executor):
         reversal_trend, reversal_signal = get_reversal_trend_signal(potential_alert_candle)
         return reversal_trend, reversal_signal
 
-    def _step_is_cooldown_check(self, signal: Signal) -> bool:
-        return not self._step_cooldown_check(
-            last_alert = VraExecutor.LATEST_ALERT,
-            signal=signal,
-            cooldown_window=self.settings.cooldown_window
-        )
-
-    def _add_details_for_alert(
-        self,
-        window_trend: Trend,
-        max_vol_candle: pd.Series,
-        min_vol_candle: pd.Series,
-    ) -> dict:
-        details = {
-            "trend": window_trend,
-            "max_volume_candle_time": str(max_vol_candle['time']),
-            "min_volume_candle_time": str(min_vol_candle['time'])
-        }
-        return details
 
     def _validate_trend_and_magnitude(self, trend_window) -> Optional[tuple[Trend, float]]:
         """

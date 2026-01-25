@@ -40,7 +40,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
 
         for i in range(loop_end, loop_start - 1, -1):
             # --- Standardized window context extraction ---
-            self.get_window_context(i, df_indexed, window_size)
+            self.set_window_context(i, df_indexed, window_size)
             if self.lookback_window_df is None or self.first_candle is None or self.last_candle is None:
                 continue
 
@@ -63,7 +63,11 @@ class VolumeSpikeConfirmationExecutor(Executor):
 
             # Step 4: Cooldown check
             self.next_step()
-            if self._step_is_in_cooldown(reversal_signal):
+            if not self._step_cooldown_check(
+                last_alert=VolumeSpikeConfirmationExecutor.LATEST_ALERT,
+                signal=reversal_signal,
+                cooldown_window=self.settings.cooldown_period
+            ):
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
@@ -247,20 +251,6 @@ class VolumeSpikeConfirmationExecutor(Executor):
         """
         reversal_trend, reversal_signal = get_reversal_trend_signal(potential_alert_candle)
         return reversal_trend, reversal_signal
-    
-    def _step_is_in_cooldown(self, signal: Signal) -> bool:
-        return not self._step_cooldown_check(
-            last_alert = VolumeSpikeConfirmationExecutor.LATEST_ALERT,
-            signal=signal,
-            cooldown_window=self.settings.cooldown_period
-        )
 
-    def _add_details_for_alert(self, trend_window, max_vol_candle, min_vol_candle) -> dict:
-        details = {
-            "trend_window_size": len(trend_window),
-            "max_volume": max_vol_candle['volume'],
-            "min_volume": min_vol_candle['volume']
-        }
-        return details
         
 
