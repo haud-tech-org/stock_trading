@@ -52,7 +52,7 @@ def get_suggested_take_profit(magnitude: float) -> float:
     Returns:
         float: The suggested take-profit threshold for this alert
     """
-    return max(magnitude * VALIDATION_MAGNITUDE_PROFIT_FACTOR, VALIDATION_MIN_PROFIT_FOR_SUCCESS)
+    return max(abs(magnitude * VALIDATION_MAGNITUDE_PROFIT_FACTOR), VALIDATION_MIN_PROFIT_FOR_SUCCESS)
 
 def _apply_price_offset(base_price: float, adjustment: float, signal: str, min_offset: float, max_offset: float) -> float:
     """

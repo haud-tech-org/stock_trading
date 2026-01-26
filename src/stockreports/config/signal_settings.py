@@ -292,7 +292,7 @@ APPROACH_CONFIG = {
     # --- VRA (Volume-Reversal-Anchor) ---
     "VRA": {
         "LOOKBACK_WINDOW": 7,
-        "VOLUME_MULTIPLIER": 5.0,
+        "VOLUME_MULTIPLIER": 4.5,
         "MIN_TREND_MAGNITUDE": 6.5,
 
         # --- VRA Trend Window Edge Slice ---

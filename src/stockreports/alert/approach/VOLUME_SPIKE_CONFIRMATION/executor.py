@@ -90,10 +90,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 status=ValidationStatus.PASSED
             ))
 
-            # set latest alert info
-            
-
-            # Step 4: Alert creation
+            # Step 5: Alert creation
             details_for_alert_dict = self._add_details_for_alert(
                 trend_window=trend_window,
                 max_vol_candle=max_vol_candle,

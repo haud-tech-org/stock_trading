@@ -1,10 +1,14 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple
-import pandas as pd
-import json
 import logging
+import json
+import pandas as pd
+
+import numpy as np
+
 from src.stockreports.utils.log_factory import log
 from varname import nameof
+from src.stockreports.utils.conversion_data_utils import make_json_safe
 
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceColumn, LogLevel, Trend
@@ -251,22 +255,10 @@ class Executor(ABC):
         """
         Common alert creation method: appends validations to details and creates AlertData.
         """
+
         # Always append validations to details
         details = dict(details)  # Make a copy to avoid mutating caller's dict
         details["validations"] = [v.to_json() for v in self.validations]
-
-        # Recursively convert pandas Series to dicts and pandas Timestamps to ISO strings for JSON serialization
-        def make_json_safe(obj):
-            if isinstance(obj, pd.Series):
-                return {k: make_json_safe(v) for k, v in obj.to_dict().items()}
-            elif isinstance(obj, pd.Timestamp):
-                return obj.isoformat()
-            elif isinstance(obj, dict):
-                return {k: make_json_safe(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [make_json_safe(v) for v in obj]
-            else:
-                return obj
         details = make_json_safe(details)
 
         alert_id = str(int(self.current_window_end_time.timestamp()))
