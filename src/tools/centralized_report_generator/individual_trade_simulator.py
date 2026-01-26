@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR, SESSIONS
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
-from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES, VALIDATION_MIN_PROFIT_FOR_SUCCESS, VALIDATION_MAGNITUDE_PROFIT_FACTOR
+from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES, VALIDATION_MIN_PROFIT_FOR_SUCCESS
 from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
 from src.stockreports.alert.model.models import ProfitabilityReport, Trade
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, get_primary_suggested_price

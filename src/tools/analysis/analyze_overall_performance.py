@@ -13,6 +13,7 @@ sys.path.insert(0, project_root)
 
 from src.stockreports.utils.report_utils import find_overall_performance_files, get_report_directory
 from src.stockreports.alert.model.reports_models import ScenarioPerformance, ScenarioRanking, RankedMetric
+from src.stockreports.config.validation_settings import DISPLAY_PROFIT_THRESHOLD_AS_DASH
 
 
 def load_performance_data(report_files: List[str]) -> List[ScenarioPerformance]:
@@ -111,14 +112,17 @@ def generate_markdown_report(scenarios: List[ScenarioPerformance], rankings: Lis
 
     best_scenario_ranking = rankings[0]
     worst_scenario_ranking = rankings[-1]
-    
+
     # Find the corresponding ScenarioPerformance objects
     best_scenario_perf = next(s for s in scenarios if s.profit_threshold == best_scenario_ranking.profit_threshold and s.loss_threshold == best_scenario_ranking.loss_threshold)
     worst_scenario_perf = next(s for s in scenarios if s.profit_threshold == worst_scenario_ranking.profit_threshold and s.loss_threshold == worst_scenario_ranking.loss_threshold)
 
     # Get general info from the first scenario (assuming it's consistent)
     first_scenario = scenarios[0]
-    
+
+    def display_profit_threshold(val):
+        return '--' if DISPLAY_PROFIT_THRESHOLD_AS_DASH else val
+
     with open(output_path, 'w') as f:
         # --- Section 1: High-Level Summary ---
         f.write("# Performance Analysis Summary\n\n")
@@ -126,8 +130,8 @@ def generate_markdown_report(scenarios: List[ScenarioPerformance], rankings: Lis
         f.write(f"**Source Symbols:** `{', '.join(best_scenario_perf.summary.source_symbols)}`\n")
         f.write(f"**Date Range:** `{best_scenario_perf.start_date}` to `{best_scenario_perf.end_date}`\n\n")
         f.write(f"---Results---\n\n")
-        f.write(f"**Best Scenario (Profit/Loss):** `{best_scenario_ranking.profit_threshold}` / `{best_scenario_ranking.loss_threshold}`\n")
-        f.write(f"**Worst Scenario (Profit/Loss):** `{worst_scenario_ranking.profit_threshold}` / `{worst_scenario_ranking.loss_threshold}`\n\n")
+        f.write(f"**Best Scenario (Profit/Loss):** `{display_profit_threshold(best_scenario_ranking.profit_threshold)}` / `{best_scenario_ranking.loss_threshold}`\n")
+        f.write(f"**Worst Scenario (Profit/Loss):** `{display_profit_threshold(worst_scenario_ranking.profit_threshold)}` / `{worst_scenario_ranking.loss_threshold}`\n\n")
 
         # --- Section 2: Detailed Summary Table ---
         f.write("## 2. Detailed Scenario Performance\n\n")
@@ -138,7 +142,7 @@ def generate_markdown_report(scenarios: List[ScenarioPerformance], rankings: Lis
         f.write(separator)
         for s in sorted(scenarios, key=lambda x: x.summary.total_actual_profit_loss, reverse=True):
             summary = s.summary
-            row = (f"| `{s.profit_threshold}/{s.loss_threshold}` | {summary.total_trades} | {summary.successful_trades} | "
+            row = (f"| `{display_profit_threshold(s.profit_threshold)}/{s.loss_threshold}` | {summary.total_trades} | {summary.successful_trades} | "
                    f"{summary.failed_trades} | {summary.ignored_trades} | {summary.success_rate} | "
                    f"`{summary.total_actual_profit_loss:.2f}` | `{summary.total_best_profit_price:.2f}` | "
                    f"`{summary.total_worst_loss_price:.2f}` |\n")
@@ -154,7 +158,7 @@ def generate_markdown_report(scenarios: List[ScenarioPerformance], rankings: Lis
         f.write(separator)
 
         for r in sorted(rankings, key=lambda x: x.successful_trades.value, reverse=True):
-            scenario_name = f"{r.profit_threshold}/{r.loss_threshold}"
+            scenario_name = f"{display_profit_threshold(r.profit_threshold)}/{r.loss_threshold}"
             row = (f"| `{scenario_name}` | "
                    f"`{r.profit_per_trade.value:.2f}` ({r.profit_per_trade.score}) | "
                    f"`{r.total_profit.value:.2f}` ({r.total_profit.score}) | "
@@ -166,8 +170,8 @@ def generate_markdown_report(scenarios: List[ScenarioPerformance], rankings: Lis
 
         # --- Conclusion ---
         f.write("### Conclusion\n\n")
-        best_scenario_name = f"{best_scenario_ranking.profit_threshold}/{best_scenario_ranking.loss_threshold}"
-        worst_scenario_name = f"{worst_scenario_ranking.profit_threshold}/{worst_scenario_ranking.loss_threshold}"
+        best_scenario_name = f"{display_profit_threshold(best_scenario_ranking.profit_threshold)}/{best_scenario_ranking.loss_threshold}"
+        worst_scenario_name = f"{display_profit_threshold(worst_scenario_ranking.profit_threshold)}/{worst_scenario_ranking.loss_threshold}"
         f.write(f"Based on the prioritized ranking, the **best performing scenario is `{best_scenario_name}`**.\n\n")
         f.write(f"Conversely, the **worst performing scenario is `{worst_scenario_name}`**.\n")
 
