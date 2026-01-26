@@ -254,26 +254,30 @@ class Executor(ABC):
     ) -> AlertData:
         """
         Common alert creation method: appends validations to details and creates AlertData.
+        If any error occurs, logs the exception and re-raises it.
         """
+        try:
+            # Always append validations to details
+            details = dict(details)  # Make a copy to avoid mutating caller's dict
+            details["validations"] = [v.to_json() for v in self.validations]
+            details = make_json_safe(details)
 
-        # Always append validations to details
-        details = dict(details)  # Make a copy to avoid mutating caller's dict
-        details["validations"] = [v.to_json() for v in self.validations]
-        details = make_json_safe(details)
-
-        alert_id = str(int(self.current_window_end_time.timestamp()))
-        alert = AlertData(
-            id=alert_id,
-            symbol=self.symbol,
-            approach=self.APPROACH_NAME,
-            signal=final_signal,
-            trend=final_trend,
-            alert_price=final_alert_candle['close'] if final_alert_candle is not None else None,
-            alert_time=self.current_window_end_time,
-            start_price=self.first_candle['open'],
-            start_time=self.current_window_start_time,
-            magnitude=final_magnitude,
-            details=json.dumps(details)
-        )
-        self.update_alert_suggestions(alert)
-        return alert
+            alert_id = str(int(self.current_window_end_time.timestamp()))
+            alert = AlertData(
+                id=alert_id,
+                symbol=self.symbol,
+                approach=self.APPROACH_NAME,
+                signal=final_signal,
+                trend=final_trend,
+                alert_price=final_alert_candle['close'] if final_alert_candle is not None else None,
+                alert_time=self.current_window_end_time,
+                start_price=self.first_candle['open'],
+                start_time=self.current_window_start_time,
+                magnitude=final_magnitude,
+                details=json.dumps(details)
+            )
+            self.update_alert_suggestions(alert)
+            return alert
+        except Exception as e:
+            self.logger.error(f"Error in _create_alert_with_details: {e}", exc_info=True)
+            raise
