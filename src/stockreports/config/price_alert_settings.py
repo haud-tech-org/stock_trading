@@ -22,14 +22,14 @@ PRICE_ALERTS = {
 USE_PERFORMANCE_BY_APPROACH = True
 
 PERFORMANCE_BY_APPROACH = {
-    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.7826},
+    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.5},
     'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 3.9667},
     'STRONG_CANDLE': {'avg_worst_loss_price': 0.5},
     'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 0.7},
     'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 0.6},
     'RCM': {'avg_worst_loss_price': 3.7333},
     'PRICE_GAP': {'avg_worst_loss_price': 2.5},
-    'VRA': {'avg_worst_loss_price': 3.5},
+    'VRA': {'avg_worst_loss_price': 1.5},
     'COMPARISON': {'avg_worst_loss_price': 0.3}
 }
 

@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR, SESSIONS
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
-from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES
+from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES, VALIDATION_MIN_PROFIT_FOR_SUCCESS, VALIDATION_MAGNITUDE_PROFIT_FACTOR
 from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
 from src.stockreports.alert.model.models import ProfitabilityReport, Trade
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, get_primary_suggested_price
@@ -83,6 +83,14 @@ def simulate_individual_profitability(
     alerts_df = pd.DataFrame(alerts)
     
     for i, alert in alerts_df.iterrows():
+        # --- Dynamic Take-Profit Threshold Logic ---
+        # The per-trade take-profit threshold is set dynamically:
+        #   - If the alert has a 'magnitude' field, use max(magnitude * VALIDATION_MAGNITUDE_PROFIT_FACTOR, 2.0)
+        #   - Otherwise, default to 2.0
+        # This replaces the static VALIDATION_PRICE_THRESHOLD_PROFIT config for actual validation logic.
+        profit_threshold = 2.0
+        if 'magnitude' in alert and alert['magnitude'] is not None:
+            profit_threshold = max(alert['magnitude'] * VALIDATION_MAGNITUDE_PROFIT_FACTOR, profit_threshold)
         entry_signal = alert.get('signal')
         entry_time = alert.get('alert_time')
 
@@ -225,7 +233,11 @@ def simulate_individual_profitability(
         exit_price = None
         status = "Failed"  # Default to Failed, will be updated if profit target is hit
 
+        
         if entry_signal == 'BUY':
+            # --- Take-Profit/Stop-Loss Logic ---
+            # profit_target: main take-profit threshold (see VALIDATION_PRICE_THRESHOLD_PROFIT)
+            # loss_target: main stop-loss threshold
             profit_target = entry_price + profit_threshold
             loss_target = entry_price - loss_threshold
             
@@ -245,6 +257,9 @@ def simulate_individual_profitability(
                     break # Exit the loop
 
         elif entry_signal == 'SELL':
+            # --- Take-Profit/Stop-Loss Logic ---
+            # profit_target: main take-profit threshold (see VALIDATION_PRICE_THRESHOLD_PROFIT)
+            # loss_target: main stop-loss threshold
             profit_target = entry_price - profit_threshold
             loss_target = entry_price + loss_threshold
 
@@ -264,12 +279,24 @@ def simulate_individual_profitability(
                     break # Exit the loop
 
         # If no target was hit, the trade times out and exits at the last candle's close
+
         if exit_time is None:
             exit_candle = validation_window_df.iloc[-1]
             exit_price = exit_candle['close']
             exit_time = exit_candle.name
-            status = "Failed" # It remains a failed trade
-            logging.info(f"Trade timed out at {exit_time}. Exiting at close price {exit_price}.")
+
+            # --- Minimum Profit Threshold Logic ---
+            # If neither take-profit nor stop-loss is hit, use VALIDATION_MIN_PROFIT_FOR_SUCCESS to determine trade outcome.
+            if entry_signal == 'BUY':
+                actual_profit = exit_price - entry_price
+            else:
+                actual_profit = entry_price - exit_price
+            if actual_profit >= VALIDATION_MIN_PROFIT_FOR_SUCCESS:
+                status = "Success"
+                logging.info(f"Trade timed out at {exit_time}. Exiting at close price {exit_price} with profit {actual_profit} >= min {VALIDATION_MIN_PROFIT_FOR_SUCCESS}. Marked as Success.")
+            else:
+                status = "Failed"
+                logging.info(f"Trade timed out at {exit_time}. Exiting at close price {exit_price} with profit {actual_profit} < min {VALIDATION_MIN_PROFIT_FOR_SUCCESS}. Marked as Failed.")
         else:
             logging.info(f"Trade exited at {exit_time} with status '{status}' at price {exit_price}.")
         

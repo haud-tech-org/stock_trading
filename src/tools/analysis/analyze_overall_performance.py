@@ -56,7 +56,7 @@ def rank_scenarios(scenarios: List[ScenarioPerformance]) -> List[ScenarioRanking
     df['profit_per_trade_rank'] = df['profit_per_trade'].rank(ascending=False, method='min').astype(int)
     df['total_profit_rank'] = df['total_profit'].rank(ascending=False, method='min').astype(int)
     df['success_rate_rank'] = df['success_rate'].rank(ascending=False, method='min').astype(int)
-    df['total_trades_rank'] = df['total_trades'].rank(ascending=True, method='min').astype(int) # Lower is better
+    df['total_trades_rank'] = df['total_trades'].rank(ascending=False, method='min').astype(int)
     df['successful_trades_rank'] = df['successful_trades'].rank(ascending=False, method='min').astype(int)
 
     # Assign scores (1-5). A simple way is to scale ranks.
@@ -92,13 +92,13 @@ def rank_scenarios(scenarios: List[ScenarioPerformance]) -> List[ScenarioRanking
     return sorted(
         rankings,
         key=lambda r: (
-            r.profit_per_trade.score,
             r.total_profit.score,
             r.success_rate.score,
-            r.total_trades.score,
-            r.successful_trades.score
+            r.successful_trades.score,
+            r.profit_per_trade.score,
+            r.total_trades.score
         ),
-        reverse=True
+        reverse=False
     )
 
 

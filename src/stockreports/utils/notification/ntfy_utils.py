@@ -14,7 +14,10 @@ def send_ntfy_notification(notification: AlertNotification):
         logging.warning("Ntfy is enabled but no topics are configured. Skipping.")
         return
 
-    title = f"{notification.signal} - {notification.symbol} - Suggest: {notification.suggested_price:.2f} - at signal price {notification.alert_price:.2f} ({notification.approach})"
+    profit_thresh = ""
+    if notification.suggested_profit_threshold is not None:
+        profit_thresh = f" | Profit Threshold: {notification.suggested_profit_threshold:.2f}"
+    title = f"{notification.signal} - {notification.symbol} - Suggest: {notification.suggested_price:.2f}{profit_thresh} - at signal price {notification.alert_price:.2f} ({notification.approach})"
     message = f"Time: {notification.alert_time.strftime('%H:%M:%S')}"
 
     for topic in notification_settings.NTFY_TOPICS:

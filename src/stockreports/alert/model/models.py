@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional
 import pandas as pd
-from src.stockreports.alert.common.constants import ValidationStatus
+from src.stockreports.alert.common.constants import ValidationStatus, Approach, Signal, Trend
 
 @dataclass
 class AlertData:
@@ -9,16 +9,16 @@ class AlertData:
     A standardized dataclass for a single alert record.
     This ensures consistency across all approaches.
     """
-    approach: str
+    approach: Approach
     id: str
-    signal: str
+    signal: Signal
     alert_price: float
     alert_time: pd.Timestamp
     start_price: float
     start_time: pd.Timestamp
     magnitude: float
-    details: str  # The original, approach-specific dictionary as a JSON string
-    trend: Optional[str] = None
+    details: Optional[str] = None  # The original, approach-specific dictionary as a JSON string
+    trend: Optional[Trend] = None
     profit_loss: Optional[float] = None
     period_time: Optional[int] = None
     status: Optional[str] = None
@@ -26,6 +26,10 @@ class AlertData:
     time_to_best_price: Optional[int] = None  # Time in minutes to reach best price
     min_expected_profit_loss: Optional[float] = None
     symbol: Optional[str] = None
+    magnitude: Optional[float] = None
+    structural_suggested_price: Optional[float] = None
+    performance_suggested_price: Optional[float] = None
+    suggested_profit_threshold: Optional[float] = None  # Suggested profit at which to close the position
 
     def to_dict(self):
         """Converts the dataclass to a dictionary for JSON serialization, ensuring ISO 8601 for times."""
@@ -48,6 +52,7 @@ class AlertResult:
     alerts: pd.DataFrame
     status: str = "SUCCESS"
     message: str = ""
+    confirmed_alerts: Optional[List[AlertData]] = None
 
     @property
     def has_alerts(self) -> bool:
@@ -75,6 +80,7 @@ class AlertNotification:
     alert_time: pd.Timestamp
     details: dict = field(default_factory=dict)
     suggested_price: Optional[float] = None
+    suggested_profit_threshold: Optional[float] = None
 
 @dataclass
 class AlertSummary:
