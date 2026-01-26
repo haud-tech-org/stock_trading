@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from src.stockreports.utils.alert_utils import get_suggested_take_profit
 from datetime import datetime, timedelta
 import pandas as pd
 import logging
@@ -88,9 +89,17 @@ def simulate_individual_profitability(
         #   - If the alert has a 'magnitude' field, use max(magnitude * VALIDATION_MAGNITUDE_PROFIT_FACTOR, 2.0)
         #   - Otherwise, default to 2.0
         # This replaces the static VALIDATION_PRICE_THRESHOLD_PROFIT config for actual validation logic.
-        profit_threshold = 2.0
-        if 'magnitude' in alert and alert['magnitude'] is not None:
-            profit_threshold = max(alert['magnitude'] * VALIDATION_MAGNITUDE_PROFIT_FACTOR, profit_threshold)
+        # Use get_suggested_take_profit for consistent take-profit threshold logic
+
+        profit_threshold = 0
+        if 'suggested_profit_threshold' in alert and alert['suggested_profit_threshold'] is not None:
+            # If a suggested_profit_threshold is present, use it as magnitude for the function
+            profit_threshold = abs(alert['suggested_profit_threshold'])
+        elif 'magnitude' in alert and alert['magnitude'] is not None:
+            magnitude = abs(alert['magnitude'])
+            profit_threshold = get_suggested_take_profit(magnitude)
+
+        profit_threshold = max(abs(profit_threshold), VALIDATION_MIN_PROFIT_FOR_SUCCESS)
         entry_signal = alert.get('signal')
         entry_time = alert.get('alert_time')
 
