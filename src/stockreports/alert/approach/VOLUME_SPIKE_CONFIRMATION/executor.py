@@ -105,9 +105,22 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 details=details_for_alert_dict
             )
 
-            self.alerts.append(alert_data)
-            VolumeSpikeConfirmationExecutor.LATEST_ALERT = alert_data
-            if not self.is_development_mode:
+            if alert_data is not None:
+                self.alerts.append(alert_data)
+                VolumeSpikeConfirmationExecutor.LATEST_ALERT = alert_data
+            else:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    step=self.current_step,
+                    message="Alert creation returned None. Alert not appended.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+            if not self.is_development_mode and len(self.alerts) >= 1:
                 return self.alerts
             
         return self.alerts[::-1]

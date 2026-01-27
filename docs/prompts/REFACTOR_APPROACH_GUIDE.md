@@ -1,5 +1,7 @@
 # Prompt Guide: Refactoring an Existing Alert Approach
 
+> **STRICT RULE:** All refactoring must comply with [APPROACH_EXECUTOR_RULES.md](APPROACH_EXECUTOR_RULES.md). This document defines the mandatory patterns and requirements for all approach executors. Any deviation is not permitted.
+
 ## 1. Objective
 
 The goal of this task is to refactor an existing alert approach executor to align it with the latest architectural standards and best practices of the project. This ensures all executors are consistent, maintainable, reliable, and easy to debug.
@@ -19,13 +21,13 @@ The refactoring must strictly adhere to the following:
     -   All logging calls **MUST** use the `log()` factory from `src/stockreports/utils/log_factory.py`.
     -   The class **MUST** implement and use the `current_step`, `current_window_start_time`, and `current_window_end_time` attributes.
     -   The main loop **MUST** use the base class utility `get_loop_setup` to prepare the indexed DataFrame and loop boundaries, with standardized comments:
-        ```python
+```python
         # --- Standardized loop setup ---
         # Use base class utility to prepare indexed DataFrame and loop boundaries
         df_indexed, loop_start, loop_end = self.get_loop_setup(...)
-        ```
+```
     -   Each window iteration **MUST** use the base class utility `get_window_context` to extract the lookback window, boundary candles, and context variables, with standardized comments:
-        ```python
+ ```python
         # --- Standardized window context extraction ---
         # Use base class utility to extract lookback window, boundary candles, and context variables
         (
@@ -36,7 +38,7 @@ The refactoring must strictly adhere to the following:
             self.current_window_end_time,
             self.current_step
         ) = self.get_window_context(i, df_indexed, lookback_window_size)
-        ```
+```
     -   Manual extraction of loop boundaries or window context is forbidden; always use the base class utilities.
     -   These context variables **MUST** be reset at the beginning of each main loop iteration.
     -   The `current_step` **MUST** be incremented sequentially for each validation step.

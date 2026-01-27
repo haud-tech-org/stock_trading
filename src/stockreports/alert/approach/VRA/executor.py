@@ -10,7 +10,7 @@ from src.stockreports.alert.common.constants import Approach, Signal, Mode, Vali
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.model.models import Validation
 from .settings import VraSettings
-from src.stockreports.utils.alert_utils import is_in_cooldown, get_reversal_signal, get_reversal_trend
+from src.stockreports.utils.alert_utils import get_reversal_trend
 from src.stockreports.utils.candle_utils import get_reversal_trend_signal
 from src.stockreports.utils.log_factory import log
 from src.stockreports.utils import window_utils, candle_utils
@@ -97,10 +97,24 @@ class VraExecutor(Executor):
                 final_magnitude=window_size_val,
                 details=details_alert_dict
             )
-            self.alerts.append(alert_data)
-            VraExecutor.LATEST_ALERT = alert_data
 
-            if not self.is_development_mode:
+            if alert_data is not None:
+                self.alerts.append(alert_data)
+                VraExecutor.LATEST_ALERT = alert_data
+            else:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    step=self.current_step,
+                    message="Alert creation returned None. Alert not appended.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time
+                )
+
+            if not self.is_development_mode and len(self.alerts) >= 1:
                 return self.alerts
 
         return self.alerts[::-1]

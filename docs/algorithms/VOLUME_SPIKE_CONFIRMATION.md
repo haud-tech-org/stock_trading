@@ -6,18 +6,15 @@ The **Volume Spike Confirmation** strategy is a two-phase approach designed to i
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py`.
+All parameters are defined in `src/stockreports/config/signal_settings.py` under the `VOLUME_SPIKE_CONFIRMATION` section and loaded via the settings class. No magic numbers are used in the logic.
 
-| Parameter | Default | Description |
-| :--- | :--- | :--- |
-| `LOOKBACK_WINDOW` | 30 | The number of past candles to analyze to find a climax event. |
-| `COOLDOWN_PERIOD` | 10 | The minimum time (in minutes) between consecutive alerts of the same signal direction. |
-| `PREVIOUS_CANDLES_VOLUME_MULTIPLIER` | 2.0 | The climax candle's volume must be at least this many times greater than the volume of at least one of the two preceding candles. |
-| `AVG_VOLUME_MULTIPLIER` | 3.0 | The climax candle's volume must be at least this many times greater than the average volume of its lookback window. |
-| `PEAK_TROUGH_PROMINENCE` | 2.0 | The prominence value for detecting peaks/troughs to confirm the prior trend leading up to the climax candle. Set to `null` or `0.0` to disable the prominence constraint. |
-| `MIN_REVERSAL_BODY_SIZE` | 1.0 | The minimum absolute body size of the **reversal candle** found after the climax event. |
-| `DISABLE_BUY_SIGNAL` | `False` | If `True`, the strategy will not generate any BUY signals. |
-| `DISABLE_SELL_SIGNAL` | `False` | If `True`, the strategy will not generate any SELL signals. |
+| Parameter                 | Default | Description                                                                                       |
+|---------------------------|---------|---------------------------------------------------------------------------------------------------|
+| `LOOKBACK_WINDOW`         | 5       | Number of candles to analyze for trend and volume spike.                                          |
+| `COOLDOWN_WINDOW`         | 3       | Minimum time (in minutes) between consecutive alerts of the same signal.                          |
+| `MIN_TREND_WINDOW_SIZE`   | 6.5     | Minimum price change for the trend window to be considered valid.                                 |
+| `MIN_TREND_CANDLE_SLICE`  | 3       | Minimum number of consecutive same-color candles to define a trend window.                        |
+| `TREND_VOLUME_MULTIPLIER` | 4.5     | Max-volume candle must be at least this many times the min-volume candle in the trend window.     |
 
 ## Step-by-Step Logic
 
@@ -27,14 +24,10 @@ The algorithm operates in a rolling fashion, analyzing the most recent data firs
 
 The algorithm first analyzes a rolling `LOOKBACK_WINDOW` to find a valid climax event.
 
-1.  **Find Max Volume Candle**: It identifies the candle with the maximum volume within the `LOOKBACK_WINDOW`. This is our potential **climax candle**.
-2.  **Volume Validation**: The climax candle's volume must meet two criteria:
-    *   It must be at least `PREVIOUS_CANDLES_VOLUME_MULTIPLIER` times the volume of at least one of the two candles that came before it.
-    *   It must be at least `AVG_VOLUME_MULTIPLIER` times the average volume of the entire `LOOKBACK_WINDOW`.
-3.  **Downtrend Confirmation**: The algorithm confirms that the climax candle occurred at the end of a valid downtrend.
-    *   **Find Peaks**: It uses `scipy.signal.find_peaks` to identify all significant price peaks on the closing prices in the window *leading up to and including the climax candle*.
-    *   **Build Trend Sequence**: It creates an ordered sequence of prices: [first candle's close, all peak closes, climax candle's close].
-    *   **Verify Trend**: It checks if this sequence is **monotonically decreasing**, confirming a consistent downtrend.
+
+1.  **Find Max Volume Candle**: Identify the candle with the maximum volume within the `LOOKBACK_WINDOW`. This is the potential **climax candle**.
+2.  **Volume Validation**: The climax candle's volume must be at least `TREND_VOLUME_MULTIPLIER` times the minimum volume candle in the same window.
+3.  **Downtrend Confirmation**: The algorithm checks for a valid trend window by requiring at least `MIN_TREND_CANDLE_SLICE` consecutive same-color candles (all bullish or all bearish) and a minimum price change of `MIN_TREND_WINDOW_SIZE`.
 
 If a valid climax event is found, the algorithm proceeds to Phase 2. Otherwise, it moves to the next window.
 
@@ -44,10 +37,7 @@ Once a climax event is identified, the algorithm validates if the most recent ca
 
 1.  **Define Validation Window**: The validation takes place in a window that starts from the climax candle and extends to the **very end of the available dataset**.
 2.  **Validate Last Candle**: The algorithm checks **only the last candle** in this window to see if it's a valid reversal signal.
-3.  **Reversal Candle Validation**: The last candle is considered a valid **BUY reversal** if it meets all the following conditions:
-    *   It must be a **bullish candle** (`close > open`).
-    *   Its closing price must be **higher than the closing price of the immediately preceding candle**.
-    *   Its absolute body size (`close - open`) must be greater than or equal to `MIN_REVERSAL_BODY_SIZE`.
+3.  **Reversal Candle Validation**: The last candle is considered a valid **BUY reversal** if it is a **bullish candle** (`close > open`). (No check is performed for closing price relative to the previous candle, and no minimum body size threshold is enforced.)
 
 If the last candle is a valid reversal, a **BUY** alert is generated, timestamped at the time of that candle.
 
