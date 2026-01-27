@@ -6,6 +6,8 @@ This document provides a comprehensive template and a step-by-step guide for cre
 
 ## 2. Core Principles of an Approach Executor
 
+> **STRICT RULE:** All new approach implementations must comply with [APPROACH_EXECUTOR_RULES.md](APPROACH_EXECUTOR_RULES.md). This document defines the mandatory patterns and requirements for all approach executors. Any deviation is not permitted.
+
 ### 2A. Standardized Validation Tracking and Serialization
 
 All approach executors **MUST** follow these rules for validation tracking and serialization:
@@ -32,6 +34,9 @@ alert_data = AlertData(
         "validations": [v.to_json() for v in self.validations]
     })
 )
+
+5. **All structural, initialization, loop, context management, step function, alert creation, and configuration-driven logic must strictly follow the patterns and requirements defined in [APPROACH_EXECUTOR_RULES.md](APPROACH_EXECUTOR_RULES.md).**
+
 ```
 
 ### 2B. Structural inheritance class
@@ -66,7 +71,6 @@ Every approach executor (`executor.py`) **MUST** be a class that inherits from `
     -   `__init__`: Initializes the executor for a specific symbol and loads its settings.
     -   `run`: The main public entry point that receives the DataFrame.
     -   `_find_*_alerts`: A private method containing the main reverse loop and core logic.
-    -   `_create_alert`: A private helper function to standardize `AlertData` object creation.
 -   **Standardized Filtering**: Optional filters (Volume, RSI, etc.) should be applied *after* the core pattern has been identified, using common functions from `src/stockreports/alert/common/`.
 -   **Class-Level Constants**: The `APPROACH_NAME` **MUST** be defined as a class-level constant.
 -   **Standardized Logging and Context**: All executors **MUST** adhere to the "Standardized Logging and Centralized Context Management" pattern. This is a strict requirement for consistency and debugging.

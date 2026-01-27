@@ -13,7 +13,6 @@ The behavior of the VRA executor is controlled by the following parameters, conf
 | `LOOKBACK_WINDOW`     | 10            | The number of candles to include in the analysis window.                                                                                                                 |
 | `MIN_TREND_MAGNITUDE` | 7.0           | The minimum price change required for a trend to be considered significant. This is validated against both the full window and a refined window starting from a peak/trough. |
 | `VOLUME_MULTIPLIER`   | 4.0           | The volume of the highest-volume candle must be at least this many times greater than the volume of the lowest-volume candle within the lookback window.                  |
-| `MIN_ALERT_BODY_SIZE` | 1.1           | The minimum body size required for the final alert candle to be considered a valid reversal signal.                                                                      |
 | `COOLDOWN_WINDOW`     | "120min"      | A time duration (e.g., "120min") after an alert is generated during which no new alert for the same symbol and signal can be issued.                                      |
 
 ## 3. Step-by-Step Logic
@@ -33,11 +32,7 @@ The VRA executor analyzes data in a reverse loop, starting from the most recent 
     *   If either volume validation fails, the window is discarded.
 
 3.  **Step 3: Reversal Confirmation**
-    *   A "confirmation window" is defined, starting from the max-volume candle to the end of the lookback window. The last candle of this sub-window is the potential `alert_candle`.
-    *   **Validation A (Biggest Body)**: The `alert_candle` must have the largest body size among all candles in the confirmation window.
-    *   **Validation B (Sufficient Body Size)**: The body size of the `alert_candle` must be greater than `MIN_ALERT_BODY_SIZE`.
-    *   **Validation C (Consistent Color)**: The color of the `alert_candle` must be consistent with the initial trend (e.g., a green candle for an uptrend).
-    *   If any of these confirmations fail, the window is discarded.
+    *   The alert candle is the last candle in the analysis window. No additional checks for biggest body, minimum body size, or color consistency are performed in the current implementation.
 
 4.  **Step 4: Final Checks & Alert Generation**
     *   If all previous steps pass, a `reversal_signal` is defined as the opposite of the `original_signal`.

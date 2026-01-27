@@ -39,6 +39,10 @@ docs/_build/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Debug output and chart data
+tests/debug/charts/
+tests/debug/data/
+
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 

@@ -82,10 +82,24 @@ python3 -m src.tools.centralized_report_generator.centralized_report_generator \
 python3 -m src.tools.centralized_report_generator.centralized_report_generator \
     --execution-symbol VN30F1M \
     --alert-sources VN30 VN30F1M \
-    --from-date 2026-01-05 \
-    --to-date 2026-01-15 \
+    --from-date 2026-01-26 \
+    --to-date 2026-01-26 \
     --mode deployment \
     --update-price-alert-settings
+```
+
+## Prompts
+
+### Update approach's documentation
+
+```txt
+Please review the documentation and code for the [APPROACH_NAME] approach. Double-check that every validation and parameter described in the documentation matches the actual implementation in the codebase. If there are any mismatches, update the documentation to accurately reflect the code, ensuring all steps, parameters, and logic are consistent and correct.
+```
+
+### Summary of changes in Staged
+
+```txt
+git diff in staged and provide a short description of changes for a new commit. It must be formatted as markdown.
 ```
 
 
