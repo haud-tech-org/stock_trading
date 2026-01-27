@@ -38,7 +38,7 @@ if project_root not in sys.path:
 from src.stockreports.config import loader
 from src.stockreports.utils.data_utils import load_live_data
 from src.stockreports.alert.common.constants import Approach
-from tests.debug.common.charts.visibility_chart import VisibilityChartGenerator
+from tests.debug.common.charts.visibility_chart import generate_alert_chart
 from tests.debug.common.utils.debug_utils import save_debug_data
 
 # Setup basic logging
@@ -67,7 +67,8 @@ def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file, gener
     start_time = pd.to_datetime(start_time_str).tz_localize(timezone)
     end_time = pd.to_datetime(end_time_str).tz_localize(timezone)
 
-    print(f"\\n--- Fetching data for {symbol} from {start_time} to {end_time} ---")
+    print(f"\n--- Fetching data for {symbol} from {start_time} to {end_time} ---")
+    json_file_path = None
     try:
         from_timestamp = int(start_time.timestamp())
         to_timestamp = int(end_time.timestamp())
@@ -80,49 +81,47 @@ def run_debug_analysis(symbol, start_time_str, end_time_str, save_to_file, gener
         print("Data successfully fetched.")
 
         if save_to_file:
-            save_debug_data(df_for_analysis, symbol, start_time, end_time, project_root)
+            json_file_path = save_debug_data(df_for_analysis, symbol, start_time, end_time, project_root)
 
     except Exception as e:
         print(f"ERROR: An error occurred during data fetching: {e}")
         return
 
     # --- 3. Run the Executor ---
-    print(f"\\n--- Running {approach_name} Executor ---")
+    print(f"\n--- Running {approach_name} Executor ---")
     try:
         executor = VraExecutor(symbol)
         # In development mode, the executor should process the entire DataFrame
         alert_result = executor.run(df_for_analysis, new_candle_count=len(df_for_analysis))
-        
         alerts_df = alert_result.alerts
         if not alerts_df.empty:
-            print(f"\\n--- Found {len(alerts_df)} {approach_name} Alerts ---")
+            print(f"\n--- Found {len(alerts_df)} {approach_name} Alerts ---")
             print(alerts_df.to_string())
         else:
-            print(f"\\n--- No {approach_name} Alerts Found ---")
-
+            print(f"\n--- No {approach_name} Alerts Found ---")
     except Exception as e:
         print(f"ERROR: An error occurred during {approach_name} execution: {e}")
         logging.error("Executor failed", exc_info=True)
         return
 
-    # --- 4. Generate Chart (Optional) ---
-    if generate_chart and not alerts_df.empty:
-        print("\\n--- Generating Chart ---")
+    # --- 4. Generate Chart (Optional, Standardized) ---
+    if generate_chart and json_file_path and not alerts_df.empty:
+        print("\n--- Generating Chart ---")
         try:
-            chart_generator = VisibilityChartGenerator(
-                df=df_for_analysis,
-                alerts_df=alerts_df,
-                symbol=symbol,
+            chart_output_dir = os.path.join(project_root, 'tests', 'debug', 'charts')
+            alert_time = alerts_df.iloc[0]['alert_time'] if not alerts_df.empty else None
+            generate_alert_chart(
+                input_file=json_file_path,
+                output_dir=chart_output_dir,
                 approach_name=approach_name,
-                start_time=start_time,
-                end_time=end_time
+                alerts_df=alerts_df,
+                alert_time=alert_time
             )
-            chart_generator.create_chart()
             print("Chart generation complete.")
         except Exception as e:
             print(f"ERROR: An error occurred during chart generation: {e}")
 
-    print(f"\\n--- Debug Analysis for {approach_name} on {symbol} Finished ---")
+    print(f"\n--- Debug Analysis for {approach_name} on {symbol} Finished ---")
 
 
 if __name__ == "__main__":
