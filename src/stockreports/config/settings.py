@@ -138,6 +138,7 @@ ALERT_APPROACHES = [
     "VOLUME_SPIKE_CONFIRMATION",
     #"PRICE_GAP",
     "VRA",
+    "TREND_REVERSAL",
     #"MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 
