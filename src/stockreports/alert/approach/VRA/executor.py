@@ -64,7 +64,7 @@ class VraExecutor(Executor):
 
             # Step 2: Trend & Magnitude Validation
             self.next_step()
-            trend_result = self._step_trend_and_magnitude_validation(self.lookback_window_df, min_vol_candle, max_vol_candle)
+            trend_result = self._step_trend_and_magnitude_validation(self.lookback_window_df, min_vol_candle, self.last_candle)
             if trend_result is None:
                 continue
             window_trend, window_size_val = trend_result
@@ -123,7 +123,7 @@ class VraExecutor(Executor):
         # Step 1: Find the max volume candle in the window
         self.next_validation()
         max_vol_candle = candle_utils.find_max_volume_candle(window_df)
-        # Ensure the alert candle is the max volume candle
+        """ # Ensure the alert candle is the max volume candle
         if alert_candle.name != max_vol_candle.name:
             log(
                 logger=self.logger,
@@ -138,13 +138,13 @@ class VraExecutor(Executor):
                 start_time=self.current_window_start_time,
                 end_time=self.current_window_end_time
             )
-            return None
+            return None """
 
         # Step 2: Find the min volume candle and check volume ratio
         self.next_validation()
         min_vol_candle = candle_utils.find_min_volume_candle(window_df)
-        is_volume_ratio_valid, volume_ratio = candle_utils.validate_volume_ratio(max_vol_candle, min_vol_candle, self.settings.volume_multiplier)
-        # Ensure the volume ratio between max and min meets the threshold
+        is_volume_ratio_valid, volume_ratio = candle_utils.validate_volume_ratio(alert_candle, min_vol_candle, self.settings.volume_multiplier)
+        # Ensure the volume ratio between alert and min meets the threshold
         if not is_volume_ratio_valid:
             log(
                 logger=self.logger,
@@ -190,9 +190,9 @@ class VraExecutor(Executor):
         # All validations passed; return the max and min volume candles
         return max_vol_candle, min_vol_candle
 
-    def _step_trend_and_magnitude_validation(self, window_df, min_vol_candle: pd.Series, max_vol_candle: pd.Series) -> Optional[tuple[Trend, float]]:
-        # Ensure min_vol_candle occurs before max_vol_candle
-        if min_vol_candle.name >= max_vol_candle.name:
+    def _step_trend_and_magnitude_validation(self, window_df, min_vol_candle: pd.Series, alert_candle: pd.Series) -> Optional[tuple[Trend, float]]:
+        # Ensure min_vol_candle occurs before alert_candle
+        if min_vol_candle.name >= alert_candle.name:
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -208,10 +208,10 @@ class VraExecutor(Executor):
             )
             return None
 
-        # Slice window_df from min_vol_candle to max_vol_candle (inclusive)
+        # Slice window_df from min_vol_candle to alert_candle (inclusive)
         try:
             start_idx = window_df.index.get_loc(min_vol_candle.name)
-            end_idx = window_df.index.get_loc(max_vol_candle.name)
+            end_idx = window_df.index.get_loc(alert_candle.name)
             if start_idx > end_idx:
                 # Defensive: should not happen due to check above
                 return None
@@ -226,6 +226,23 @@ class VraExecutor(Executor):
                 validation=self.validation_step,
                 message=f"Error slicing window_df for trend validation: {e}",
                 log_level=LogLevel.ERROR,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
+            return None
+
+        # Additional validation: trend_window must have at least 3 candles
+        if len(trend_window) < 3:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"trend_window too short: only {len(trend_window)} candles (minimum required: 3)",
+                log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
                 end_time=self.current_window_end_time
