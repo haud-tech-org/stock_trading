@@ -35,3 +35,15 @@ def make_json_safe(obj):
         return obj
     except Exception:
         return str(obj)
+    
+def default_serializer(obj):
+    """
+    JSON serializer for objects not serializable by default json code.
+    Handles datetime, pandas Timestamp, and falls back to str.
+    """
+    try:
+        if hasattr(obj, 'strftime'):
+            return obj.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        pass
+    return str(obj)

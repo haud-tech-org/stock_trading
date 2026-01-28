@@ -143,8 +143,6 @@ class TrendReversalExecutor(Executor):
             if not self.is_development_mode and len(self.alerts) >= 1:
                 return self.alerts
 
-            
-
         return self.alerts
 
     def _step_find_h_candle(self) -> Optional[pd.Series]:

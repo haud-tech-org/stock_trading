@@ -183,6 +183,17 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
 
     new_alerts_df = result.alerts.copy()
 
+    # Ensure 'details' is a dict, not a string, for each alert
+    if 'details' in new_alerts_df.columns:
+        def parse_details(val):
+            if isinstance(val, str):
+                try:
+                    return json.loads(val)
+                except Exception:
+                    return val
+            return val
+        new_alerts_df['details'] = new_alerts_df['details'].apply(parse_details)
+
     # In deployment mode, read existing alerts and append new ones
     if settings.MODE.lower() == 'deployment' and os.path.exists(filepath):
         try:

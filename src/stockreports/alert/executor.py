@@ -244,6 +244,9 @@ class Executor(ABC):
         self.first_candle = candle_utils.get_first_candle(self.lookback_window_df)
         self.last_candle = candle_utils.get_last_candle(self.lookback_window_df)
 
+        # Reset validations for each alert search iteration to avoid duplication
+        self.validations = []
+
     def _create_alert_with_details(
         self,
         final_signal: Signal,
