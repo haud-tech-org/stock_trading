@@ -59,6 +59,17 @@ py \
     --to_date 2026-01-08
 ```
 
+## Generic Alert Debugging
+### Command
+```sh
+python3 tests/debug/alert/approach/debug_executor.py \
+  --approach TREND_REVERSAL \
+  --symbol VN30F1M \
+  --start-time "2026-01-19 09:00:00" \
+  --end-time "2026-01-19 09:30:00" \
+  --save-to-file --generate-chart
+```
+
 ## Centralized report generator
 ### Command for all tasks
 ```sh
@@ -82,7 +93,7 @@ python3 -m src.tools.centralized_report_generator.centralized_report_generator \
 python3 -m src.tools.centralized_report_generator.centralized_report_generator \
     --execution-symbol VN30F1M \
     --alert-sources VN30 VN30F1M \
-    --from-date 2026-01-26 \
+    --from-date 2026-01-15 \
     --to-date 2026-01-26 \
     --mode deployment \
     --update-price-alert-settings

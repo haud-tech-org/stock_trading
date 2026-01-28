@@ -1,6 +1,8 @@
 # src/stockreports/utils/email_utils.py
 import smtplib
 import logging
+import json
+from src.stockreports.utils.conversion_data_utils import default_serializer
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
@@ -70,14 +72,14 @@ def format_email_body(notification: AlertNotification) -> str:
 
     body += f"Time:       {alert_time_str}\nApproach:   {notification.approach}\n"
     if notification.details:
-        body += "\n--- Details ---\n"
-        for key, value in notification.details.items():
-            try:
-                if hasattr(value, 'strftime'):
-                    value = value.strftime('%Y-%m-%d %H:%M:%S')
-            except Exception:
-                pass
-            body += f"{key.replace('_', ' ').title()}: {value}\n"
+        body += "\n--- Details (JSON) ---\n"
+        try:
+            details_json = json.dumps(notification.details, indent=2, ensure_ascii=False, default=default_serializer)
+            logging.debug(f"[EMAIL DEBUG] Alert details JSON for {notification.symbol}:\n{details_json}")
+            body += details_json + "\n"
+        except Exception as e:
+            logging.debug(f"[EMAIL DEBUG] Could not format details as JSON for {notification.symbol}: {e}\nDetails: {notification.details}")
+            body += f"[Could not format details as JSON: {e}]\n{str(notification.details)}\n"
     return body
 
 
