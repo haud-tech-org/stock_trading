@@ -1,5 +1,34 @@
 # Prompt Guide: Generating a New Trading Approach (Class-Based Executors)
 
+## 0. Prompt for new Approach Code Generatiion
+Here’s a standardized prompt you can use to request robust, precise, and constraint-driven code generation for a new approach:
+
+---
+> I want to add a new alert approach to the codebase (e.g., `src/stockreports/alert/approach/NEW_APPROACH`).  
+> Please generate all necessary code, configuration, and documentation for this new approach, strictly following:
+>
+> - The rules and requirements in APPROACH_EXECUTOR_RULES.md
+> - The stepwise guidance in NEW_APPROACH_GENERATION_GUIDE.md
+> - Any relevant patterns and lessons from TECHNICAL_CASE_STUDIES.md
+> - The structure and best practices from reference approaches (e.g., VRA, VOLUME_SPIKE_CONFIRMATION)
+>
+> **Constraints:**
+> - Enforce all validation, logging, and output formatting rules as described in the prompts.
+> - Use centralized settings and configuration patterns.
+> - Ensure the debug script is standardized and compatible with the generic debug executor.
+> - Keep code and documentation in sync.
+> - Provide a summary of all steps, rationale, and any edge cases handled.
+>
+> **Deliverables:**
+> - All code files for the new approach (executor, settings, etc.)
+> - Any required updates to configuration or documentation
+> - Example usage and test/debug instructions
+> - A checklist showing how each prompt/rule/case study requirement was satisfied
+
+---
+
+You can copy, modify, and reuse this template for any future new approach requests to ensure strict, robust, and prompt-driven code generation.
+
 ## 1. Objective
 
 This document provides a comprehensive template and a step-by-step guide for creating a new trading approach by inheriting from the base `Executor` class. By following this pattern, developers can ensure that new strategies are consistent, maintainable, and integrate seamlessly with the existing alert generation, configuration, and analysis systems.
