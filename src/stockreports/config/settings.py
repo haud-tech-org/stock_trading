@@ -135,9 +135,9 @@ ALERT_APPROACHES = [
     #"CONSOLIDATION_BREAKOUT",
     #"COMPARISON",
     #"PROMINENT_PEAK_REVERSAL",
-    "VOLUME_SPIKE_CONFIRMATION",
+    #"VOLUME_SPIKE_CONFIRMATION",
     #"PRICE_GAP",
-    "VRA",
+    #"VRA",
     "TREND_REVERSAL",
     #"MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
@@ -195,4 +195,4 @@ CONSOLIDATED_PROFITABILITY = {
 # Guidance: This is useful for testing how the system would have behaved in the past. Set this to a time within the `DEV_DATA_DATE_RANGE`.
 # Format: "YYYY-MM-DD HH:MM:SS"
 # Example: `DEBUG_REPLAY_START_TIME = "2026-01-08 09:05:00"`
-DEBUG_REPLAY_START_TIME = None
+DEBUG_REPLAY_START_TIME = "2026-01-19 14:05:00"
