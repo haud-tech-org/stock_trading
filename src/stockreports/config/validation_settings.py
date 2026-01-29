@@ -27,7 +27,7 @@ VALIDATION_PRICE_DROP_THRESHOLD = 3.0
 # Guidance: This sets the time horizon for your trade's success. A shorter window (e.g., 15) tests for immediate performance, while a longer window (e.g., 60) allows more time for the price to move.
 # Range: Integer > 0.
 # Example: `VALIDATION_TIME_WINDOW_MINUTES = 15`
-VALIDATION_TIME_WINDOW_MINUTES = 10
+VALIDATION_TIME_WINDOW_MINUTES = 15
 VALIDATION_PERIOD_MINUTES = VALIDATION_TIME_WINDOW_MINUTES  # Alias for clarity in validation scripts
 
 # Maximum Time to Trigger in Minutes
@@ -58,7 +58,7 @@ VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.65
 # Guidance: If neither take-profit nor stop-loss is hit, this threshold is used to determine if the trade is a 'Success' (profit >= threshold) or 'Failed' (profit < threshold).
 # Range: Float > 0.
 # Example: VALIDATION_MIN_PROFIT_FOR_SUCCESS = 2.0 means the trade must have at least 2.0 points profit to be considered successful if it times out.
-VALIDATION_MIN_PROFIT_FOR_SUCCESS = 2.0
+VALIDATION_MIN_PROFIT_FOR_SUCCESS = 0.5
 
 # Flag: set to True to display '--' for profit_threshold in reports, False to use actual value
 DISPLAY_PROFIT_THRESHOLD_AS_DASH = True

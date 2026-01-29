@@ -353,5 +353,14 @@ APPROACH_CONFIG = {
         "MAX_WINDOW_SIZE_THRESHOLD": 3.0,
         "MIN_WINDOW_SIZE_THRESHOLD": 0.5,
     },
+
+    # --- SESSION EXTREME VOLUME REVERSAL ---
+    "SESSION_EXTREME_VOLUME_REVERSAL": {
+        # Minimum multiplier for alert candle volume vs. average session volume
+        "MIN_VOLUME_MULTIPLIER": 3.5,
+        "MAGNITUDE_THRESHOLD": 3.0,
+        "LOOKBACK_WINDOW": 10,
+        "COOLDOWN_WINDOW": 3
+    },
 }
 

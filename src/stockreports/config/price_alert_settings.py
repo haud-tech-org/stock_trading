@@ -32,7 +32,8 @@ PERFORMANCE_BY_APPROACH = {
     'VRA': {'avg_worst_loss_price': 1.5},
     'COMPARISON': {'avg_worst_loss_price': 0.3},
     'TREND_REVERSAL': {'avg_worst_loss_price': 1.5},
-    'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8}
+    'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8},
+    'SESSION_EXTREME_VOLUME_REVERSAL': {'avg_worst_loss_price': 1.5}
 }
 
 # A fixed offset added to all suggested price calculations to provide an extra buffer.
