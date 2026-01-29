@@ -358,7 +358,7 @@ APPROACH_CONFIG = {
     "SESSION_EXTREME_VOLUME_REVERSAL": {
         # Minimum multiplier for alert candle volume vs. average session volume
         "MIN_VOLUME_MULTIPLIER": 3.5,
-        "MAGNITUDE_THRESHOLD": 3.0,
+        "MAGNITUDE_THRESHOLD": 6.5,
         "LOOKBACK_WINDOW": 10,
         "COOLDOWN_WINDOW": 3
     },
