@@ -22,18 +22,18 @@ PRICE_ALERTS = {
 USE_PERFORMANCE_BY_APPROACH = True
 
 PERFORMANCE_BY_APPROACH = {
-    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.5},
-    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 3.9667},
-    'STRONG_CANDLE': {'avg_worst_loss_price': 0.5},
-    'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 0.7},
-    'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 0.6},
-    'RCM': {'avg_worst_loss_price': 3.7333},
-    'PRICE_GAP': {'avg_worst_loss_price': 2.5},
-    'VRA': {'avg_worst_loss_price': 1.5},
-    'COMPARISON': {'avg_worst_loss_price': 0.3},
-    'TREND_REVERSAL': {'avg_worst_loss_price': 1.5},
-    'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8},
-    'SESSION_EXTREME_VOLUME_REVERSAL': {'avg_worst_loss_price': 1.5}
+    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 0.5},
+    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 0.0},
+    'STRONG_CANDLE': {'avg_worst_loss_price': 0.0},
+    'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 0.0},
+    'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 0.0},
+    'RCM': {'avg_worst_loss_price': 0.0},
+    'PRICE_GAP': {'avg_worst_loss_price': 0.0},
+    'VRA': {'avg_worst_loss_price': 0.5},
+    'COMPARISON': {'avg_worst_loss_price': 0.0},
+    'TREND_REVERSAL': {'avg_worst_loss_price': 0.5},
+    'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.5},
+    'SESSION_EXTREME_VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8}
 }
 
 # A fixed offset added to all suggested price calculations to provide an extra buffer.
