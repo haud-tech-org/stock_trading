@@ -280,6 +280,20 @@ class Executor(ABC):
                 details=json.dumps(details)
             )
             self.update_alert_suggestions(alert)
+
+            log(
+                logger=self.logger,
+                status=ValidationStatus.PASSED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message="Alert created and appended (alert is not None)",
+                log_level=LogLevel.WARNING,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time
+            )
             return alert
         except Exception as e:
             self.logger.error(f"Error in _create_alert_with_details: {e}", exc_info=True)

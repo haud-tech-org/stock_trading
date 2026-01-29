@@ -25,6 +25,44 @@ Here’s a standardized prompt you can use to request robust, precise, and const
 > - Example usage and test/debug instructions
 > - A checklist showing how each prompt/rule/case study requirement was satisfied
 
+**Codebase Patterns and Rules for New Approaches:**
+
+When implementing and documenting a new approach, you must strictly follow these structural, style, and architectural patterns:
+
+1. **Stepwise Modularization:**
+    - Each major validation must be implemented as a separate private method (e.g., `_step_volume_validation`).
+    - The main executor loop must call these step functions in order, using `self.next_step()` and `self.next_validation()` to track progress.
+
+2. **Centralized Settings and Configuration:**
+    - All approach parameters must be defined in a dedicated `settings.py` and registered in the centralized config files (e.g., `signal_settings.py`).
+    - No hardcoded default values in the executor; all values must come from config/settings.
+
+3. **Logging and Validation Objects:**
+    - Every validation step must log failures and passes using the `log_factory.log` utility and append a `Validation` object to the executor's `self.validations` list.
+    - Log messages must include context: step, validation, time, and symbol.
+
+4. **Alert Creation and Details:**
+    - Use the base class helpers (`_add_details_for_alert`, `_create_alert_with_details`) for alert creation and details population.
+    - Alert details must include all relevant validation results and context.
+
+5. **Consistent Naming, Typing, and Documentation:**
+    - Use clear, descriptive variable and function names, and type hints for all function signatures.
+    - All new functions and classes must have docstrings.
+
+6. **Documentation Sync:**
+    - The documentation (`docs/algorithms/[APPROACH_NAME].md`) must be kept in sync with the actual code logic and validation steps.
+
+**Rules That Must Be Strictly Followed:**
+
+- No default values in executor logic; all must come from config/settings.
+- Each validation is a separate function, tracked with step/validation counters.
+- All approach parameters are centralized in config/settings.
+- Every validation failure is logged with full context.
+- Alert creation must use base class helpers.
+- Documentation must match code logic exactly.
+
+**If any of these patterns or rules are not followed, the implementation is considered non-compliant.**
+
 ---
 
 You can copy, modify, and reuse this template for any future new approach requests to ensure strict, robust, and prompt-driven code generation.
