@@ -30,7 +30,9 @@ PERFORMANCE_BY_APPROACH = {
     'RCM': {'avg_worst_loss_price': 3.7333},
     'PRICE_GAP': {'avg_worst_loss_price': 2.5},
     'VRA': {'avg_worst_loss_price': 1.5},
-    'COMPARISON': {'avg_worst_loss_price': 0.3}
+    'COMPARISON': {'avg_worst_loss_price': 0.3},
+    'TREND_REVERSAL': {'avg_worst_loss_price': 1.5},
+    'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8}
 }
 
 # A fixed offset added to all suggested price calculations to provide an extra buffer.
