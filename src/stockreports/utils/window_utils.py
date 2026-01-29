@@ -186,3 +186,34 @@ def get_window_size_and_trend(window_data: pd.DataFrame) -> Tuple[float, Optiona
         trend = Trend.DOWNTREND
         
     return size, trend
+
+def get_window_size_and_trend_by_close_extremes(window_data: pd.DataFrame) -> Tuple[float, Optional[Trend]]:
+    """
+    Calculates the absolute size and trend of a window using the min and max close price in the window.
+
+    The size is determined by the difference between the max and min close price in the window.
+    The trend is UPTREND if the max close comes after the min close, DOWNTREND if the min close comes after the max close.
+
+    Args:
+        window_data: The DataFrame containing the candle data.
+
+    Returns:
+        A tuple containing the calculated size (float) and the trend (Trend object or None).
+        Returns (0, None) if the window has fewer than two candles or if min/max cannot be determined.
+    """
+    if window_data is None or len(window_data) < 2:
+        return 0, None
+
+    min_close_idx = window_data['close'].idxmin()
+    max_close_idx = window_data['close'].idxmax()
+    min_close = window_data.loc[min_close_idx]
+    max_close = window_data.loc[max_close_idx]
+    size = max_close['close'] - min_close['close']
+
+    trend = None
+    if max_close.name > min_close.name:
+        trend = Trend.UPTREND
+    elif min_close.name > max_close.name:
+        trend = Trend.DOWNTREND
+
+    return size, trend
