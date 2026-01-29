@@ -1,11 +1,11 @@
 name: Stop Web App (trading hours)
 
 on:
-  schedule:
-    # Morning stop: 04:45 UTC (11:45 VN) Mon-Fri
-    - cron: '45 4 * * MON-FRI'
-    # Afternoon stop: 08:00 UTC (15:00 VN) Mon-Fri
-    - cron: '0 8 * * MON-FRI'
+  # schedule:
+  #   # Morning stop: 04:45 UTC (11:45 VN) Mon-Fri
+  #   - cron: '45 4 * * MON-FRI'
+  #   # Afternoon stop: 08:00 UTC (15:00 VN) Mon-Fri
+  #   - cron: '0 8 * * MON-FRI'
   workflow_dispatch: {}
 
 jobs:
