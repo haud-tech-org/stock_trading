@@ -10,7 +10,7 @@ Configuration settings for all alert notification channels (Email, ntfy, etc.).
 # Guidance: Set to `False` to quickly turn off all emails without removing your credentials.
 # Range: `True` or `False`.
 # Example: `EMAIL_ENABLED = True`
-EMAIL_ENABLED = False
+EMAIL_ENABLED = True
 
 # Email SMTP Server / Port
 # Meaning: The server and port for your email provider's SMTP service.
@@ -29,7 +29,7 @@ EMAIL_BCC_RECEIVERS = ["haud.tech@gmail.com"]
 # Meaning: A friendly name for the sender that appears in the email client (e.g., "VN30 Alerter").
 # Guidance: You can set this to something like "My Stock Alerts (No-Reply)" to discourage replies.
 # Example: `EMAIL_SENDER_DISPLAY_NAME = "Stock Alerter (No-Reply)"`
-EMAIL_SENDER_DISPLAY_NAME = "[Dev] Stock Alerter Services (No-Reply)"
+EMAIL_SENDER_DISPLAY_NAME = "[GCP] Stock Alerter Services (No-Reply)"
 
 # Email App Password
 # Meaning: An "App Password" generated from your email account (e.g., Google Account settings). This is NOT your regular login password.
