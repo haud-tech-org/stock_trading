@@ -31,7 +31,7 @@ def health():
 
 if __name__ == "__main__":
     # For local testing only: bind to PORT env var if set
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 8080))
     # Start background manager also for local runs
     t = Thread(target=start_manager_background, daemon=True)
     t.start()
