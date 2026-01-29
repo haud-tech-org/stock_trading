@@ -40,28 +40,40 @@ class SessionExtremeVolumeReversalExecutor(Executor):
                 name=self.__class__.__name__,
                 alert_time="N/A",
                 step=0,
-                message=f"Not enough data for {self.APPROACH_NAME}: requires {window_volume_size}, have {len(df)}.",
-                log_level=LogLevel.WARNING,
-                execution_symbol=self.symbol
+                message=f"Not enough data for {self.APPROACH_NAME}: requires {window_size_max_price}, have {len(df)}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
             return self.alerts
         
         # Pre-calculate the lookback window from 09:30:00 to current
         session_start_idx = df[df['time'].dt.time >= pd.to_datetime('09:30:00').time()].index.min()
         if pd.isna(session_start_idx):
-            log_factory.log(
-                self.logger,
-                f"No session start found for 09:30:00",
-                0, 0, ValidationStatus.FAILED, self.symbol
+            log(
+                logger=self.logger,
+                name=self.__class__.__name__,
+                message=f"No session start found for 09:30:00",
+                step=0,
+                validation=0,
+                status=ValidationStatus.FAILED,
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
             return self.alerts
         lookback_volume_df = df.loc[session_start_idx:]
         window_volume_size = len(lookback_volume_df)
         if window_volume_size < 1:
-            log_factory.log(
-                self.logger,
-                f"Session window is empty after 09:30:00.",
-                0, 0, ValidationStatus.FAILED, self.symbol
+            log(
+                logger=self.logger,
+                message=f"Session window is empty after 09:30:00.",
+                step=0,
+                validation=0,
+                status=ValidationStatus.FAILED,
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
             return self.alerts
 
@@ -171,7 +183,8 @@ class SessionExtremeVolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
 
@@ -187,7 +200,8 @@ class SessionExtremeVolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         else:
@@ -220,7 +234,8 @@ class SessionExtremeVolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return False
         else:
@@ -257,7 +272,8 @@ class SessionExtremeVolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return False
         self.validations.append(Validation(

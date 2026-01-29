@@ -35,8 +35,9 @@ class VraExecutor(Executor):
                 alert_time="N/A",
                 step=0,
                 message=f"Not enough data for {self.APPROACH_NAME}: requires {window_size}, have {len(df)}.",
-                log_level=LogLevel.WARNING,
-                execution_symbol=self.symbol
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
             return self.alerts
 
@@ -111,7 +112,8 @@ class VraExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
 
             if not self.is_development_mode and len(self.alerts) >= 1:
@@ -157,7 +159,8 @@ class VraExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         # Log a successful volume ratio validation
@@ -183,7 +186,8 @@ class VraExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
 
@@ -204,7 +208,8 @@ class VraExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
 
@@ -228,7 +233,8 @@ class VraExecutor(Executor):
                 log_level=LogLevel.ERROR,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
 
@@ -245,7 +251,8 @@ class VraExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
 
@@ -287,17 +294,17 @@ class VraExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return (None, None)
-        else:
-            self.validations.append(Validation(
-                name=nameof(self.settings.min_trend_magnitude),
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Trend magnitude meets threshold. Value: {window_size_val:.2f}",
-                status=ValidationStatus.PASSED
-            ))
+        self.validations.append(Validation(
+            name=nameof(self.settings.min_trend_magnitude),
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Trend magnitude meets threshold. Value: {window_size_val:.2f}",
+            status=ValidationStatus.PASSED
+        ))
 
         # Validation 2: Open price extremes and their positions
         self.next_validation()
@@ -322,7 +329,8 @@ class VraExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 return (None, None)
             # No Validation object for logic-only check
@@ -338,7 +346,8 @@ class VraExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 return (None, None)
             else:
@@ -361,7 +370,8 @@ class VraExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 return (None, None)
             else:
@@ -385,7 +395,8 @@ class VraExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 return (None, None)
             # No Validation object for logic-only check
@@ -401,7 +412,8 @@ class VraExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 return (None, None)
             else:
@@ -424,7 +436,8 @@ class VraExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 return (None, None)
             else:
@@ -447,7 +460,8 @@ class VraExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return (None, None)
         

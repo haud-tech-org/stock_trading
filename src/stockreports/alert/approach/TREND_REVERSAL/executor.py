@@ -37,10 +37,11 @@ class TrendReversalExecutor(Executor):
                 step=self.current_step,
                 validation=self.validation_step,
                 message=f"Not enough data for {self.APPROACH_NAME}: requires {window_size}, have {len(df)}.",
-                log_level=LogLevel.WARNING,
+                log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return self.alerts
 
@@ -137,7 +138,8 @@ class TrendReversalExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
 
             if not self.is_development_mode and len(self.alerts) >= 1:
@@ -183,7 +185,8 @@ class TrendReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None, None, None
         else:
@@ -209,7 +212,8 @@ class TrendReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None, None, None
         else:
@@ -236,7 +240,8 @@ class TrendReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None, None, None
         else:
@@ -262,7 +267,8 @@ class TrendReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None, None, None
         else:
@@ -307,7 +313,8 @@ class TrendReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None
 
@@ -328,7 +335,8 @@ class TrendReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None
         else:
@@ -355,7 +363,8 @@ class TrendReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None
         else:
@@ -432,7 +441,8 @@ class TrendReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return False
         else:
