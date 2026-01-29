@@ -14,6 +14,7 @@ def log(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     validation: Optional[int] = None,
+    approach: Optional[str] = None,
 ):
     """
     Generates and writes a standardized log message.
@@ -21,6 +22,9 @@ def log(
     log_items = []
     if execution_symbol:
         log_items.append(f"[Symbol: {execution_symbol}]")
+
+    if approach:
+        log_items.append(f"[Approach: {approach}]")
     
     log_items.append(f"[{name}]")
     if alert_time:

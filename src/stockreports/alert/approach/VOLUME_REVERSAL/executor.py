@@ -30,8 +30,9 @@ class VolumeReversalExecutor(Executor):
                 alert_time="N/A",
                 step=0,
                 message=f"Not enough data for {self.APPROACH_NAME}: requires {window_size}, have {len(df)}.",
-                log_level=LogLevel.WARNING,
-                execution_symbol=self.symbol
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
             return self.alerts
 
@@ -116,7 +117,8 @@ class VolumeReversalExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
 
             if not self.is_development_mode and len(self.alerts) >= 1:
@@ -141,7 +143,8 @@ class VolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         # Use min volume in trend_window_df for comparison
@@ -160,7 +163,8 @@ class VolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         self.validations.append(Validation(
@@ -192,7 +196,8 @@ class VolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         self.validations.append(Validation(
@@ -228,7 +233,8 @@ class VolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         self.validations.append(Validation(
@@ -258,7 +264,8 @@ class VolumeReversalExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         self.validations.append(Validation(
@@ -292,7 +299,8 @@ class VolumeReversalExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 return False
         elif trend == Trend.DOWNTREND:
@@ -309,7 +317,8 @@ class VolumeReversalExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 return False
         # Passed validation

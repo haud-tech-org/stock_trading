@@ -79,7 +79,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
                 continue
             self.validations.append(Validation(
@@ -118,7 +119,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
             if not self.is_development_mode and len(self.alerts) >= 1:
                 return self.alerts
@@ -141,7 +143,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None
 
@@ -160,7 +163,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None, None
         self.validations.append(Validation(
@@ -223,7 +227,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         
@@ -241,7 +246,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
         self.validations.append(Validation(

@@ -59,7 +59,8 @@ class Executor(ABC):
                 step=0,
                 message=f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...",
                 log_level=LogLevel.INFO,
-                execution_symbol=self.symbol
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
             alerts_data = self._find_alerts(df, new_candle_count)
             log(
@@ -70,7 +71,8 @@ class Executor(ABC):
                 step=0,
                 message=f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts_data)} alerts.",
                 log_level=LogLevel.INFO,
-                execution_symbol=self.symbol
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
             alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
             return AlertResult(
@@ -101,7 +103,8 @@ class Executor(ABC):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return False
         self.validations.append(Validation(
@@ -292,7 +295,8 @@ class Executor(ABC):
                 log_level=LogLevel.WARNING,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return alert
         except Exception as e:
