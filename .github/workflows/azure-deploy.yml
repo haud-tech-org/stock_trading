@@ -1,69 +1,74 @@
+###########################
+#
+# BLOCK COMMENTED: Azure build and deploy workflow is currently disabled.
+#
 # Deploy to Azure Web App using AZURE_CREDENTIALS (service principal)
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-    inputs:
-      build_wheels:
-        description: 'Build wheels locally and include them in release.zip (true/false)'
-        required: false
-        default: 'false'
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    env:
-      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-      AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      PYTHON_VERSION: '3.11'
-      # This is the folder where dependencies will be installed and packaged
-      DEPENDENCY_PATH: 'antenv'
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Login to Azure using service principal
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Install dependencies into local folder
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt --target="${{ env.DEPENDENCY_PATH }}"
-
-      - name: (optional) Build wheelhouse
-        if: ${{ github.event.inputs.build_wheels == 'true' }}
-        run: |
-          pip wheel -r requirements.txt -w wheelhouse --target="${{ env.DEPENDENCY_PATH }}"
-          ls -lah wheelhouse || true
-
-      - name: Package artifact (zip)
-        run: |
-          # Create a zip artifact for deployment
-          zip -r release.zip . -x ".git/*" ".github/*" "tests/*" ".pytest_cache/*"
-
-      - name: Set build-on-server to false
-        run: |
-          az webapp config appsettings set --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --name "${{ env.AZURE_WEBAPP_NAME }}" --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
-
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: release.zip
-
-      - name: Test /health endpoint (best-effort)
-        if: success()
-        run: |
-          HOST=$(az webapp show --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --name "${{ env.AZURE_WEBAPP_NAME }}" --query defaultHostName -o tsv)
-          echo "Host: $HOST"
-          curl -I --max-time 15 "https://${HOST}/health" || echo "Health check failed or is not available."
+# on:
+#   push:
+#     branches:
+#       - main
+#   workflow_dispatch:
+#     inputs:
+#       build_wheels:
+#         description: 'Build wheels locally and include them in release.zip (true/false)'
+#         required: false
+#         default: 'false'
+#
+# jobs:
+#   build-and-deploy:
+#     runs-on: ubuntu-latest
+#     env:
+#       AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+#       AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+#       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+#       PYTHON_VERSION: '3.11'
+#       # This is the folder where dependencies will be installed and packaged
+#       DEPENDENCY_PATH: 'antenv'
+#
+#     steps:
+#       - name: Checkout repo
+#         uses: actions/checkout@v4
+#
+#       - name: Set up Python ${{ env.PYTHON_VERSION }}
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: ${{ env.PYTHON_VERSION }}
+#
+#       - name: Login to Azure using service principal
+#         uses: azure/login@v1
+#         with:
+#           creds: ${{ secrets.AZURE_CREDENTIALS }}
+#
+#       - name: Install dependencies into local folder
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install -r requirements.txt --target="${{ env.DEPENDENCY_PATH }}"
+#
+#       - name: (optional) Build wheelhouse
+#         if: ${{ github.event.inputs.build_wheels == 'true' }}
+#         run: |
+#           pip wheel -r requirements.txt -w wheelhouse --target="${{ env.DEPENDENCY_PATH }}"
+#           ls -lah wheelhouse || true
+#
+#       - name: Package artifact (zip)
+#         run: |
+#           # Create a zip artifact for deployment
+#           zip -r release.zip . -x ".git/*" ".github/*" "tests/*" ".pytest_cache/*"
+#
+#       - name: Set build-on-server to false
+#         run: |
+#           az webapp config appsettings set --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --name "${{ env.AZURE_WEBAPP_NAME }}" --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
+#
+#       - name: Deploy to Azure Web App
+#         uses: azure/webapps-deploy@v3
+#         with:
+#           app-name: ${{ env.AZURE_WEBAPP_NAME }}
+#           package: release.zip
+#
+#       - name: Test /health endpoint (best-effort)
+#         if: success()
+#         run: |
+#           HOST=$(az webapp show --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --name "${{ env.AZURE_WEBAPP_NAME }}" --query defaultHostName -o tsv)
+#           echo "Host: $HOST"
+#           curl -I --max-time 15 "https://${HOST}/health" || echo "Health check failed or is not available."
+###########################
