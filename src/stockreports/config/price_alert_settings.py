@@ -22,18 +22,18 @@ PRICE_ALERTS = {
 USE_PERFORMANCE_BY_APPROACH = True
 
 PERFORMANCE_BY_APPROACH = {
-    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 0.5},
+    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 0.9},
     'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 0.0},
     'STRONG_CANDLE': {'avg_worst_loss_price': 0.0},
     'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 0.0},
     'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 0.0},
     'RCM': {'avg_worst_loss_price': 0.0},
     'PRICE_GAP': {'avg_worst_loss_price': 0.0},
-    'VRA': {'avg_worst_loss_price': 0.5},
+    'VRA': {'avg_worst_loss_price': 0.9},
     'COMPARISON': {'avg_worst_loss_price': 0.0},
-    'TREND_REVERSAL': {'avg_worst_loss_price': 0.5},
-    'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.5},
-    'SESSION_EXTREME_VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8}
+    'TREND_REVERSAL': {'avg_worst_loss_price': 0.9},
+    'VOLUME_REVERSAL': {'avg_worst_loss_price': 1.0},
+    'SESSION_EXTREME_VOLUME_REVERSAL': {'avg_worst_loss_price': 2.3}
 }
 
 # A fixed offset added to all suggested price calculations to provide an extra buffer.
