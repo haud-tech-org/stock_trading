@@ -23,6 +23,7 @@ from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR,
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
 from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES, VALIDATION_MIN_PROFIT_FOR_SUCCESS
+from src.stockreports.config.price_alert_settings import USE_PERFORMANCE_BY_APPROACH, PERFORMANCE_BY_APPROACH
 from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
 from src.stockreports.alert.model.models import ProfitabilityReport, Trade
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, get_primary_suggested_price
@@ -594,13 +595,19 @@ def run_individual_trade_simulation(
     try:
         with open(output_path, 'w') as f:
             summary_dict = asdict(summary)
-            
+
             # --- New: Calculate and add performance by approach ---
             performance_by_approach = calculate_performance_by_approach(summary.trades)
             summary_dict['performance_by_approach'] = performance_by_approach
             # --- End of New Section ---
 
             summary_dict['app_config'] = APPROACH_CONFIG
+            # --- Add price alert settings to the report ---
+            if USE_PERFORMANCE_BY_APPROACH:
+                summary_dict['price_alert_config'] = {
+                    "USE_PERFORMANCE_BY_APPROACH": USE_PERFORMANCE_BY_APPROACH,
+                    "PERFORMANCE_BY_APPROACH": PERFORMANCE_BY_APPROACH
+                }
             # --- Updated: Reflect the actual thresholds used in the simulation ---
             validation_config = {
                 "VALIDATION_PERIOD_MINUTES": VALIDATION_PERIOD_MINUTES,
