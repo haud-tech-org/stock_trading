@@ -19,4 +19,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set the default command to run your Flask web API
-CMD ["python", "src/stockreports/web.py"]
+CMD ["python", "-m", "src.stockreports.web"]
