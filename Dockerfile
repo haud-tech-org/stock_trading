@@ -1,5 +1,5 @@
 # Use Python 3.9 slim image to match your local environment
-FROM python:3.9-slim
+FROM python:3.9-slim-bullseye
 
 # Install system dependencies for scipy, numpy, pandas, etc.
 RUN apt-get update && apt-get install -y \
@@ -19,4 +19,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set the default command to run your Flask web API
-CMD ["python", "src/stockreports/web.py"]
+CMD ["python", "-m", "src.stockreports.web"]
