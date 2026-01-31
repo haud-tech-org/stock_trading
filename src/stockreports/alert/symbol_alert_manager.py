@@ -9,6 +9,7 @@ from datetime import timedelta
 import pytz
 import pandas as pd
 import json
+import gc
 
 # --- Project Imports ---
 from .symbol_alerter import SymbolAlerter
@@ -85,6 +86,9 @@ class SymbolAlertManager:
         try:
             alerter = SymbolAlerter(symbol=symbol)
             alerter.execute()
+            
+            # Explicitly trigger garbage collection after executing alerter for a symbol
+            gc.collect()
         except Exception as e:
             logging.critical(f"A critical error occurred in the process for symbol {symbol}: {e}", exc_info=True)
 
