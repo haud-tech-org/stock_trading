@@ -86,7 +86,7 @@ LOGS_DIR = "logs"
 # Guidance: "INFO" provides a good balance of detail. "DEBUG" is very verbose and useful for troubleshooting. "WARNING" will only show potential problems.
 # Range: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL".
 # Example: `LOG_LEVEL = "INFO"`
-LOG_LEVEL = "ERROR"
+LOG_LEVEL = "DEBUG"
 
 
 # --- Data Source & Operational Mode ---
