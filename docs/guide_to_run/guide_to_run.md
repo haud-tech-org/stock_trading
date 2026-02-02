@@ -93,10 +93,22 @@ python3 -m src.tools.centralized_report_generator.centralized_report_generator \
 python3 -m src.tools.centralized_report_generator.centralized_report_generator \
     --execution-symbol VN30F1M \
     --alert-sources VN30 VN30F1M \
-    --from-date 2026-01-15 \
-    --to-date 2026-01-26 \
+    --from-date 2026-02-02 \
+    --to-date 2026-02-02 \
     --mode deployment \
     --update-price-alert-settings
+```
+
+### Google Cloud Services
+#### Copy reports from GCS to local storage
+```sh
+gcloud storage cp -r "gs://stock_trading/reports/" "/Users/tech/dev/development/trending_and_summary"
+
+```
+
+### Re-install all dependencies for environment and python framework
+```sh
+python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
 ```
 
 ## Prompts
