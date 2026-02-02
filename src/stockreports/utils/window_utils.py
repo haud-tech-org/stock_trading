@@ -217,3 +217,56 @@ def get_window_size_and_trend_by_close_extremes(window_data: pd.DataFrame) -> Tu
         trend = Trend.DOWNTREND
 
     return size, trend
+
+def filter_data_by_time_range(
+    df: pd.DataFrame,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None
+) -> pd.DataFrame:
+    """
+    Filter DataFrame by time range.
+    
+    Args:
+        df: The DataFrame containing the candle data with 'time' column (datetime).
+        start_time: Start time as string in 'HH:MM:SS' format (default: '09:30:00').
+        end_time: End time as string in 'HH:MM:SS' format (default: last time in DataFrame).
+    
+    Returns:
+        Filtered DataFrame containing only candles within the specified time range.
+        Returns the original DataFrame if 'time' column is not available.
+    """
+    if 'time' not in df.columns:
+        return df
+    
+    # Set default start time to 09:30:00
+    if start_time is None:
+        start_time = '09:30:00'
+    
+    # Set default end time to the last time in the DataFrame
+    if end_time is None:
+        end_time = df['time'].max().strftime('%H:%M:%S') if pd.api.types.is_datetime64_any_dtype(df['time']) else str(df['time'].iloc[-1])
+    
+    # Convert start_time and end_time to time objects for comparison
+    start_time_obj = pd.Timestamp(start_time).time()
+    end_time_obj = pd.Timestamp(end_time).time()
+    
+    # Extract time component from the 'time' column and filter
+    df_time_only = df['time'].dt.time if pd.api.types.is_datetime64_any_dtype(df['time']) else df['time'].apply(lambda x: pd.Timestamp(x).time())
+    mask = (df_time_only >= start_time_obj) & (df_time_only <= end_time_obj)
+    
+    return df[mask]
+
+def get_median_volume(df: pd.DataFrame) -> float:
+    """
+    Calculate the median volume of a DataFrame.
+    
+    Args:
+        df: The DataFrame containing the candle data with 'volume' column.
+    
+    Returns:
+        The median volume value. Returns 0 if DataFrame is empty or 'volume' column is missing.
+    """
+    if df is None or len(df) == 0 or 'volume' not in df.columns:
+        return 0.0
+    
+    return df['volume'].median()

@@ -148,6 +148,7 @@ ALERT_APPROACHES = [
     "TREND_REVERSAL",
     "VOLUME_REVERSAL",
     "SESSION_EXTREME_VOLUME_REVERSAL",
+    "CONSISTENT_VOLUME_ANCHOR",
     #"MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 
