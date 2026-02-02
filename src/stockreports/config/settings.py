@@ -100,6 +100,13 @@ LOG_LEVEL = "WARNING"
 # Example: `MODE = "DEVELOPMENT"`
 MODE = "DEPLOYMENT"
 
+# GOOGLE CLOUD RUN STORAGE SETTINGS
+# Name of the Google Cloud Storage bucket for report uploads
+GCS_REPORT_BUCKET_NAME = "stock_trading"
+# Enable or disable Google Cloud Storage for report uploads
+# Set to True to upload reports to GCS, False to skip GCS upload
+ENABLE_GCS_REPORT_STORAGE = False
+
 # Data Directory
 # Meaning: The relative path from the project root to the folder containing historical data JSON files.
 # Guidance: Only change this if you restructure the project's data folders.
