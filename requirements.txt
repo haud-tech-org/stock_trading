@@ -1,3 +1,4 @@
+google-cloud-storage
 varname
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.0

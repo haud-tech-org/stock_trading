@@ -5,6 +5,7 @@ import os
 import json
 import logging
 import pandas as pd
+from google.cloud import storage
 from typing import Dict, Any, Optional
 import pytz
 import glob
@@ -14,6 +15,7 @@ from src.stockreports.config import loader
 from src.stockreports.alert.model.models import AlertResult, AlertSummary, ProfitabilityReport
 from src.stockreports.utils.time_utils import get_market_timezone_str
 from src.stockreports.utils.file_utils import save_json_report
+from src.stockreports.alert.common.constants import Mode
 
 # --- Settings & Logger ---
 settings = loader.get_settings()
@@ -235,6 +237,8 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
 
     save_json_report(alerts_to_save, filepath, logger)
 
+    # --- Upload to GCS (function will check config and mode) ---
+    upload_report_to_gcs(filepath, project_root, settings.GCS_REPORT_BUCKET_NAME)
 
 def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
     """
@@ -314,3 +318,27 @@ def find_overall_performance_files(root_dir: str) -> list[str]:
     """
     glob_pattern = os.path.join(root_dir, "**", "*_overall_performance_*.json")
     return glob.glob(glob_pattern, recursive=True)
+
+def upload_report_to_gcs(local_filepath: str, project_root: str, bucket_name: str):
+    """
+    Uploads a report file to Google Cloud Storage, preserving the directory structure under project_root.
+    Any exceptions are caught and logged as errors.
+    """
+    try:
+        # Only upload if enabled and in deployment mode
+        if not (settings.ENABLE_GCS_REPORT_STORAGE and settings.MODE.lower() == Mode.DEPLOYMENT.lower()):
+            return
+
+        # Compute the relative path for the blob
+        rel_path = os.path.relpath(local_filepath, project_root)
+        blob_path = rel_path.replace(os.sep, "/")
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        blob.upload_from_filename(local_filepath)
+        logger.info(f"Uploaded {local_filepath} to GCS bucket {bucket_name} as {blob_path}")
+    except Exception as e:
+        logger.error(f"Failed to upload {local_filepath} to GCS bucket {bucket_name}: {e}")
+
+
