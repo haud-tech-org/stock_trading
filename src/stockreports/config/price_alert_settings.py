@@ -6,13 +6,13 @@ ALLOW_REPEATED_LEVEL_ALERTS = False
 
 PRICE_ALERTS = {
     "VN30": {
-        "reference_price": 2039.79,
-        "fixed_levels": [1804.57, 1846.13, 1877.78, 1902.37, 1913.03, 1923.6, 1943.18, 1977.31, 1995.91],
+        "reference_price": 1969.3,
+        "fixed_levels": [1804.57, 1846.13, 1877.78, 1902.37, 1913.03, 1923.6, 1943.18, 1974.36, 1987.27, 1997.86, 2012.03, 2021.85, 2063.27, 2076.97, 2096.88, 2103.31],
         "absolute_interval": 9.0,
     },
     "VN30F1M": {
-        "reference_price": 2040.4,
-        "fixed_levels": [1916.65, 1930.55, 1981.27, 2003.77],
+        "reference_price": 1972.2,
+        "fixed_levels": [1852.56, 1879.48, 1897.5, 1911.6, 1928.46, 1939.87, 1983.3, 1991.07, 2005.32, 2023.62, 2040.73, 2052.2, 2098.72],
         "absolute_interval": 9.0,
     }
 }
@@ -22,16 +22,16 @@ PRICE_ALERTS = {
 USE_PERFORMANCE_BY_APPROACH = True
 
 PERFORMANCE_BY_APPROACH = {
-    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 0.9},
+    'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.5},
     'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 0.0},
     'STRONG_CANDLE': {'avg_worst_loss_price': 0.0},
     'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 0.0},
     'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 0.0},
     'RCM': {'avg_worst_loss_price': 0.0},
     'PRICE_GAP': {'avg_worst_loss_price': 0.0},
-    'VRA': {'avg_worst_loss_price': 0.9},
+    'VRA': {'avg_worst_loss_price': 1.5},
     'COMPARISON': {'avg_worst_loss_price': 0.0},
-    'TREND_REVERSAL': {'avg_worst_loss_price': 0.9},
+    'TREND_REVERSAL': {'avg_worst_loss_price': 1.5},
     'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8},
     'SESSION_EXTREME_VOLUME_REVERSAL': {'avg_worst_loss_price': 1.5},
     'CONSISTENT_VOLUME_ANCHOR': {'avg_worst_loss_price': 1.1}

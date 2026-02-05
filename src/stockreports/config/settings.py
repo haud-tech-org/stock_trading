@@ -205,4 +205,4 @@ CONSOLIDATED_PROFITABILITY = {
 # Guidance: This is useful for testing how the system would have behaved in the past. Set this to a time within the `DEV_DATA_DATE_RANGE`.
 # Format: "YYYY-MM-DD HH:MM:SS"
 # Example: `DEBUG_REPLAY_START_TIME = "2026-01-08 09:05:00"`
-DEBUG_REPLAY_START_TIME = "2026-02-03 14:24:00"
+DEBUG_REPLAY_START_TIME = None
