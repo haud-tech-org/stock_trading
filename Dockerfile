@@ -1,5 +1,5 @@
-# Use Python 3.9 slim image to match your local environment
-FROM python:3.9-slim-bullseye
+# Use Python 3.10 slim image to match your local environment
+FROM python:3.10-slim-bullseye
 
 # Install system dependencies for scipy, numpy, pandas, etc.
 RUN apt-get update && apt-get install -y \
