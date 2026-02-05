@@ -362,5 +362,28 @@ APPROACH_CONFIG = {
         "LOOKBACK_WINDOW": 10,
         "COOLDOWN_WINDOW": 3
     },
+
+    # --- CONSISTENT VOLUME ANCHOR (CVA) ---
+    "CONSISTENT_VOLUME_ANCHOR": {
+        # Lookback window to analyze volume patterns
+        "LOOKBACK_WINDOW": 10,
+        
+        # Consistent volume window: from anchor to last candle - 1
+        "MAX_CONSISTENT_VOLUME_MULTIPLIER": 1.3,  # max_vol <= 1.x * min_vol in window
+        "CONSISTENT_CANDLE_PERCENTAGE": 0.7,  # xx% of candles must satisfy volume condition
+        "MAX_CONSISTENT_WINDOW_SIZE": 1.5,  # max window size in price points
+        
+        # Consistent window body size validation
+        "MAX_CONSISTENT_BODY_SIZE_CANDLE": 0.5,  # Max body size for candles in consistent window
+        
+        # Alert candle validation (last candle)
+        "MIN_VOLUME_CONFIRMATION_MULTIPLIER": 1.5,  # alert_vol >= x.x * min_vol in consistent window
+        "MIN_BODY_SIZE_ALERT_CANDLE": 0.3,  # minimum body size (in price points)
+        
+        # Alert magnitude
+        "MIN_ALERT_MAGNITUDE": 2.5,  # Minimum window size (price range) for alert
+        
+        "COOLDOWN_WINDOW": 3
+    },
 }
 

@@ -51,7 +51,7 @@ API_HEADERS = {
 # Guidance: A shorter interval (e.g., 5-10 seconds) provides more real-time data but increases API usage. A longer interval (e.g., 60 seconds) is less resource-intensive. Do not set this lower than the data resolution (e.g., don't check every 5 seconds for 1-minute data).
 # Range: Integer > 0.
 # Example: `MONITORING_INTERVAL_SECONDS = 5`
-MONITORING_INTERVAL_SECONDS = 5
+MONITORING_INTERVAL_SECONDS = 7
 
 
 # --- General Alerting & Reporting ---
@@ -148,6 +148,7 @@ ALERT_APPROACHES = [
     "TREND_REVERSAL",
     "VOLUME_REVERSAL",
     "SESSION_EXTREME_VOLUME_REVERSAL",
+    "CONSISTENT_VOLUME_ANCHOR",
     #"MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
 
