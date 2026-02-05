@@ -219,14 +219,6 @@ class ConsistentVolumeAnchorExecutor(Executor):
             return None
 
         consistent_window = lookback_window_df.iloc[anchor_index:end_index]
-        
-        self.validations.append(Validation(
-            name="consistent_window_extracted",
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Consistent window extracted from anchor index {anchor_index} to end index {end_index}",
-            status=ValidationStatus.PASSED
-        ))
 
         return consistent_window
 
@@ -254,14 +246,6 @@ class ConsistentVolumeAnchorExecutor(Executor):
                 approach=self.APPROACH_NAME
             )
             return None
-
-        self.validations.append(Validation(
-            name="anchor_candle_found",
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Anchor candle found at index: {anchor_index}",
-            status=ValidationStatus.PASSED
-        ))
 
         return anchor_index
 
@@ -410,14 +394,6 @@ class ConsistentVolumeAnchorExecutor(Executor):
             )
             return False
 
-        self.validations.append(Validation(
-            name="alert_volume_exceeds_max",
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Alert candle volume exceeds max window volume. Alert: {alert_vol:.2f}, Max: {max_vol:.2f}",
-            status=ValidationStatus.PASSED
-        ))
-
         # Check if alert volume >= multiplier * min volume
         self.next_validation()
         threshold_vol = self.settings.min_volume_confirmation_multiplier * min_vol
@@ -551,14 +527,6 @@ class ConsistentVolumeAnchorExecutor(Executor):
                     approach=self.APPROACH_NAME
                 )
                 return False
-            
-            self.validations.append(Validation(
-                name="alert_close_price_buy_validation",
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"BUY signal: Alert close price is above window max. Alert close: {alert_close:.2f}, Window max: {max_window_price:.2f}",
-                status=ValidationStatus.PASSED
-            ))
         
         elif signal == Signal.SELL:
             # For SELL: alert close must be lower than min of opens and closes
@@ -580,14 +548,6 @@ class ConsistentVolumeAnchorExecutor(Executor):
                     approach=self.APPROACH_NAME
                 )
                 return False
-            
-            self.validations.append(Validation(
-                name="alert_close_price_sell_validation",
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"SELL signal: Alert close price is below window min. Alert close: {alert_close:.2f}, Window min: {min_window_price:.2f}",
-                status=ValidationStatus.PASSED
-            ))
 
         return True
 
