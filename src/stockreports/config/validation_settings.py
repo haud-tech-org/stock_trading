@@ -58,7 +58,7 @@ VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.65
 # Guidance: If neither take-profit nor stop-loss is hit, this threshold is used to determine if the trade is a 'Success' (profit >= threshold) or 'Failed' (profit < threshold).
 # Range: Float > 0.
 # Example: VALIDATION_MIN_PROFIT_FOR_SUCCESS = 2.0 means the trade must have at least 2.0 points profit to be considered successful if it times out.
-VALIDATION_MIN_PROFIT_FOR_SUCCESS = 0.5
+VALIDATION_MIN_PROFIT_FOR_SUCCESS = 1.5
 
 # Flag: set to True to display '--' for profit_threshold in reports, False to use actual value
 DISPLAY_PROFIT_THRESHOLD_AS_DASH = True
