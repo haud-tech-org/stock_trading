@@ -1,5 +1,6 @@
 # src/stockreports/utils/email_utils.py
 import smtplib
+import ssl
 import logging
 import json
 from src.stockreports.utils.conversion_data_utils import default_serializer
@@ -117,8 +118,12 @@ def send_email(subject: str, body: str):
     message.attach(MIMEText(body, 'plain'))
 
     try:
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
+        # Use SSL context to avoid SSL negotiation issues in container environments
+        context = ssl.create_default_context()
+        
+        # Try with explicit TLS configuration (port 587)
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=10) as server:
+            server.starttls(context=context)
             server.login(sender_email, app_password)
             server.sendmail(sender_email, all_recipients, message.as_string())
             logging.info(f"Email sent successfully to: {', '.join(receiver_emails) if receiver_emails else ''} (BCC: {', '.join(bcc_receiver_emails) if bcc_receiver_emails else ''})")
