@@ -395,3 +395,48 @@ The refactoring process also exposed and allowed for the correction of several s
 The `VraExecutor` is now significantly cleaner, more readable, and more maintainable. It serves as a prime example of how to effectively use the shared utility modules to build complex but understandable alert logic. The old, monolithic `_validate_volume_consistency` method was removed, as its responsibilities were fully absorbed by the new, clearer validation steps.
 
 ---
+
+### 7. STRONG_CANDLE Refactoring & Enum Type Consistency ✅
+**Status**: RESOLVED
+**Purpose**: Document the refactoring of the STRONG_CANDLE approach and the resolution of Enum/String type inconsistency issues.
+
+**Case Studies & Issues Resolved**:
+
+#### a. Mixed Type Returns from Utility Functions (Enum vs. String)
+- **Issue**: The `window_utils.get_window_size_and_trend_by_close_extremes()` function returns a tuple `(float, Optional[Trend])` where `Trend` is an Enum. However, in certain edge cases or due to code flow paths, the returned value could be `None` or a string representation of the trend. When the executor code attempted to call `.value` on this variable (e.g., `{window_trend.value}`), it raised `AttributeError: 'str' object has no attribute 'value'` if the variable was already a string rather than an Enum member.
+- **Root Cause**: The pattern of calling `.value` on a variable that could be either an Enum member or a plain string created a type inconsistency. This is a common antipattern when utilities return mixed types due to different code paths or error handling.
+- **Resolution**:
+    1. **Identified Problematic Usage**: Located all instances of `.value` being called on `window_trend` in the STRONG_CANDLE executor.
+    2. **Type Analysis**: Confirmed that `window_trend` could be either `Trend` (Enum), `None`, or a string depending on the utility function's return path.
+    3. **Code Correction**: Removed all `.value` suffixes from `window_trend` usage:
+        - In log messages: Changed `f"...{window_trend.value} trend"` to `f"...{window_trend} trend"` (Python's string formatting handles Enum-to-string conversion automatically).
+        - In details dictionary: Changed `window_trend.value if window_trend else "UNKNOWN"` to `window_trend if window_trend else "UNKNOWN"`.
+    4. **Validation**: Re-ran the alert executor after the fix confirmed no AttributeError occurred.
+- **Best Practice Established**:
+    - **Rule**: When a utility function can return mixed types (Enum or string), **avoid calling `.value` on the result**. Instead:
+      - Use the variable directly in f-strings (Python automatically converts Enum to string via `__str__`).
+      - Use the variable directly in conditionals and assignments (Python handles both types gracefully).
+      - **Only** use `.value` when you explicitly need the primitive string value for serialization (e.g., JSON encoding) and you are confident the variable is an Enum member.
+    - **Documentation**: Always document in utility functions whether they return Enum members or string values to avoid confusion.
+- **Status**: ✅ RESOLVED. Applied across the STRONG_CANDLE executor; recommendations documented for future development.
+
+#### b. Parameter Renaming for Clarity
+- **Issue**: During the refactoring, configuration parameters and validation steps were renamed to be more explicit about their purpose. For example, `MAX_CONDITIONAL_CANDLE_BODY_SIZE` was renamed to `MAX_OPPOSITE_COLOR_CANDLE_BODY_SIZE` to clearly indicate that the validation applies only to candles with opposite color to the alert candle, not all candles in the window.
+- **Resolution**:
+    1. **Settings Update**: Updated `StrongCandleSettings` to load `max_opposite_color_candle_body_size` instead of `max_conditional_candle_body_size`.
+    2. **Configuration Update**: Updated `signal_settings.py` to use the new parameter name.
+    3. **Executor Update**: Changed all references throughout the executor to use the new parameter and function names (e.g., `_step_validate_opposite_color_candles_bodies` instead of `_step_validate_conditional_candles_bodies`).
+    4. **Documentation Update**: Updated algorithm documentation to reflect the new names and improved descriptions.
+- **Benefit**: Code is now more self-documenting, reducing the need to cross-reference settings to understand what each validation does.
+- **Status**: ✅ RESOLVED. Applied across settings, executor, and documentation.
+
+#### c. Step Consolidation for Logical Clarity
+- **Issue**: The original STRONG_CANDLE implementation had separate steps for "window trend determination" and "window size validation," which were logically related but implemented as separate step functions, making the flow less clear.
+- **Resolution**:
+    1. **Consolidated Logic**: Merged window trend determination, window size validation, and candle color consistency checks into a single step function: `_step_validate_window_color_consistency`.
+    2. **Sub-validations**: Implemented multiple validation sub-steps within a single step to track each concern separately while keeping the logic consolidated.
+    3. **Flow Simplification**: Reduced the overall number of steps from 7 to 6, making the validation pipeline easier to follow.
+- **Benefit**: Clearer logical flow; related validations are now grouped together conceptually and in code.
+- **Status**: ✅ RESOLVED. Applied in the refactored executor.
+
+---

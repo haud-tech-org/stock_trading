@@ -52,6 +52,14 @@ This document defines the mandatory rules and patterns for implementing and refa
 - All configuration parameters must be loaded from settings classes, which in turn pull from centralized config files.
 - No magic numbers allowed in executor logic.
 
+## 9. Type Consistency & Enum Handling
+- **Rule**: When using utility functions that return Enum members, be consistent with type usage:
+  - Use Enum members for internal logic, type hints, and comparisons (e.g., `if trend == Trend.UPTREND:`).
+  - Use `.value` **only** when serializing to JSON or when a primitive string type is explicitly required.
+  - **Caution**: If a utility function can return mixed types (Enum or string) depending on code paths, **avoid calling `.value`** on the result. Instead, use the variable directly in f-strings or conditionals; Python handles both types automatically.
+- **Anti-pattern to avoid**: Calling `.value` on a variable that might already be a string (e.g., `f"{variable.value}"`) will cause `AttributeError: 'str' object has no attribute 'value'`.
+- **Best practice**: If a utility function returns mixed types, document this in its docstring. Consider refactoring the utility to always return a consistent type (preferably the Enum member with a fallback to a default Enum value rather than None or a string).
+
 ---
 
 **Reference:**
