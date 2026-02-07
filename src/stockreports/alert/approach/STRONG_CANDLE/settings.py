@@ -1,19 +1,28 @@
-from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
 from src.stockreports.alert.common.constants import Approach
-from src.stockreports.config import loader
-from stockreports.alert.common.base_settings import BaseSettings
+from src.stockreports.alert.common.base_settings import BaseSettings
 
-signal_settings = loader.get_signal_settings()
 
 class StrongCandleSettings(BaseSettings):
+    """
+    Settings for the Strong Candle approach.
+    All configuration parameters are loaded from the centralized signal_settings.py.
+    """
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.STRONG_CANDLE)
         
+        # Lookback window size
         self.lookback_window = self.get("LOOKBACK_WINDOW")
+        
+        # Alert candle body validations
         self.min_body_ratio = self.get("MIN_BODY_RATIO")
         self.min_body_size = self.get("MIN_BODY_SIZE")
-        self.max_conditional_candle_body_size = self.get("MAX_CONDITIONAL_CANDLE_BODY_SIZE")
-        self.max_difference_price_threshold = self.get("MAX_DIFFERENCE_PRICE_THRESHOLD")
-        self.trend_window_edge_slice = self.get("TREND_WINDOW_EDGE_SLICE")
+        
+        # Conditional window validations
+        self.max_opposite_color_candle_body_size = self.get("MAX_OPPOSITE_COLOR_CANDLE_BODY_SIZE")
+        self.max_window_size_threshold = self.get("MAX_DIFFERENCE_PRICE_THRESHOLD")
+        
+        # Volume validation
         self.max_volume_multiplier = self.get("MAX_VOLUME_MULTIPLIER")
+        
+        # Cooldown validation
         self.cooldown_window = self.get("COOLDOWN_WINDOW")
