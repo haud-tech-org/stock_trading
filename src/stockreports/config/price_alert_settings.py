@@ -24,7 +24,7 @@ USE_PERFORMANCE_BY_APPROACH = True
 PERFORMANCE_BY_APPROACH = {
     'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 0.9},
     'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 0.0},
-    'STRONG_CANDLE': {'avg_worst_loss_price': 0.5},
+    'STRONG_CANDLE': {'avg_worst_loss_price': 0.8},
     'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 0.0},
     'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 0.0},
     'RCM': {'avg_worst_loss_price': 0.0},

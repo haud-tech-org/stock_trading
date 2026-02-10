@@ -19,10 +19,15 @@ class StrongCandleSettings(BaseSettings):
         
         # Conditional window validations
         self.max_opposite_color_candle_body_size = self.get("MAX_OPPOSITE_COLOR_CANDLE_BODY_SIZE")
+        self.min_window_size_threshold = self.get("MIN_DIFFERENCE_PRICE_THRESHOLD")
         self.max_window_size_threshold = self.get("MAX_DIFFERENCE_PRICE_THRESHOLD")
         
         # Volume validation
         self.max_volume_multiplier = self.get("MAX_VOLUME_MULTIPLIER")
         
+        # Magnitude threshold for alert creation
+        self.magnitude_threshold = self.get("MAGNITUDE_THRESHOLD")
+        
         # Cooldown validation
         self.cooldown_window = self.get("COOLDOWN_WINDOW")
+

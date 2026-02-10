@@ -108,7 +108,7 @@ class StrongCandleExecutor(Executor):
                 final_signal=signal,
                 final_trend=window_trend,
                 final_alert_candle=self.last_candle,
-                final_magnitude=body_size,
+                final_magnitude=self.settings.magnitude_threshold,
                 details=details_dict
             )
 
@@ -223,8 +223,9 @@ class StrongCandleExecutor(Executor):
 
     def _step_validate_window_color_consistency(self, lookback_window_df: pd.DataFrame, alert_candle: pd.Series) -> Tuple[Optional[Signal], Optional[Trend]]:
         """
-        Step 3: Validate that alert candle color is consistent with window trend and that window size is within threshold.
+        Step 3: Validate that alert candle color is consistent with window trend and that window size is within threshold range.
         Uses close price extremes (min and max) in the full lookback window to determine the window trend and size.
+        Validates that window size is between MIN_DIFFERENCE_PRICE_THRESHOLD and MAX_DIFFERENCE_PRICE_THRESHOLD.
         Returns (signal, trend) tuple if valid, (None, None) otherwise.
         """
         self.next_validation()
@@ -248,7 +249,34 @@ class StrongCandleExecutor(Executor):
             )
             return (None, None)
 
-        # Validate window size is within threshold
+        # Validate window size is within minimum threshold
+        self.next_validation()
+        if window_size_val < self.settings.min_window_size_threshold:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Window price range {window_size_val:.2f} is below minimum {self.settings.min_window_size_threshold}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return (None, None)
+
+        self.validations.append(Validation(
+            name=nameof(self.settings.min_window_size_threshold),
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Window price range {window_size_val:.2f} >= {self.settings.min_window_size_threshold}.",
+            status=ValidationStatus.PASSED
+        ))
+
+        # Validate window size is within maximum threshold
         self.next_validation()
         if window_size_val > self.settings.max_window_size_threshold:
             log(
@@ -258,7 +286,7 @@ class StrongCandleExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Window price range {window_size_val:.2f} exceeds threshold {self.settings.max_window_size_threshold}.",
+                message=f"Window price range {window_size_val:.2f} exceeds maximum {self.settings.max_window_size_threshold}.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
