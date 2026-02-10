@@ -1,158 +1,234 @@
-# CONSISTENT_MOMENTUM
+# CONSISTENT_MOMENTUM Approach
 
 ## Objective
 
-The **Consistent Momentum** strategy identifies a short-term, high-quality directional trend and then applies a sophisticated confirmation step to find high-probability reversal points.
+The **CONSISTENT_MOMENTUM** approach identifies significant price movements where a sequence of consecutive candles all move in the same direction with consistent color. The approach determines a trading signal based on the color of the last candle in the lookback window, then validates that preceding candles form a consistent momentum pattern anchored at the candle with the most extreme open price in that direction.
 
-Its primary goal is to first detect a clear momentum pattern and then, instead of joining it, wait for a specific volume and price action signature in the near future that signals the trend is exhausting and ready to reverse. It is, therefore, a **reversal strategy** that uses initial momentum as a prerequisite for entry.
-
-It validates the initial momentum through a series of strict checks and then uses a forward-looking window to pinpoint the reversal confirmation.
+**Key Characteristics**:
+- Detects directional consistency across multiple consecutive candles
+- Uses the last candle's color to determine signal (GREEN=BUY, RED=SELL)
+- Anchors to the candle with minimum open (BUY) or maximum open (SELL)
+- Validates consecutive candles maintain direction from anchor to end
+- Fixed magnitude threshold for consistent alert strength
 
 ## Key Parameters
 
-This approach is configured in `src/stockreports/config/signal_settings.py`. A dedicated settings class, `ConsistentMomentumSettings`, in `src/stockreports/alert/approach/CONSISTENT_MOMENTUM/settings.py` loads these parameters.
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| LOOKBACK_WINDOW | 6 | Number of consecutive candles analyzed for consistency pattern |
+| MIN_CONSISTENT_CANDLES | 3 | Minimum number of consecutive candles required with same color |
+| MAGNITUDE_THRESHOLD | 4.5 | Fixed alert magnitude for all signals |
+| COOLDOWN_WINDOW | 3 | Minutes required between consecutive alerts of the same signal |
 
-| Parameter | Default | Description |
-| :--- | :--- | :--- |
-| `CONFIRMATION_WINDOW` | 3 | The number of consecutive candles that must all show consistent directional momentum. |
-| `COOLDOWN_PERIOD` | 5 | The minimum time (in minutes) between consecutive alerts of the same direction. |
-| `USE_FORWARD_WINDOW_CONFIRMATION` | `True` | **Mandatory.** If `True`, enables the forward-looking confirmation logic. If `False`, no alerts will be generated. |
-| `PEAK_BOTTOM_LOOKBACK_PERIOD` | 60 | The number of minutes to look back from the alert candle to find a recent peak/trough for price comparison. |
-| `PEAK_TROUGH_PROMINENCE` | 2 | The prominence value used to detect peaks and troughs. A higher value requires a peak/trough to be more significant relative to its neighbors. |
-| `LONG_FORWARD_WINDOW` | 9 | The maximum number of candles to look forward (including the alert candle) for a reversal confirmation. |
-| `SHORT_FORWARD_WINDOW` | 5 | A threshold to differentiate between short and long forward window logic. If the available forward window is smaller than this, the short-window logic is attempted first. |
-| `REVERSAL_BODY_RATIO_THRESHOLD` | 0.7 | The minimum ratio of a candle's body to its total range required for a reversal candle to be considered "strong". |
-| `REVERSAL_VOLUME_MULTIPLIER` | 2.5 | A multiplier used in reversal checks. For long-window, it compares max vs min volume. For short-window, it ensures the reversal candle's volume is significantly larger than preceding candles. |
-| `REVERSAL_PRICE_DIFF_THRESHOLD` | 2.0 | In the long-window logic, this is the maximum allowed difference between the alert candle's price and the forward window's price extremes. |
-| `SIGNIFICANT_PRICE_CHANGE_THRESHOLD` | 5.0 | The minimum price difference required between the alert candle and a recent peak/trough to pass the pre-confirmation filter. |
-| `GAP_PRICE` | 0.5 | The maximum allowed price gap between the reversal candle and the previous candle in the **short-window logic only**. |
-| `ADJACENT_GAP_PRICE` | 0.5 | The maximum allowed price gap between **any two adjacent candles** in the forward window. This is a global check to prevent alerts on volatile, gappy price action. |
-| `USE_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle in the momentum window to have a volume spike. |
-| `USE_VOLUME_INCREASING_CONFIRMATION` | `False` | If `True`, requires the volume to be generally increasing across the momentum window. |
-| `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION` | `False` | If `True`, requires the final candle's volume to be the highest within the momentum window. |
+## Algorithm Steps
 
-## Step-by-Step Logic
+### Step 1: Determine Signal from Last Candle Color
+- Examine the last candle in the lookback window
+- **GREEN candle** → Signal = **BUY**
+- **RED candle** → Signal = **SELL**
+- If candle is neither clearly green nor red, no alert
+- **Validation Tracked**: Signal determination (Step 1, Validation 1)
 
-The core logic resides in the `ConsistentMomentumExecutor` class. The algorithm first identifies a potential momentum pattern and then seeks to confirm a subsequent reversal.
+### Step 2: Find Anchor Candle
+- Scan all candles in lookback window for the anchor point
+- **For BUY signal**: Find candle with **MINIMUM open price**
+  - Represents the lowest entry point before momentum upward
+- **For SELL signal**: Find candle with **MAXIMUM open price**
+  - Represents the highest entry point before momentum downward
+- **Validation Tracked**: Anchor detection (Step 2, Validation 1)
 
-### Part 1: Identifying the Momentum Window
+### Step 3: Extract Confirmation Window
+- Extract sub-window from **anchor candle to last candle** (inclusive)
+- This represents the "momentum period" being validated
+- **Validation Tracked**: Window extraction (Step 3, Validation 1)
 
-The algorithm analyzes a rolling window of `CONFIRMATION_WINDOW` candles. For a window to be considered a valid momentum pattern, **all** of the following checks must pass:
+### Step 4: Validate Color Consistency
+- Verify all candles in confirmation window have matching color
+- **For BUY signal**: All candles must be **GREEN**
+- **For SELL signal**: All candles must be **RED**
+- Any candle breaking the color pattern fails validation
+- **Validation Tracked**: Color consistency check (Step 4, Validation 1)
 
-1.  **Basic Momentum Check:**
-    *   All candles within the window must be bullish (`close > open`) for a `BUY` signal.
-    *   All candles must be bearish (`close < open`) for a `SELL` signal.
+### Step 5: Validate Minimum Consistent Candles
+- Count consecutive candles with matching color in confirmation window
+- Verify count **≥ MIN_CONSISTENT_CANDLES** (3)
+- Ensures the momentum is not just a brief spike but sustained
+- **Validation Tracked**: Min candle count (Step 5, Validation 1)
 
-2.  **Consistent Trend (Average Price):**
-    *   The average price `(open + close) / 2` is calculated for each candle in the window.
-    *   For a `BUY` signal, this average price must be monotonically increasing.
-    *   For a `SELL` signal, it must be monotonically decreasing.
+### Step 6: Cooldown Check
+- Compare current alert time with last accepted alert of same signal
+- If time since last alert < COOLDOWN_WINDOW (3 minutes) AND signal matches
+- Skip alert to avoid alert spam
+- **Validation Tracked**: Cooldown validation (Step 6, Validation 1)
 
-3.  **Body Dominance Check:**
-    *   The sum of the absolute body sizes of all candles in the window must be greater than the sum of all their wicks (upper and lower shadows combined). This ensures the move was driven by price conviction, not indecision.
+### Step 7: Alert Creation
+- Create AlertData with:
+  - **Signal**: BUY or SELL (from Step 1)
+  - **Magnitude**: MAGNITUDE_THRESHOLD (4.5)
+  - **Alert Candle**: Last candle of lookback window
+  - **Details**: Anchor index, consistency count, signal type
+- Return alert and update LATEST_ALERT for cooldown tracking
 
-4.  **Indicator Confirmation:**
-    *   **RSI Exhaustion:** The RSI is checked on the *start and end* candles of the momentum window to ensure the move isn't starting from or ending in an overbought/oversold state.
-    *   **Other Indicators:** MACD, MA, etc., are checked on the **final candle** of the window to confirm they align with the signal (if enabled in settings).
+## Validation Tracking
 
-5.  **Volume Confirmation (Optional):**
-    *   The logic checks up to three volume conditions on the momentum window if their respective flags are `True`:
-        *   `USE_VOLUME_CONFIRMATION`: The final candle must have a volume spike.
-        *   `USE_VOLUME_INCREASING_CONFIRMATION`: Volume must be trending upwards across the window.
-        *   `USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION`: The final candle must have the highest volume in the window.
+The approach tracks **7 validations** across the steps:
 
-### Part 2: Reversal Confirmation (Mandatory)
-
-If a valid momentum window is found, this critical two-stage process is **always** executed to find a reversal. The `USE_FORWARD_WINDOW_CONFIRMATION` flag must be `True` for any alert to be generated.
-
-#### Stage 1: Pre-Filter - Significant Price Change
-
-Before looking for complex patterns, a simple check is performed to ensure the momentum is meaningful.
-
-1.  **Find Reference Point:** The algorithm looks back from the alert candle (`PEAK_BOTTOM_LOOKBACK_PERIOD`) to find the nearest significant price extreme:
-    *   For a `SELL` signal, it finds the nearest **Peak**.
-    *   For a `BUY` signal, it finds the nearest **Trough**.
-2.  **Check Difference:** The absolute price difference between the alert candle's close and the price of the extreme point is calculated.
-3.  **Validation:** This difference must be **greater than** `SIGNIFICANT_PRICE_CHANGE_THRESHOLD`. If not, the confirmation process is aborted, as the move is considered insignificant.
-
-#### Stage 2: Forward Window Pattern Recognition
-
-If the pre-filter is passed, the algorithm analyzes a forward-looking window (up to `LONG_FORWARD_WINDOW` candles) to find a specific reversal pattern. The logic is dispatched based on the available window size.
-
-1.  **Dispatch Logic:**
-    *   If the forward window has fewer candles than `SHORT_FORWARD_WINDOW`, the algorithm first attempts the **Short-Window Reversal** logic. If that fails, it will "fall back" and attempt the **Long-Window Reversal** logic if there are at least 3 candles available.
-    *   Otherwise, it proceeds directly to the **Long-Window Reversal** logic.
-
-2.  **Scenario A: Short-Window Reversal Logic**
-    *   This logic applies to small forward windows (typically 2-4 candles). It looks for a quick, sharp reversal.
-    *   **All** of the following conditions must be met in order:
-    *   **1. Reversal Trend:** The **last candle** in the forward window must show a reversal trend (e.g., be bearish after a BUY signal).
-    *   **2. Strong Body:** The reversal candle's body must be strong enough, with its body-to-range ratio being >= `REVERSAL_BODY_RATIO_THRESHOLD`.
-    *   **3. Dominance Check (Mandatory):** After the trend and body are confirmed, this check ensures the reversal candle's price action is decisively dominant. This check requires other same-trend candles to exist in the window for comparison; otherwise, it fails.
-        *   For a **bullish reversal** (after a SELL signal), the reversal candle's `low` must be **higher** than the `max(low)` of all other bullish candles in the window.
-        *   For a **bearish reversal** (after a BUY signal), the reversal candle's `high` must be **lower** than the `min(high)` of all other bearish candles in the window.
-    *   **4. No Large Adjacent Gaps:** The algorithm checks the entire forward window to ensure there are no large, unexpected price gaps between any two consecutive candles. The maximum allowed gap is controlled by `ADJACENT_GAP_PRICE`.
-        *   For a **bullish reversal**, it ensures there are no significant **downward** gaps.
-        *   For a **bearish reversal**, it ensures there are no significant **upward** gaps.
-    *   **5. Valid Reversal Gap Price:** The gap between the previous candle's close and the reversal candle's open must be less than or equal to `GAP_PRICE`.
-    *   If all five conditions pass, a reversal is confirmed at the last candle.
-
-3.  **Scenario B: Long-Window Reversal Logic**
-    *   This logic applies to larger forward windows (at least 3 candles) and identifies a more complex, multi-candle reversal pattern.
-    *   The confirmation is a two-step process:
-    *   **Step 1: Comprehensive Pattern Validation**
-        *   This primary step validates the trend, structure, and volume pattern in a specific, optimized order. All of the following checks must pass:
-        *   **a. Reversal Trend:** The **last candle** of the forward window must show a clear reversal trend.
-        *   **b. Strong Reversal Body:** The last candle must have a strong body, with its body-to-range ratio being >= `REVERSAL_BODY_RATIO_THRESHOLD`.
-        *   **c. No Large Adjacent Gaps:** The algorithm checks the entire forward window to ensure there are no large, unexpected price gaps between any two consecutive candles. The maximum allowed gap is controlled by `ADJACENT_GAP_PRICE`.
-            *   For a **bullish reversal**, it ensures there are no significant **downward** gaps.
-            *   For a **bearish reversal**, it ensures there are no significant **upward** gaps.
-        *   **d. Reversal Structure:** The last candle must fail to continue the original trend (e.g., for a BUY-to-SELL reversal, its high must be lower than the window's highest high).
-        *   **e. Volume Exhaustion Pattern:** If there are at least two candles in the forward window, the algorithm checks for a volume exhaustion pattern. This is a mandatory check, and all sub-conditions are hard failures.
-            *   It identifies the `Max Volume Candle` and `Min Volume Candle` from the **entire** forward window.
-            *   The `Min Volume Candle` **cannot** be the last candle in the forward window.
-            *   The `Max Volume Candle` must appear *before* the `Min Volume Candle`.
-            *   The volume of the `Max Volume Candle` must be >= the volume of the `Min Volume Candle` multiplied by `REVERSAL_VOLUME_MULTIPLIER`.
-    *   **Step 2: Price Proximity Validation**
-        *   If the pattern validation passes, a final check ensures the alert candle's closing price is "close" to the forward window's overall high/low. The difference between the alert price and the furthest extreme must be less than `REVERSAL_PRICE_DIFF_THRESHOLD`.
-    *   If both steps pass, a reversal is confirmed at the last candle of the forward window.
-
-If either `Scenario A` or `Scenario B` confirms a reversal, an alert is generated with the **flipped signal**. If no pattern is confirmed, no alert is created.
-
-### Part 3: Cooldown
-
-*   After a valid alert is generated, a cooldown period of `COOLDOWN_PERIOD` minutes is applied.
-*   Any subsequent alert within this period that has the **same final signal direction** is ignored.
+| Validation # | Step | Name | Config Variable | Purpose |
+|--------------|------|------|-----------------|---------|
+| 1 | 1 | Signal determination | N/A | Verify last candle has clear color |
+| 2 | 2 | Anchor detection | N/A | Find extreme open price candle |
+| 3 | 3 | Window extraction | N/A | Extract confirmation window |
+| 4 | 4 | Color consistency | N/A | All candles match signal color |
+| 5 | 5 | Min consistent candles | MIN_CONSISTENT_CANDLES | Count ≥ threshold |
+| 6 | 6 | Cooldown check | COOLDOWN_WINDOW | Time between same-signal alerts |
+| 7 | 7 | Alert creation | MAGNITUDE_THRESHOLD | Final alert generation |
 
 ## Flow Diagram
 
-```mermaid
-graph TD
-    A[Start] --> B{Analyze Rolling Window};
-    B --> C{Part 1: Momentum Window Valid?};
-    C -- No --> X[Discard Window];
-    C -- Yes --> F{Forward Window Confirmation Enabled?};
-    F -- No --> X;
-    F -- Yes --> H{Part 2: Check Scenarios};
-    H --> I{Scenario 1: Big Body?};
-    I -- Yes --> G[Generate Alert w/ Original Signal];
-    I -- No --> J{Scenario 2: Reversal?};
-    J -- Yes --> K[Generate Alert w/ Flipped Signal];
-    J -- No --> L{Scenario 3: Consistent Price Action?};
-    L -- Yes --> K;
-    L -- No --> X;
-    G --> M{Apply Cooldown};
-    K --> M;
-    M --> Z[End];
-    X --> Z;
+```
+Start: Reverse Loop on DataFrame
+  │
+  ├─ Extract Lookback Window (LOOKBACK_WINDOW candles)
+  │
+  ├─ [Step 1] Determine Signal from Last Candle Color
+  │   ├─ GREEN → BUY
+  │   ├─ RED → SELL
+  │   └─ Neither → Continue Loop
+  │
+  ├─ [Step 2] Find Anchor Candle
+  │   ├─ BUY: Min open price
+  │   └─ SELL: Max open price
+  │
+  ├─ [Step 3] Extract Confirmation Window (anchor → last)
+  │
+  ├─ [Step 4] Validate Color Consistency
+  │   └─ All candles match signal color
+  │
+  ├─ [Step 5] Validate Min Consistent Candles
+  │   └─ Count ≥ MIN_CONSISTENT_CANDLES (3)
+  │
+  ├─ [Step 6] Cooldown Check
+  │   └─ Enough time since last same-signal alert
+  │
+  ├─ [Step 7] Create & Return Alert
+  │   └─ AlertData with magnitude=MAGNITUDE_THRESHOLD
+  │
+  └─ End: Continue Loop or Return First Alert (non-development mode)
 ```
 
-### Diagram Explanation
+## Example Scenarios
 
-1.  **Analyze Rolling Window**: The algorithm processes data in rolling windows of `CONFIRMATION_WINDOW` size.
-2.  **Part 1: Momentum Window Valid?**: Checks if the current window of candles constitutes a valid momentum pattern.
-3.  **Forward Window Confirmation Enabled?**: Checks if the mandatory forward-looking confirmation step is enabled. If not, no alert can be generated.
-4.  **Part 2: Check Scenarios**: If enabled, this step checks for a breakout or reversal pattern in the forward window.
-5.  **Cooldown Check**: Applies a cooldown period after a valid alert to prevent duplicate signals.
-6.  **Generate Alert**: If all mandatory checks pass, an alert is generated.
-7.  **Discard Window**: If any check fails, the current window is discarded.
+### Scenario 1: BUY Alert (5 Consecutive Green Candles)
+
+```
+Time    Open    Close   Color   Step
+----    ----    -----   -----   ----
+T-5     100.5   100.3   RED     ✓ Not in lookback
+T-4     100.2   100.5   GREEN   Part of window
+T-3     100.0   100.8   GREEN   ← Anchor (Min Open)
+T-2     100.1   100.9   GREEN   
+T-1     100.3   100.7   GREEN   
+T0      100.4   101.0   GREEN   ← Last Candle (Signal=BUY)
+
+Steps:
+1. Last candle (T0) is GREEN → Signal=BUY ✓
+2. Find anchor: Min open = T-3 (100.0) ✓
+3. Confirmation window: T-3 to T0 (4 candles) ✓
+4. Color consistency: All 4 candles GREEN ✓
+5. Min candles: 4 ≥ 3 ✓
+6. Cooldown: Last BUY was > 3 minutes ago ✓
+7. Create ALERT: BUY with magnitude=4.5
+```
+
+### Scenario 2: SELL Alert (3 Red Candles with Anchor)
+
+```
+Time    Open    Close   Color   Step
+----    ----    -----   -----   ----
+T-2     100.8   100.5   RED     
+T-1     100.9   100.4   RED     ← Anchor (Max Open)
+T0      100.7   100.2   RED     ← Last Candle (Signal=SELL)
+
+Steps:
+1. Last candle (T0) is RED → Signal=SELL ✓
+2. Find anchor: Max open = T-1 (100.9) ✓
+3. Confirmation window: T-1 to T0 (2 candles) ✓
+4. Color consistency: Both RED ✓
+5. Min candles: 2 < 3 ✗ FAILED - Not enough consistency
+   Result: NO ALERT (needs at least 3 consistent candles)
+```
+
+### Scenario 3: Failed Color Consistency
+
+```
+Time    Open    Close   Color   Step
+----    ----    -----   -----   ----
+T-3     100.2   100.5   GREEN   Part of window
+T-2     100.0   100.6   GREEN   ← Anchor (Min Open)
+T-1     100.1   100.7   GREEN   
+T0      100.4   99.9    RED     ← Last Candle (Signal=RED)
+
+Steps:
+1. Last candle (T0) is RED → Signal=RED ✓
+2. Find anchor: Max open = T0 (100.4) ✓
+3. Confirmation window: T0 to T0 (1 candle) ✓
+4. Color consistency: Only 1 RED candle ✓ (trivially consistent)
+5. Min candles: 1 < 3 ✗ FAILED
+   Result: NO ALERT (only 1 candle in confirmation window)
+```
+
+## Configuration Integration
+
+All parameters are centralized in `src/stockreports/config/signal_settings.py`:
+
+```python
+"CONSISTENT_MOMENTUM": {
+    "LOOKBACK_WINDOW": 6,
+    "MIN_CONSISTENT_CANDLES": 3,
+    "MAGNITUDE_THRESHOLD": 4.5,
+    "COOLDOWN_WINDOW": 3
+}
+```
+
+Parameters are loaded into `ConsistentMomentumSettings` class via `BaseSettings` inheritance.
+
+## Implementation Details
+
+### File Structure
+- **Executor**: `src/stockreports/alert/approach/CONSISTENT_MOMENTUM/executor.py`
+- **Settings**: `src/stockreports/alert/approach/CONSISTENT_MOMENTUM/settings.py`
+- **Configuration**: `src/stockreports/config/signal_settings.py`
+
+### Class Hierarchy
+```
+Executor (base class)
+  └─ ConsistentMomentumExecutor
+       └─ Uses ConsistentMomentumSettings(BaseSettings)
+```
+
+### Key Methods in ConsistentMomentumExecutor
+
+| Method | Purpose |
+|--------|---------|
+| `_find_alerts()` | Main orchestrator, reverse loop through candles |
+| `_step_determine_signal_from_color()` | Determine BUY/SELL from last candle |
+| `_step_find_anchor_candle()` | Find min/max open based on signal |
+| `_step_extract_confirmation_window()` | Extract anchor-to-last subwindow |
+| `_step_validate_color_consistency()` | Check all candles match signal color |
+| `_step_validate_min_consistent_candles()` | Verify count threshold met |
+
+## Performance Characteristics
+
+- **Lookback Requirement**: 6 candles minimum
+- **Confirmation Time**: Fast (no forward windows)
+- **Alert Frequency**: Controlled by cooldown (3 minutes min between same signal)
+- **Magnitude**: Fixed at 4.5 for consistent signal strength
+- **Development Mode**: Returns first alert and stops
+- **Deployment Mode**: Scans entire available history respecting new candle count
+
+## Related Approaches
+
+- **STRONG_CANDLE**: Detects strong single candles with opposite-color context
+- **SESSION_EXTREME_VOLUME_REVERSAL**: Uses volume spikes with reversal patterns
+- **CVA**: Complex validation approach with extended confirmation windows
+

@@ -1,336 +1,296 @@
+# src/stockreports/alert/approach/CONSISTENT_MOMENTUM/executor.py
 import pandas as pd
 import logging
 import json
-from typing import Optional
-from scipy.signal import find_peaks
+from typing import Optional, Tuple
 
-# --- Project Imports ---
+from varname import nameof
+
 from src.stockreports.alert.executor import Executor
-from src.stockreports.config import loader
-from src.stockreports.alert.common.constants import Approach, Mode, Signal, PeakTrough, PriceColumn
-from src.stockreports.alert.common.confirmation.confirmation import (
-    prepare_indicators,
-    is_signal_confirmed,
-    _is_rsi_not_exhausted
-)
-from src.stockreports.alert.common.data_utils import can_apply_analysis, find_extreme_point, find_nearest_extreme_point
-from src.stockreports.alert.common.volume import (
-    is_volume_spike_confirmed, 
-    can_apply_volume_confirmation, 
-    is_last_candle_volume_max,
-    is_volume_increasing
-)
-from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.utils.time_utils import to_iso8601_with_tz
-from src.stockreports.alert.confirmation.reversal_trend.executor import ReversalConfirmationExecutor
+from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
+from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from .settings import ConsistentMomentumSettings
+from src.stockreports.utils.log_factory import log
+from src.stockreports.utils import candle_utils
 
 
-class ConsistentMomentumExecutor(ReversalConfirmationExecutor):
-    APPROACH_NAME = Approach.CONSISTENT_MOMENTUM
-    LATEST_ACCEPTED_ALERT: Optional[AlertData] = None
+class ConsistentMomentumExecutor(Executor):
+    """
+    Executor for the Consistent Momentum approach.
+    Detects alerts by identifying consistent color candles with an anchor point,
+    where the last candle's color determines the signal and the anchor is the
+    candle with the minimum open (for BUY) or maximum open (for SELL).
+    """
+    LATEST_ALERT: Optional[AlertData] = None
 
-    def __init__(self, symbol: str):        
-        settings = ConsistentMomentumSettings(symbol)
-        super().__init__(symbol, settings)
+    def __init__(self, symbol: str):
+        self.settings = ConsistentMomentumSettings(symbol)
+        approach_name = Approach.CONSISTENT_MOMENTUM
+        super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
 
-
-    def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
+    def _find_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
         """
-        Entry point for the CONSISTENT_MOMENTUM approach. It takes a DataFrame and returns an AlertResult.
+        Main alert-finding function for Consistent Momentum approach.
+        Orchestrates the reverse loop and step-by-step validation.
         """
-        try:
-            self.logger.info(f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...")
-            
-            df = prepare_indicators(df)
+        lookback_window_size = self.settings.lookback_window
 
-            alerts_data = self._find_consistent_momentum_alerts(df, new_candle_count)
-            self.logger.info(f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts_data)} alerts.")
-
-            alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
-
-            return AlertResult(
-                approach_name=self.APPROACH_NAME,
-                alerts=alerts_df
+        if len(df) < lookback_window_size:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time="N/A",
+                step=0,
+                message=f"Not enough data for {self.APPROACH_NAME}: requires {lookback_window_size}, have {len(df)}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
-        except Exception as e:
-            self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
-            return AlertResult(
-                approach_name=self.APPROACH_NAME,
-                alerts=pd.DataFrame(),
-                status="FAILED",
-                message=str(e)
-            )
+            return self.alerts
 
-    def _analyze_window(self, window: pd.DataFrame, df_indexed: pd.DataFrame, confirmation_window: int) -> Optional[AlertData]:
-        """
-        Analyzes a single window of data to find a consistent momentum alert.
-        """
-        is_all_bullish = (window['close'] > window['open']).all()
-        is_all_bearish = (window['close'] < window['open']).all()
-
-        if not (is_all_bullish or is_all_bearish):
-            return None
-
-        window['avg_price'] = (window['open'] + window['close']) / 2
-        
-        is_momentum_confirmed = False
-        if is_all_bullish:
-            is_momentum_confirmed = window['avg_price'].is_monotonic_increasing
-            signal = Signal.BUY
-        elif is_all_bearish:
-            is_momentum_confirmed = window['avg_price'].is_monotonic_decreasing
-            signal = Signal.SELL
-        
-        if not is_momentum_confirmed:
-            return None
-
-        current_candle = window.iloc[-1]
-        candle_range = (current_candle['high'] - current_candle['low'])
-        if candle_range == 0: 
-            return None
-
-        # Restore momentum strength check (total body vs total wick)
-        window['body'] = abs(window['close'] - window['open'])
-        window['range'] = window['high'] - window['low']
-        window['wick'] = window['range'] - window['body']
-
-        total_body = window['body'].sum()
-        total_wick = window['wick'].sum()
-
-        if total_body <= total_wick:
-            return None
-
-        # Restore RSI exhaustion check
-        start_candle = window.iloc[0]
-        end_candle = window.iloc[-1]
-        candles_for_rsi_check = [start_candle, end_candle]
-
-        if not _is_rsi_not_exhausted(candles_for_rsi_check, signal, self.settings):
-            return None
-
-        # Restore general signal confirmation (MA, ADX, etc.)
-        if not is_signal_confirmed(end_candle, signal, self.settings):
-            return None
-
-        # The breakout confirmation logic has been moved to the main loop
-        # to allow for forward-window analysis.
-
-        use_volume_spike = self.settings.use_volume_confirmation
-        use_increasing_volume = self.settings.use_volume_increasing_confirmation
-        use_last_candle_max_volume = self.settings.use_last_candle_max_volume_confirmation
-
-        confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
-        confirmation_df = df_indexed.iloc[confirmation_candle_index - confirmation_window + 1 : confirmation_candle_index + 1]
-
-        volume_spike_is_confirmed = not use_volume_spike or (can_apply_volume_confirmation(df_indexed) and is_volume_spike_confirmed(df_indexed.reset_index(), confirmation_candle_index))
-        volume_is_increasing = not use_increasing_volume or is_volume_increasing(confirmation_df)
-        last_candle_max_volume_confirmed = not use_last_candle_max_volume or is_last_candle_volume_max(confirmation_df)
-
-        if not (volume_spike_is_confirmed and volume_is_increasing and last_candle_max_volume_confirmed):
-            return None
-
-        # --- Alert Confirmation and Generation ---
-        # If forward window confirmation is not used, we stop here.
-        if not self.settings.use_forward_window_confirmation:
-            return None
-
-        # If we proceed, it means forward window confirmation is required.
-        confirmation_candle_index = df_indexed.index.get_loc(current_candle.name)
-        
-        # New Middle Confirmation Step
-        if not self._confirm_significant_price_change(df_indexed, confirmation_candle_index, signal):
-            return None
-            
-        confirmation_result = self._get_forward_window_confirmation(df_indexed, confirmation_candle_index, signal)
-        
-        # If the forward window does not confirm a breakout or reversal, no alert is generated.
-        if confirmation_result is None:
-            return None
-
-        # Unpack the results
-        final_candle, confirmed_signal = confirmation_result
-        
-        # Now that the final_candle is determined, generate the details.
-        details = {
-            "momentum_start_price": start_candle['open'],
-            "momentum_start_time": to_iso8601_with_tz(start_candle.name),
-            "momentum_window_size": confirmation_window,
-            "reason": "Consistent Momentum with Breakout"
-        }
-        
-        original_signal = signal
-        if confirmed_signal != original_signal:
-            details["reason"] = "Consistent Momentum with Reversal"
-        
-        details["breakout_lookback_minutes"] = self.settings.peak_bottom_lookback_period
-
-        # Create the AlertData object with the final, confirmed data.
-        alert_id = str(int(final_candle.name.tz_convert('UTC').timestamp()))
-        current_price = final_candle['close']
-        momentum_start_price = start_candle['open']
-
-        return AlertData(
-            approach=self.APPROACH_NAME,
-            id=alert_id,
-            symbol=self.symbol,
-            alert_time=final_candle.name,
-            signal=confirmed_signal,
-            alert_price=current_price,
-            start_price=momentum_start_price,
-            start_time=start_candle.name,
-            magnitude=round(abs(current_price - momentum_start_price), 2),
-            details=json.dumps(details)
+        # --- Standardized loop setup ---
+        # Use base class utility to prepare indexed DataFrame and loop boundaries
+        df_indexed, loop_start, loop_end = self.get_loop_setup(
+            df=df,
+            new_candle_count=new_candle_count,
+            lookback_window_size=lookback_window_size
         )
-
-    def _get_forward_window_confirmation(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal) -> Optional[tuple[pd.Series, Signal]]:
-        """
-        Confirms a breakout or reversal by analyzing the backward and forward windows.
-        It first attempts to find a specific volume-climax reversal. If that fails,
-        it falls back to a more general reversal confirmation.
-        Returns a tuple of (confirmation_candle, confirmed_signal) if confirmed, otherwise None.
-        """
-        alert_candle_time = df_indexed.index[alert_candle_index]
-
-        # 1. Analyze the backward window to confirm a breakout has occurred first.
-        is_breakout_confirmed = self._confirm_breakout_price(
-            df_indexed, 
-            alert_candle_index, 
-            signal,
-            lookback_period=self.settings.peak_bottom_lookback_period,
-            prominence=self.settings.peak_trough_prominence
-        )
-        if not is_breakout_confirmed:
-            return None
-
-        # 2. Primary Confirmation: Attempt to find a volume-climax reversal pattern first.
-        forward_window_size = self.settings.long_forward_window
-        forward_window_end = min(alert_candle_index + forward_window_size, len(df_indexed))
-        
-        # Attempt primary confirmation with the available forward data.
-        forward_window = df_indexed.iloc[alert_candle_index:forward_window_end]
-        reversal_candle = self._find_reversal_candle(forward_window, signal)
-
-        if reversal_candle is not None:
-            # Primary confirmation successful
-            final_signal = Signal.SELL if signal == Signal.BUY else Signal.BUY
-            self.logger.debug(f"[{alert_candle_time}] Confirmed reversal with _find_reversal_candle.")
-            return reversal_candle, final_signal
-        
-        # 3. Fallback Confirmation: If primary fails, use the general reversal confirmation.
-        self.logger.debug(f"[{alert_candle_time}] Primary confirmation failed, falling back to _confirm_reversal_in_forward_window.")
-        confirmation_result = self._confirm_reversal_in_forward_window(df_indexed, alert_candle_index, signal)
-        
-        if confirmation_result is None:
-            self.logger.debug(f"[{alert_candle_time}] No confirmation pattern was found in the forward window.")
-            return None
-
-        return confirmation_result
-
-    def _confirm_significant_price_change(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal) -> bool:
-        """
-        Confirms that the alert candle represents a significant price change from the nearest
-        peak (for SELL) or trough (for BUY) in the lookback period.
-        """
-        alert_candle_time = df_indexed.index[alert_candle_index]
-        alert_candle = df_indexed.iloc[alert_candle_index]
-
-        # 1. Define the lookback period
-        lookback_period = self.settings.peak_bottom_lookback_period
-        lookback_start_index = max(0, alert_candle_index - lookback_period)
-        lookback_df = df_indexed.iloc[lookback_start_index:alert_candle_index]
-
-        if lookback_df.empty:
-            self.logger.debug(f"[{alert_candle_time}] No lookback history available for significant price change check.")
-            return True # Bypass if no history
-
-        # 2. Find the nearest peak (for SELL) or trough (for BUY)
-        # Note: We look for the opposite of the breakout logic. For a SELL signal, we look for a recent PEAK.
-        extreme_type = PeakTrough.PEAK if signal == Signal.SELL else PeakTrough.TROUGH
-        price_column = PriceColumn.CLOSE
-        
-        extreme_point_info = find_nearest_extreme_point(
-            lookback_df, 
-            price_column, 
-            extreme_type, 
-            self.settings.peak_trough_prominence
-        )
-
-        if extreme_point_info is None:
-            self.logger.debug(f"[{alert_candle_time}] No opposing peak/trough found; skipping significant change check.")
-            return True
-
-        nearest_extreme_price, _ = extreme_point_info
-        
-        # 3. Check for significant difference
-        price_diff = abs(alert_candle['close'] - nearest_extreme_price)
-        
-        if price_diff < self.settings.significant_price_change_threshold:
-            self.logger.debug(f"[{alert_candle_time}] Price change of {price_diff:.2f} from nearest extreme ({nearest_extreme_price:.2f}) is not significant. Threshold: {self.settings.significant_price_change_threshold}")
-            return False
-
-        self.logger.debug(f"[{alert_candle_time}] Significant price change of {price_diff:.2f} confirmed.")
-        return True
-
-    def _find_consistent_momentum_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
-        """
-        Finds alerts based on a consistent momentum pattern using a unified reverse loop.
-        """
-        alerts = []
-        confirmation_window = self.settings.confirmation_window
-        is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
-        
-        if confirmation_window < 2:
-            self.logger.error(f"{self.APPROACH_NAME}: 'CONFIRMATION_WINDOW' must be at least 2. Aborting.")
-            return alerts
-
-        required_lookback = confirmation_window
-        
-        if not can_apply_analysis(df, self.APPROACH_NAME, required_rows=required_lookback):
-            return alerts
-
-        df_indexed = df.set_index('time')
-
-        # The main loop can now run up to the last candle. The forward window logic
-        # inside the confirmation function will handle boundaries.
-        loop_end = len(df_indexed) - 1
-        min_scan_index = required_lookback - 1
-        
-        if is_development_mode:
-            loop_start = min_scan_index
-        else:
-            # In DEPLOYMENT, we must scan back far enough to catch momentum windows
-            # that could be confirmed by one of the new candles.
-            forward_window = self.settings.long_forward_window if self.settings.use_forward_window_confirmation else 0
-            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count - forward_window)
 
         for i in range(loop_end, loop_start - 1, -1):
-            # Ensure we don't look past the end of the dataframe for the momentum window.
-            if i < confirmation_window - 1:
+            # --- Standardized window context extraction ---
+            # Use base class utility to extract lookback window, boundary candles, and context variables
+            self.set_window_context(i, df_indexed, lookback_window_size)
+            if self.lookback_window_df is None or self.last_candle is None:
                 continue
 
-            window = df_indexed.iloc[i - confirmation_window + 1 : i + 1].copy()
+            # Step 1: Determine signal from last candle color
+            self.next_step()
+            signal = self._step_determine_signal_from_color(self.last_candle)
+            if signal is None:
+                continue
 
-            alert = self._analyze_window(window, df_indexed, confirmation_window)
+            # Step 2: Find anchor candle based on signal
+            self.next_step()
+            anchor_idx = self._step_find_anchor_candle(self.lookback_window_df, signal)
+            if anchor_idx is None:
+                continue
 
-            if alert:
-                # Cooldown Check: Ignore alerts with the same direction within the cooldown period
-                if ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT is not None:
-                    time_since_last = alert.alert_time - ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT.alert_time
-                    minutes_since_last = time_since_last.total_seconds() / 60
+            # Step 3: Extract confirmation window (from anchor to last candle)
+            self.next_step()
+            confirmation_window_df = self._step_extract_confirmation_window(self.lookback_window_df, anchor_idx)
+            if confirmation_window_df is None or len(confirmation_window_df) == 0:
+                continue
 
-                    if (minutes_since_last < self.settings.cooldown_period and 
-                        alert.signal == ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT.signal):
-                        alert = None
+            # Step 4: Validate all candles have same color
+            self.next_step()
+            if not self._step_validate_color_consistency(confirmation_window_df, signal):
+                continue
 
-                if alert:
-                    alerts.append(alert)
+            # Step 5: Validate minimum consistent candles
+            self.next_step()
+            if not self._step_validate_min_consistent_candles(confirmation_window_df):
+                continue
 
-                    # Update global state with the accepted alert
-                    ConsistentMomentumExecutor.LATEST_ACCEPTED_ALERT = alert
+            # Step 6: Cooldown check
+            self.next_step()
+            if not self._step_cooldown_check(
+                last_alert=ConsistentMomentumExecutor.LATEST_ALERT,
+                signal=signal,
+                cooldown_window=self.settings.cooldown_window
+            ):
+                continue
 
-                    if not is_development_mode:
-                        return alerts
+            # Step 7: Alert creation
+            self.next_step()
+            details_dict = self._add_details_for_alert(
+                anchor_candle_index=anchor_idx,
+                consistency_candle_count=len(confirmation_window_df),
+                signal=signal
+            )
 
-        return alerts[::-1]
+            alert_data = self._create_alert_with_details(
+                final_signal=signal,
+                final_trend=Trend.UPTREND if signal == Signal.BUY else Trend.DOWNTREND,
+                final_alert_candle=self.last_candle,
+                final_magnitude=self.settings.magnitude_threshold,
+                details=details_dict
+            )
+
+            if alert_data is not None:
+                self.alerts.append(alert_data)
+                ConsistentMomentumExecutor.LATEST_ALERT = alert_data
+
+                if not self.is_development_mode:
+                    return self.alerts
+
+        return self.alerts
+
+    def _step_determine_signal_from_color(self, last_candle: pd.Series) -> Optional[Signal]:
+        """
+        Step 1: Determine the signal from the last candle's color.
+        Green candle => BUY signal
+        Red candle => SELL signal
+        Returns Signal or None if neither.
+        """
+        if candle_utils.is_green_candle(last_candle):
+            return Signal.BUY
+        elif candle_utils.is_red_candle(last_candle):
+            return Signal.SELL
+        
+        log(
+            logger=self.logger,
+            status=ValidationStatus.FAILED,
+            name=self.__class__.__name__,
+            alert_time=self.current_window_end_time,
+            step=self.current_step,
+            message=f"Last candle is neither clearly green nor red.",
+            log_level=LogLevel.DEBUG,
+            execution_symbol=self.symbol,
+            start_time=self.current_window_start_time,
+            end_time=self.current_window_end_time,
+            approach=self.APPROACH_NAME
+        )
+        return None
+
+    def _step_find_anchor_candle(self, lookback_window_df: pd.DataFrame, signal: Signal) -> Optional[int]:
+        """
+        Step 2: Find the anchor candle.
+        For BUY signal: find candle with minimum open price
+        For SELL signal: find candle with maximum open price
+        Returns the index within the window, or None if not found.
+        """
+        if len(lookback_window_df) == 0:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                message="Lookback window is empty.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return None
+
+        if signal == Signal.BUY:
+            anchor_idx = lookback_window_df['open'].idxmin()
+        else:  # SELL
+            anchor_idx = lookback_window_df['open'].idxmax()
+
+        # Convert back to positional index within the window
+        position_idx = lookback_window_df.index.get_loc(anchor_idx)
+        return position_idx
+
+    def _step_extract_confirmation_window(self, lookback_window_df: pd.DataFrame, anchor_idx: int) -> Optional[pd.DataFrame]:
+        """
+        Step 3: Extract the confirmation window from anchor candle to the last candle.
+        """
+        if anchor_idx < 0 or anchor_idx >= len(lookback_window_df):
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                message=f"Invalid anchor index {anchor_idx} for window of size {len(lookback_window_df)}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return None
+
+        # Extract from anchor to end (inclusive)
+        confirmation_window = lookback_window_df.iloc[anchor_idx:]
+        return confirmation_window
+
+    def _step_validate_color_consistency(self, confirmation_window_df: pd.DataFrame, signal: Signal) -> bool:
+        """
+        Step 4: Validate that all candles in the confirmation window have the same color
+        matching the signal.
+        """
+        self.next_validation()
+        
+        for _, candle in confirmation_window_df.iterrows():
+            if signal == Signal.BUY:
+                if not candle_utils.is_green_candle(candle):
+                    log(
+                        logger=self.logger,
+                        status=ValidationStatus.FAILED,
+                        name=self.__class__.__name__,
+                        alert_time=self.current_window_end_time,
+                        step=self.current_step,
+                        validation=self.validation_step,
+                        message=f"Candle at {candle['time']} is not green in BUY confirmation window.",
+                        log_level=LogLevel.DEBUG,
+                        execution_symbol=self.symbol,
+                        start_time=self.current_window_start_time,
+                        end_time=self.current_window_end_time,
+                        approach=self.APPROACH_NAME
+                    )
+                    return False
+            else:  # SELL
+                if not candle_utils.is_red_candle(candle):
+                    log(
+                        logger=self.logger,
+                        status=ValidationStatus.FAILED,
+                        name=self.__class__.__name__,
+                        alert_time=self.current_window_end_time,
+                        step=self.current_step,
+                        validation=self.validation_step,
+                        message=f"Candle at {candle['time']} is not red in SELL confirmation window.",
+                        log_level=LogLevel.DEBUG,
+                        execution_symbol=self.symbol,
+                        start_time=self.current_window_start_time,
+                        end_time=self.current_window_end_time,
+                        approach=self.APPROACH_NAME
+                    )
+                    return False
+
+        self.validations.append(Validation(
+            name="color_consistency",
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"All candles in confirmation window are consistent with {signal} signal.",
+            status=ValidationStatus.PASSED
+        ))
+        return True
+
+    def _step_validate_min_consistent_candles(self, confirmation_window_df: pd.DataFrame) -> bool:
+        """
+        Step 5: Validate that the confirmation window has at least MIN_CONSISTENT_CANDLES.
+        """
+        self.next_validation()
+        consistent_count = len(confirmation_window_df)
+
+        if consistent_count < self.settings.min_consistent_candles:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Consistent candles {consistent_count} is below minimum {self.settings.min_consistent_candles}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+
+        self.validations.append(Validation(
+            name=nameof(self.settings.min_consistent_candles),
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Consistent candles {consistent_count} >= {self.settings.min_consistent_candles}.",
+            status=ValidationStatus.PASSED
+        ))
+        return True

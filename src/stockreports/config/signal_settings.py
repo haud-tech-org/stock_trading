@@ -174,34 +174,11 @@ APPROACH_CONFIG = {
         "USE_MA_CONFIRMATION": True
     },
     "CONSISTENT_MOMENTUM": {
-        "CONFIRMATION_WINDOW": 3,
-        "PEAK_TROUGH_PROMINENCE": 2,
-        "PEAK_BOTTOM_LOOKBACK_PERIOD": 60,
-        "USE_FORWARD_WINDOW_CONFIRMATION": True,
-        "LONG_FORWARD_WINDOW": 9,
-        "REVERSAL_VOLUME_MULTIPLIER": 2.5,
-        "REVERSAL_BODY_RATIO_THRESHOLD": 0.6,
-        "SHORT_FORWARD_WINDOW": 6,
-        "USE_VOLUME_CONFIRMATION": True,
-        "USE_VOLUME_INCREASING_CONFIRMATION": False,
-        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": True,
-        "REVERSAL_PRICE_DIFF_THRESHOLD": 3.0,
-        "SIGNIFICANT_PRICE_CHANGE_THRESHOLD": 5.0,
-        "GAP_PRICE": 0.5,
-        "ADJACENT_GAP_PRICE": 0.5,
-        "USE_SHORT_TERM_MA_CONFIRMATION": False,
-        "USE_MA_CONFIRMATION": True,
-        "USE_ADX_CONFIRMATION": True,
-        "USE_RSI_CONFIRMATION": True,
-        "RSI_OVERSOLD_THRESHOLD": 25,
-        "RSI_OVERBOUGHT_THRESHOLD": 75,
-        "USE_LONG_TERM_MA_CONFIRMATION": False,
-        "USE_MACD_CONFIRMATION": False,
-        "NUM_CANDLES_FOR_RSI_CHECK": 1,
-        "COOLDOWN_PERIOD": 3,
-
-        # --- Reversal Confirmation Conditions ---
-        "MIN_REVERSAL_BODY_SIZE": 0.3
+        # --- Core Algorithm Parameters ---
+        "LOOKBACK_WINDOW": 5,              # Number of candles to analyze for consistency
+        "MIN_CONSISTENT_CANDLES": 3,       # Minimum consecutive consistent candles required
+        "MAGNITUDE_THRESHOLD": 4.5,        # Fixed alert magnitude
+        "COOLDOWN_WINDOW": 5               # Minutes to wait before next alert of same signal
     },
     "SUPPORT_RESISTANCE_BREAK": {
         "LOOKBACK_PERIOD": 50,
