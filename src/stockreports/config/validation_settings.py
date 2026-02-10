@@ -51,7 +51,7 @@ VALIDATION_PRICE_THRESHOLD_PROFIT = [2.0]  # Not directly used; see per-trade dy
 # Guidance: Used in simulation to set profit threshold dynamically per alert. Allows easy tuning of profit logic.
 # Range: Float > 0 and < 1 (e.g., 0.6 means 60% of magnitude)
 # Example: VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.6 means use max(magnitude * 0.6, 2.0)
-VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.65
+VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.7
 
 # Validation Minimum Profit Threshold for Success
 # Meaning: The minimum profit (in points) required for a trade to be considered a "Success" when exited at the last candle's close (i.e., neither target is hit).

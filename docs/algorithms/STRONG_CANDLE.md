@@ -2,15 +2,16 @@
 
 ## 1. Objective
 
-The STRONG_CANDLE approach is designed to identify significant breakout signals by detecting a "strong candle" that emerges after a period of consolidation. It operates by:
+The STRONG_CANDLE approach is designed to identify significant breakout signals by detecting a "strong candle" that emerges after a meaningful period of consolidation. It operates by:
 
 1. **Identifying a strong candle** - the last candle in the lookback window with significant body size and body ratio
 2. **Validating volume pattern** - ensuring the strong candle's volume doesn't exceed the maximum volume in the conditional window (all preceding candles) times a multiplier
-3. **Confirming trend consistency** - ensuring the strong candle's color (green/red) matches the trend direction determined by close price extremes in the lookback window
-4. **Validating opposite-color candles** - confirming that contra-trend candles in the conditional window have small bodies and don't challenge the dominant trend
-5. **Applying cooldown logic** - preventing alert spam by enforcing a minimum time between alerts for the same symbol and signal
+3. **Validating consolidation range** - ensuring the window's price range falls within a meaningful band (minimum to maximum thresholds), confirming both sufficient consolidation and not excessive drift
+4. **Confirming trend consistency** - ensuring the strong candle's color (green/red) matches the trend direction determined by close price extremes in the lookback window
+5. **Validating opposite-color candles** - confirming that contra-trend candles in the conditional window have small bodies and don't challenge the dominant trend
+6. **Applying cooldown logic** - preventing alert spam by enforcing a minimum time between alerts for the same symbol and signal
 
-This approach captures momentum-driven moves that signal the start of a new, decisive trend.
+This approach captures momentum-driven moves that signal the start of a new, decisive trend with verified consolidation quality.
 
 ## 2. Key Parameters
 
@@ -18,12 +19,14 @@ The behavior of the STRONG_CANDLE executor is controlled by the following parame
 
 | Parameter                            | Default Value | Description                                                                                                                                                                         |
 | ------------------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LOOKBACK_WINDOW`                    | 10            | The total number of candles in the analysis window, including both the conditional window and the strong candle.                                                                     |
-| `MIN_BODY_RATIO`                     | 0.8           | The minimum ratio of the candle's body to its total range (high-low) for the strong candle to qualify. Range: (0.0, 1.0].                                                          |
-| `MIN_BODY_SIZE`                      | 2.5           | The minimum absolute size (price points) of the strong candle's body to qualify as "strong".                                                                                        |
-| `MAX_OPPOSITE_COLOR_CANDLE_BODY_SIZE` | 2.0           | The maximum body size allowed for any candle with opposite color to the strong candle. Ensures contra-trend candles are weak and don't challenge the dominant trend.                 |
-| `MAX_DIFFERENCE_PRICE_THRESHOLD`     | 2.0           | The maximum price range (high-low) allowed within the full window. Enforces that the breakout occurs from a tight consolidation.                                                     |
-| `MAX_VOLUME_MULTIPLIER`              | 1.5           | The strong candle's volume must not exceed the maximum volume in the conditional window (all preceding candles) times this multiplier. Prevents false signals from isolated spike candles.                             |
+| `LOOKBACK_WINDOW`                    | 6             | The total number of candles in the analysis window, including both the conditional window and the strong candle.                                                                     |
+| `MIN_BODY_RATIO`                     | 0.7           | The minimum ratio of the candle's body to its total range (high-low) for the strong candle to qualify. Range: (0.0, 1.0].                                                          |
+| `MIN_BODY_SIZE`                      | 2.1           | The minimum absolute size (price points) of the strong candle's body to qualify as "strong".                                                                                        |
+| `MAX_OPPOSITE_COLOR_CANDLE_BODY_SIZE` | 1.0           | The maximum body size allowed for any candle with opposite color to the strong candle. Ensures contra-trend candles are weak and don't challenge the dominant trend.                 |
+| `MIN_DIFFERENCE_PRICE_THRESHOLD`     | 3.0           | The minimum price range (high-low) required within the full window. Ensures meaningful consolidation before breakout.                                                                |
+| `MAX_DIFFERENCE_PRICE_THRESHOLD`     | 5.5           | The maximum price range (high-low) allowed within the full window. Enforces that the breakout occurs from a reasonable consolidation.                                               |
+| `MAX_VOLUME_MULTIPLIER`              | 1.5           | The strong candle's volume must not exceed the maximum volume in the conditional window (all preceding candles) times this multiplier. Prevents false signals from isolated spike candles. |
+| `MAGNITUDE_THRESHOLD`                | 4.5           | Fixed magnitude value assigned to all generated alerts for consistent signal strength representation.                                                                               |
 | `COOLDOWN_WINDOW`                    | 3             | Time window in minutes after an alert is generated during which no new alert for the same symbol and signal can be issued. Prevents alert spam.                                     |
 
 ## 3. Step-by-Step Logic
@@ -48,8 +51,9 @@ The executor analyzes data in a reverse loop, starting from the most recent cand
     - Identifies the minimum close price and maximum close price within the window
     - **UPTREND**: Minimum close is encountered before maximum close (prices trending upward)
     - **DOWNTREND**: Maximum close is encountered before minimum close (prices trending downward)
-*   Also validates that the window's price range (high - low) does not exceed `MAX_DIFFERENCE_PRICE_THRESHOLD`.
-*   **Validation A**: The strong candle's color must match the window trend:
+*   **Validation A (Minimum Range)**: The window's price range (high - low) must be >= `MIN_DIFFERENCE_PRICE_THRESHOLD` to ensure meaningful consolidation.
+*   **Validation B (Maximum Range)**: The window's price range (high - low) must not exceed `MAX_DIFFERENCE_PRICE_THRESHOLD` to prevent excessively wide ranges.
+*   **Validation C (Color Consistency)**: The strong candle's color must match the window trend:
     - **UPTREND**: Strong candle must be GREEN → Signal = **BUY**
     - **DOWNTREND**: Strong candle must be RED → Signal = **SELL**
 *   If any validation fails, the window is discarded.
@@ -87,13 +91,14 @@ All validations follow the standardized pattern defined in the executor rules:
 - **Automated Naming**: Each `Validation` uses `nameof()` to set the name to the exact config variable name.
 - **Serialization**: All validations are serialized to JSON and included in the `AlertData.details` field as a `validations` array.
 
-**Validations tracked**:
-1. `min_body_ratio` - Step 1
-2. `min_body_size` - Step 1
-3. `max_volume_multiplier` - Step 2
-4. `max_window_size_threshold` - Step 3
-5. `candle_trend_consistency` - Step 3 (logic-based, not config-tied, but tracked for completeness)
-6. `max_opposite_color_candle_body_size` - Step 4
+**Validations tracked** (7 total):
+1. `min_body_ratio` - Step 1, Validation 1
+2. `min_body_size` - Step 1, Validation 2
+3. `max_volume_multiplier` - Step 2, Validation 1
+4. `min_window_size_threshold` - Step 3, Validation 1 (NEW)
+5. `max_window_size_threshold` - Step 3, Validation 2
+6. `candle_trend_consistency` - Step 3, Validation 3 (logic-based, tracked for completeness)
+7. `max_opposite_color_candle_body_size` - Step 4, Validation 1
 
 ## 5. Flow Diagram
 
@@ -109,7 +114,7 @@ graph TD
     F --> G{Volume <= Max Conditional Volume * Multiplier?}
     G -- No --> B
     G -- Yes --> H[Step 3: Validate Window Color Consistency]
-    H --> I{Trend Detected & Candle Color Matches & Range <= Threshold?}
+    H --> I{Trend Detected & Min/Max Range OK & Candle Color Matches?}
     I -- No --> B
     I -- Yes --> J[Step 4: Validate Opposite-Color Candles Bodies]
     J --> K{All Opposite-Color Bodies <= Max Size?}
