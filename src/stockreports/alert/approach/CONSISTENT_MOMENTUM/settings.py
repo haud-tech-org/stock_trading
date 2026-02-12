@@ -21,3 +21,13 @@ class ConsistentMomentumSettings(BaseSettings):
         
         # Cooldown validation
         self.cooldown_window = self.get("COOLDOWN_WINDOW")
+        
+        # Volume validation
+        self.max_multiplier_difference_volume_threshold = self.get("MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD")
+        
+        # Confirmation window price range validation
+        self.min_confirmation_window_price_threshold = self.get("MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD")
+        self.max_confirmation_window_price_threshold = self.get("MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD")
+        
+        # Confirmation window gap validation
+        self.max_confirmation_gap_threshold = self.get("MAX_CONFIRMATION_GAP_THRESHOLD")

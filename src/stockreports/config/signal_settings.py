@@ -178,7 +178,14 @@ APPROACH_CONFIG = {
         "LOOKBACK_WINDOW": 5,              # Number of candles to analyze for consistency
         "MIN_CONSISTENT_CANDLES": 3,       # Minimum consecutive consistent candles required
         "MAGNITUDE_THRESHOLD": 4.5,        # Fixed alert magnitude
-        "COOLDOWN_WINDOW": 5               # Minutes to wait before next alert of same signal
+        "COOLDOWN_WINDOW": 5,              # Minutes to wait before next alert of same signal
+        # --- Volume Validation Parameters ---
+        "MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD": 1.5,  # Max volume <= Min volume * this threshold
+        # --- Confirmation Window Price Range Parameters ---
+        "MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD": 1.0,    # Minimum price range in confirmation window
+        "MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD": 4.0,    # Maximum price range in confirmation window
+        # --- Confirmation Window Gap Validation Parameters ---
+        "MAX_CONFIRMATION_GAP_THRESHOLD": 0.5              # Maximum allowed gap between consecutive candles in the confirmation window
     },
     "SUPPORT_RESISTANCE_BREAK": {
         "LOOKBACK_PERIOD": 50,
