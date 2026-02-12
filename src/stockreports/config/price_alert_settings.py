@@ -37,6 +37,25 @@ PERFORMANCE_BY_APPROACH = {
     'CONSISTENT_VOLUME_ANCHOR': {'avg_worst_loss_price': 1.1}
 }
 
+# Approach-specific profit threshold configuration for alert notifications.
+# This dictionary defines the suggested_profit_threshold for each alert approach.
+# Values are in percentage points or absolute price points (as configured for each approach).
+PROFIT_THRESHOLD_BY_APPROACH = {
+    'VOLUME_SPIKE_CONFIRMATION': 3.5,
+    'PROMINENT_PEAK_REVERSAL': 2.0,
+    'STRONG_CANDLE': 4.0,
+    'CONSECUTIVE_POWER_CANDLES': 2.5,
+    'CONSISTENT_MOMENTUM': 3.15,
+    'RCM': 2.5,
+    'PRICE_GAP': 3.0,
+    'VRA': 4.5,
+    'COMPARISON': 2.0,
+    'TREND_REVERSAL': 2.5,
+    'VOLUME_REVERSAL': 3.0,
+    'SESSION_EXTREME_VOLUME_REVERSAL': 3.25,
+    'CONSISTENT_VOLUME_ANCHOR': 2.75
+}
+
 # A fixed offset added to all suggested price calculations to provide an extra buffer.
 # For BUY signals, this offset is subtracted from the calculated structural price.
 # For SELL signals, it's added.

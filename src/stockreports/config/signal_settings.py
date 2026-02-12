@@ -183,7 +183,9 @@ APPROACH_CONFIG = {
         "MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD": 1.5,  # Max volume <= Min volume * this threshold
         # --- Confirmation Window Price Range Parameters ---
         "MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD": 1.0,    # Minimum price range in confirmation window
-        "MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD": 4.0     # Maximum price range in confirmation window
+        "MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD": 4.0,    # Maximum price range in confirmation window
+        # --- Confirmation Window Gap Validation Parameters ---
+        "MAX_CONFIRMATION_GAP_THRESHOLD": 0.5              # Maximum allowed gap between consecutive candles in the confirmation window
     },
     "SUPPORT_RESISTANCE_BREAK": {
         "LOOKBACK_PERIOD": 50,

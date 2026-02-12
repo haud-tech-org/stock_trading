@@ -93,22 +93,27 @@ class ConsistentMomentumExecutor(Executor):
             if not self._step_validate_confirmation_window_price_range(confirmation_window_df):
                 continue
 
-            # Step 6: Validate all candles have same color
+            # Step 6: Validate confirmation window gap between candles
+            self.next_step()
+            if not self._step_validate_confirmation_window_gap(confirmation_window_df):
+                continue
+
+            # Step 7: Validate all candles have same color
             self.next_step()
             if not self._step_validate_color_consistency(confirmation_window_df, signal):
                 continue
 
-            # Step 7: Validate open price direction
+            # Step 8: Validate open and close price direction
             self.next_step()
-            if not self._step_validate_open_price_direction(confirmation_window_df, signal):
+            if not self._step_validate_open_close_price_direction(confirmation_window_df, signal):
                 continue
 
-            # Step 8: Validate minimum consistent candles
+            # Step 9: Validate minimum consistent candles
             self.next_step()
             if not self._step_validate_min_consistent_candles(confirmation_window_df):
                 continue
 
-            # Step 9: Cooldown check
+            # Step 10: Cooldown check
             self.next_step()
             if not self._step_cooldown_check(
                 last_alert=ConsistentMomentumExecutor.LATEST_ALERT,
@@ -117,7 +122,7 @@ class ConsistentMomentumExecutor(Executor):
             ):
                 continue
 
-            # Step 10: Alert creation
+            # Step 11: Alert creation
             self.next_step()
             details_dict = self._add_details_for_alert(
                 anchor_candle_index=anchor_idx,
@@ -442,9 +447,71 @@ class ConsistentMomentumExecutor(Executor):
         ))
         return True
 
+    def _step_validate_confirmation_window_gap(self, confirmation_window_df: pd.DataFrame) -> bool:
+        """
+        Step 6: Validate that there is no excessive gap between consecutive candles in the confirmation window.
+        
+        A gap is calculated as the absolute difference between the close price of one candle
+        and the open price of the next candle. This ensures there are no significant price jumps
+        between consecutive candles (indicating no gaps or slippage).
+        
+        Formula: gap = |close[i] - open[i+1]| for each consecutive pair
+        """
+        self.next_validation()
+        
+        if len(confirmation_window_df) < 2:
+            # Only one candle, no gap to validate
+            self.validations.append(Validation(
+                name="confirmation_window_gap",
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Only one candle in confirmation window, gap validation skipped.",
+                status=ValidationStatus.PASSED
+            ))
+            return True
+        
+        threshold = self.settings.max_confirmation_gap_threshold
+        
+        # Check gaps between consecutive candles
+        for i in range(len(confirmation_window_df) - 1):
+            close_current = confirmation_window_df.iloc[i]['close']
+            open_next = confirmation_window_df.iloc[i + 1]['open']
+            gap = abs(close_current - open_next)
+            
+            if gap > threshold:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Gap between candle {i} and {i+1} exceeds threshold: gap={gap:.2f} > {threshold}. Close[{i}]={close_current:.2f}, Open[{i+1}]={open_next:.2f}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
+                return False
+        
+        # All gaps are within threshold
+        gaps = [abs(confirmation_window_df.iloc[i]['close'] - confirmation_window_df.iloc[i + 1]['open']) 
+                for i in range(len(confirmation_window_df) - 1)]
+        max_gap = max(gaps) if gaps else 0
+        
+        self.validations.append(Validation(
+            name="confirmation_window_gap",
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Confirmation window gap validation passed: max_gap={max_gap:.2f} <= {threshold}. All gaps: {[f'{g:.2f}' for g in gaps]}",
+            status=ValidationStatus.PASSED
+        ))
+        return True
+
     def _step_validate_color_consistency(self, confirmation_window_df: pd.DataFrame, signal: Signal) -> bool:
         """
-        Step 6: Validate that all candles in the confirmation window have the same color
+        Step 7: Validate that all candles in the confirmation window have the same color
         matching the signal.
         """
         self.next_validation()
@@ -494,12 +561,16 @@ class ConsistentMomentumExecutor(Executor):
         ))
         return True
 
-    def _step_validate_open_price_direction(self, confirmation_window_df: pd.DataFrame, signal: Signal) -> bool:
+    def _step_validate_open_close_price_direction(self, confirmation_window_df: pd.DataFrame, signal: Signal) -> bool:
         """
-        Step 7: Validate that open prices follow the signal direction.
+        Step 8: Validate that both open and close prices follow the signal direction.
         
-        For BUY signal: open prices must always increase (each candle's open >= previous candle's open)
-        For SELL signal: open prices must always decrease (each candle's open <= previous candle's open)
+        For BUY signal: 
+            - Open prices must strictly increase (each candle's open > previous candle's open)
+            - Close prices must strictly increase (each candle's close > previous candle's close)
+        For SELL signal: 
+            - Open prices must strictly decrease (each candle's open < previous candle's open)
+            - Close prices must strictly decrease (each candle's close < previous candle's close)
         
         This ensures the price movement is consistent with the signal direction throughout the window.
         """
@@ -517,6 +588,7 @@ class ConsistentMomentumExecutor(Executor):
             return True
         
         opens = confirmation_window_df['open'].values
+        closes = confirmation_window_df['close'].values
         
         if signal == Signal.BUY:
             # For BUY: check that opens are strictly increasing (open[i] > open[i-1])
@@ -530,6 +602,25 @@ class ConsistentMomentumExecutor(Executor):
                         step=self.current_step,
                         validation=self.validation_step,
                         message=f"BUY open price direction failed: open[{i}]={opens[i]:.2f} <= open[{i-1}]={opens[i-1]:.2f}",
+                        log_level=LogLevel.DEBUG,
+                        execution_symbol=self.symbol,
+                        start_time=self.current_window_start_time,
+                        end_time=self.current_window_end_time,
+                        approach=self.APPROACH_NAME
+                    )
+                    return False
+            
+            # For BUY: check that closes are strictly increasing (close[i] > close[i-1])
+            for i in range(1, len(closes)):
+                if closes[i] <= closes[i-1]:
+                    log(
+                        logger=self.logger,
+                        status=ValidationStatus.FAILED,
+                        name=self.__class__.__name__,
+                        alert_time=self.current_window_end_time,
+                        step=self.current_step,
+                        validation=self.validation_step,
+                        message=f"BUY close price direction failed: close[{i}]={closes[i]:.2f} <= close[{i-1}]={closes[i-1]:.2f}",
                         log_level=LogLevel.DEBUG,
                         execution_symbol=self.symbol,
                         start_time=self.current_window_start_time,
@@ -556,19 +647,38 @@ class ConsistentMomentumExecutor(Executor):
                         approach=self.APPROACH_NAME
                     )
                     return False
+            
+            # For SELL: check that closes are strictly decreasing (close[i] < close[i-1])
+            for i in range(1, len(closes)):
+                if closes[i] >= closes[i-1]:
+                    log(
+                        logger=self.logger,
+                        status=ValidationStatus.FAILED,
+                        name=self.__class__.__name__,
+                        alert_time=self.current_window_end_time,
+                        step=self.current_step,
+                        validation=self.validation_step,
+                        message=f"SELL close price direction failed: close[{i}]={closes[i]:.2f} >= close[{i-1}]={closes[i-1]:.2f}",
+                        log_level=LogLevel.DEBUG,
+                        execution_symbol=self.symbol,
+                        start_time=self.current_window_start_time,
+                        end_time=self.current_window_end_time,
+                        approach=self.APPROACH_NAME
+                    )
+                    return False
         
         self.validations.append(Validation(
             name="open_price_direction",
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Open price direction validated: {'increasing' if signal == Signal.BUY else 'decreasing'} for {signal} signal. Opens: {[f'{o:.2f}' for o in opens]}",
+            message=f"Open and close price directions validated: {'increasing' if signal == Signal.BUY else 'decreasing'} for {signal} signal. Opens: {[f'{o:.2f}' for o in opens]}, Closes: {[f'{c:.2f}' for c in closes]}",
             status=ValidationStatus.PASSED
         ))
         return True
 
     def _step_validate_min_consistent_candles(self, confirmation_window_df: pd.DataFrame) -> bool:
         """
-        Step 8: Validate that the confirmation window has at least MIN_CONSISTENT_CANDLES.
+        Step 9: Validate that the confirmation window has at least MIN_CONSISTENT_CANDLES.
         """
         self.next_validation()
         consistent_count = len(confirmation_window_df)
