@@ -343,6 +343,9 @@ APPROACH_CONFIG = {
     "SESSION_EXTREME_VOLUME_REVERSAL": {
         # Minimum multiplier for alert candle volume vs. average session volume
         "MIN_VOLUME_MULTIPLIER": 3.5,
+        # Minimum multiplier for alert candle volume vs. same-color max-volume candle
+        # alert_candle_volume >= MIN_SAME_COLOR_MAX_VOLUME_MULTIPLIER * same_color_max_vol
+        "MIN_SAME_COLOR_MAX_VOLUME_MULTIPLIER": 2.5,
         "MAGNITUDE_THRESHOLD": 6.5,
         "LOOKBACK_WINDOW": 10,
         "COOLDOWN_WINDOW": 3
