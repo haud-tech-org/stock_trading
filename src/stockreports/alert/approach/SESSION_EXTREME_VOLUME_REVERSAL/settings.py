@@ -11,5 +11,6 @@ class SessionExtremeVolumeReversalSettings(BaseSettings):
 
         self.lookback_window = self.get("LOOKBACK_WINDOW")
         self.min_volume_multiplier = self.get("MIN_VOLUME_MULTIPLIER")
+        self.min_same_color_max_volume_multiplier = self.get("MIN_SAME_COLOR_MAX_VOLUME_MULTIPLIER")
         self.magnitude_threshold = self.get("MAGNITUDE_THRESHOLD")
         self.cooldown_window = self.get("COOLDOWN_WINDOW")
