@@ -112,10 +112,15 @@ class SessionExtremeVolumeReversalExecutor(Executor):
             if not self._step_min_volume_multiplier_validation(lookback_volume_df, alert_candle):
                 continue
 
+            # Step 6: Same-color max-volume candle validation
+            self.next_step()
+            if not self._step_same_color_max_volume_validation(session_window, alert_candle):
+                continue
+
             reversal_trend = candle_utils.get_reversal_trend(trend)
             reversal_signal = candle_utils.get_signal_from_trend(reversal_trend)
             
-            # Step 6: Cooldown check
+            # Step 7: Cooldown check
             self.next_step()
             if not self._step_cooldown_check(
                 last_alert=SessionExtremeVolumeReversalExecutor.LATEST_ACCEPTED_ALERT,
@@ -124,13 +129,13 @@ class SessionExtremeVolumeReversalExecutor(Executor):
             ):
                 continue
 
-            # Step 7: Create details for alert
+            # Step 8: Create details for alert
             details_dict = self._add_details_for_alert(
                 window=session_window,
                 alert_candle=alert_candle
             )
 
-            # Step 8: Alert creation
+            # Step 9: Alert creation
             self.next_step()
             alert = self._create_alert_with_details(
                 final_signal=reversal_signal,  # Set to the appropriate signal if available
@@ -281,6 +286,108 @@ class SessionExtremeVolumeReversalExecutor(Executor):
             step=self.current_step,
             validation=self.validation_step,
             message=(f"Volume multiplier check passed: alert_idx={alert_idx}, alert_vol={alert_vol}, avg_vol={avg_vol:.2f}, multiplier={self.settings.min_volume_multiplier}, threshold={threshold:.2f}, ratio={ratio:.2f}"),
+            status=ValidationStatus.PASSED
+        ))
+        return True
+
+    def _step_same_color_max_volume_validation(self, window: pd.DataFrame, alert_candle: pd.Series) -> bool:
+        """
+        Step 6: Validates that there exists a candle with maximum volume among all candles 
+        that have the same color as the alert candle.
+        
+        This validates that the alert candle's directional momentum is supported by 
+        the strongest same-color candle in the session window.
+        
+        Algorithm:
+        1. Determine alert candle color (green/red)
+        2. Filter window to find all candles with same color (excluding alert)
+        3. Find the candle with maximum volume among same-color candles
+        4. Validation passes if such a candle exists
+        """
+        self.next_validation()
+        
+        # Check if there's more than one candle to compare
+        if len(window) < 2:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Window has less than 2 candles; cannot validate adjacent candle.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+        
+        # Determine alert candle color
+        alert_is_green = candle_utils.is_green_candle(alert_candle)
+        alert_color = "green" if alert_is_green else "red"
+        alert_vol = alert_candle['volume']
+        
+        # Filter window to candles with the same color as alert candle (excluding alert candle itself)
+        window_excluding_alert = window.iloc[:-1]
+        same_color_mask = window_excluding_alert.apply(
+            lambda candle: candle_utils.is_green_candle(candle) == alert_is_green,
+            axis=1
+        )
+        same_color_candles = window_excluding_alert[same_color_mask]
+        
+        # Check if there are any candles with the same color
+        if len(same_color_candles) == 0:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"No candles with matching color ({alert_color}) found in window excluding alert candle.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+        
+        # Find the candle with max volume among same-color candles
+        max_vol_idx_in_same_color = same_color_candles['volume'].idxmax()
+        same_color_max_vol_candle = window.loc[max_vol_idx_in_same_color]
+        same_color_max_vol = same_color_max_vol_candle['volume']
+        
+        # Check if alert volume meets the multiplier threshold vs same-color max-volume
+        threshold = same_color_max_vol * self.settings.min_same_color_max_volume_multiplier
+        is_valid = alert_vol >= threshold
+        ratio = alert_vol / same_color_max_vol if same_color_max_vol > 0 else 0
+        
+        if not is_valid:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=(f"Same-color max-volume multiplier check failed: alert_vol={alert_vol}, same_color_max_vol={same_color_max_vol:.0f}, multiplier={self.settings.min_same_color_max_volume_multiplier}, threshold={threshold:.0f}, ratio={ratio:.2f}"),
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+        
+        # Validation passes if alert volume meets the multiplier threshold
+        self.validations.append(Validation(
+            name="same_color_max_volume",
+            step=self.current_step,
+            validation=self.validation_step,
+            message=(f"Same-color max-volume multiplier check passed: alert_vol={alert_vol}, same_color_max_vol={same_color_max_vol:.0f}, multiplier={self.settings.min_same_color_max_volume_multiplier}, threshold={threshold:.0f}, ratio={ratio:.2f}"),
             status=ValidationStatus.PASSED
         ))
         return True
