@@ -267,11 +267,11 @@ APPROACH_CONFIG = {
     },
     "PRICE_GAP": {
         "LOOKBACK_WINDOW": 10,
-        "MIN_GAP_CANDLE_SIZE": 2.0,
-        "MIN_ALERT_BODY_SIZE": 1.0,
+        "MIN_GAP_CANDLE_SIZE": 1.0,
+        "MIN_ALERT_BODY_SIZE": 0.7,
         "ENABLE_MARKET_TREND_VALIDATION": False,
         "IMPACT_SYMBOLS_MIN_BODY_TO_RANGE_RATIO": 0.3,
-        "VOLUME_MULTIPLIER": 2.0,
+        "VOLUME_MULTIPLIER": 2.5,
         "COOLDOWN_WINDOW": 3,
     },
     # --- VRA (Volume-Reversal-Anchor) ---
