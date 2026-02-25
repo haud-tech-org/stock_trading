@@ -8,7 +8,7 @@ from typing import List, Optional
 # --- Standard Imports ---
 from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel
-from src.stockreports.alert.model.models import AlertResult, AlertData
+from src.stockreports.alert.model.models import AlertData
 from .settings import PriceGapSettings
 from src.stockreports.utils import candle_utils
 from src.stockreports.utils.alert_utils import is_in_cooldown
@@ -16,63 +16,15 @@ from src.stockreports.alert.common.signal.market_trend_validation import validat
 from src.stockreports.utils.log_factory import log
 
 class PriceGapExecutor(Executor):
-    APPROACH_NAME = Approach.PRICE_GAP
     LATEST_ALERT: Optional[AlertData] = None
 
     def __init__(self, symbol: str):
         self.settings = PriceGapSettings(symbol)
-        super().__init__(symbol, self.settings)
+        approach_name = Approach.PRICE_GAP
+        super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
-        self.current_window_start_time: Optional[pd.Timestamp] = None
-        self.current_window_end_time: Optional[pd.Timestamp] = None
-        self.current_step: int = 0
 
-    def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
-        """
-        Entry point for the PRICE_GAP approach.
-        """
-        try:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.PASSED,
-                name=self.__class__.__name__,
-                alert_time="N/A",
-                step=0,
-                message=f"Running '{self.APPROACH_NAME}' approach for symbol {self.symbol}...",
-                log_level=LogLevel.INFO,
-                execution_symbol=self.symbol
-            )
-            
-            alerts_data = self._find_price_gap_alerts(df, new_candle_count)
-            log(
-                logger=self.logger,
-                status=ValidationStatus.PASSED,
-                name=self.__class__.__name__,
-                alert_time="N/A",
-                step=0,
-                message=f"'{self.APPROACH_NAME}' approach for {self.symbol} found {len(alerts_data)} alerts.",
-                log_level=LogLevel.INFO,
-                execution_symbol=self.symbol
-            )
-
-            alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
-
-            return AlertResult(
-                approach_name=self.APPROACH_NAME,
-                alerts=alerts_df
-            )
-        except Exception as e:
-            self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
-            return AlertResult(
-                approach_name=self.APPROACH_NAME,
-                alerts=pd.DataFrame(),
-                status="FAILED",
-                message=str(e)
-            )
-
-    def _find_price_gap_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> List[AlertData]:
-        alerts = []
-        is_development_mode = self.settings.MODE == Mode.DEVELOPMENT
+    def _find_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
         window_size = self.settings.lookback_window
         min_gap_size = self.settings.min_gap_size
         cooldown_window = self.settings.cooldown_window
@@ -86,27 +38,26 @@ class PriceGapExecutor(Executor):
                 step=0,
                 message=f"Not enough data for {self.APPROACH_NAME}: requires {window_size}, have {len(df)}.",
                 log_level=LogLevel.WARNING,
-                execution_symbol=self.symbol
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
             )
-            return alerts
+            return self.alerts
 
-        df_indexed = df.reset_index()
-
-        loop_end_index = len(df_indexed) - 1
-        min_scan_index = window_size - 1
-
-        if is_development_mode:
-            loop_start_index = min_scan_index
-        else:
-            loop_start_index = max(min_scan_index, len(df_indexed) - new_candle_count)
+        # --- Standardized loop setup ---
+        df_indexed, loop_start, loop_end = self.get_loop_setup(
+            df=df,
+            new_candle_count=new_candle_count,
+            lookback_window_size=window_size
+        )
 
         # Reverse loop from the most recent data to the oldest
-        for i in range(loop_end_index, loop_start_index - 1, -1):
-            window_start_index = i - window_size + 1
-            window_df = df_indexed.iloc[window_start_index : i + 1].copy()
-            self.current_window_end_time = window_df.iloc[-1]['time']
-            self.current_window_start_time = window_df.iloc[0]['time']
-            self.current_step = 1
+        for i in range(loop_end - 1, loop_start - 1, -1):
+            # --- Standardized window context extraction ---
+            self.set_window_context(i, df_indexed, window_size)
+            if self.lookback_window_df is None or self.first_candle is None or self.last_candle is None:
+                continue
+            
+            window_df = self.lookback_window_df.copy()
             gap_found_in_window = False
 
             # Inner loop to find the first significant gap in the window
@@ -139,6 +90,69 @@ class PriceGapExecutor(Executor):
 
                     # --- Scenario 1: Continuation Alert ---
                     if anchor_candle_A.name == window_df.index[-1]:
+                        # Step 2a: Validate continuation candle characteristics
+                        self.current_step += 1
+                        
+                        # Validation 1: Previous and current candle must have the same color
+                        prev_is_green = candle_utils.is_green_candle(previous_candle)
+                        curr_is_green = candle_utils.is_green_candle(current_candle)
+                        
+                        if prev_is_green != curr_is_green:
+                            log(
+                                logger=self.logger,
+                                status=ValidationStatus.FAILED,
+                                name=self.__class__.__name__,
+                                alert_time=self.current_window_end_time,
+                                step=self.current_step,
+                                validation=1,
+                                message=f"Continuation alert candles do not have the same color. Previous: {'green' if prev_is_green else 'red'}, Current: {'green' if curr_is_green else 'red'}.",
+                                log_level=LogLevel.DEBUG,
+                                execution_symbol=self.symbol,
+                                start_time=self.current_window_start_time,
+                                end_time=self.current_window_end_time,
+                                approach=self.APPROACH_NAME
+                            )
+                            continue
+                        
+                        # Validation 2: Body of current candle >= body of previous candle
+                        prev_body = abs(previous_candle['close'] - previous_candle['open'])
+                        curr_body = abs(current_candle['close'] - current_candle['open'])
+                        
+                        if curr_body < prev_body:
+                            log(
+                                logger=self.logger,
+                                status=ValidationStatus.FAILED,
+                                name=self.__class__.__name__,
+                                alert_time=self.current_window_end_time,
+                                step=self.current_step,
+                                validation=2,
+                                message=f"Current candle body ({curr_body:.2f}) is smaller than previous candle body ({prev_body:.2f}).",
+                                log_level=LogLevel.DEBUG,
+                                execution_symbol=self.symbol,
+                                start_time=self.current_window_start_time,
+                                end_time=self.current_window_end_time,
+                                approach=self.APPROACH_NAME
+                            )
+                            continue
+                        
+                        # Validation 3: Volume of current candle <= volume of previous candle
+                        if current_candle['volume'] > previous_candle['volume']:
+                            log(
+                                logger=self.logger,
+                                status=ValidationStatus.FAILED,
+                                name=self.__class__.__name__,
+                                alert_time=self.current_window_end_time,
+                                step=self.current_step,
+                                validation=3,
+                                message=f"Current candle volume ({current_candle['volume']}) exceeds previous candle volume ({previous_candle['volume']}).",
+                                log_level=LogLevel.DEBUG,
+                                execution_symbol=self.symbol,
+                                start_time=self.current_window_start_time,
+                                end_time=self.current_window_end_time,
+                                approach=self.APPROACH_NAME
+                            )
+                            continue
+
                         # Cooldown Check for Continuation
                         self.current_step += 1
                         if is_in_cooldown(
@@ -157,7 +171,8 @@ class PriceGapExecutor(Executor):
                                 log_level=LogLevel.DEBUG,
                                 execution_symbol=self.symbol,
                                 start_time=self.current_window_start_time,
-                                end_time=self.current_window_end_time
+                                end_time=self.current_window_end_time,
+                                approach=self.APPROACH_NAME
                             )
                             continue
 
@@ -206,7 +221,8 @@ class PriceGapExecutor(Executor):
                                     log_level=LogLevel.DEBUG,
                                     execution_symbol=self.symbol,
                                     start_time=self.current_window_start_time,
-                                    end_time=self.current_window_end_time
+                                    end_time=self.current_window_end_time,
+                                    approach=self.APPROACH_NAME
                                 )
                                 continue
 
@@ -217,7 +233,7 @@ class PriceGapExecutor(Executor):
                             gap=gap,
                             alert_type="Continuation"
                         )
-                        alerts.append(alert_data)
+                        self.alerts.append(alert_data)
                         PriceGapExecutor.LATEST_ALERT = alert_data
                         log(
                             logger=self.logger,
@@ -229,9 +245,10 @@ class PriceGapExecutor(Executor):
                             log_level=LogLevel.INFO,
                             execution_symbol=self.symbol,
                             start_time=self.current_window_start_time,
-                            end_time=self.current_window_end_time
+                            end_time=self.current_window_end_time,
+                            approach=self.APPROACH_NAME
                         )
-                        if not is_development_mode: return alerts
+                        if not self.is_development_mode: return self.alerts
                         break # Move to the next outer window
 
                     # --- Scenario 2: Reversal Alert ---
@@ -247,6 +264,11 @@ class PriceGapExecutor(Executor):
                         
                         if alert_candle is None:
                             # Detailed logging is handled within the private method
+                            continue
+
+                        # Step 3c: Validate alert candle characteristics
+                        self.current_step += 1
+                        if not self._validate_reversal_alert_candle(alert_candle, reversal_signal):
                             continue
 
                         # Step 4b: Cooldown Check for reversal
@@ -267,7 +289,8 @@ class PriceGapExecutor(Executor):
                                 log_level=LogLevel.DEBUG,
                                 execution_symbol=self.symbol,
                                 start_time=self.current_window_start_time,
-                                end_time=self.current_window_end_time
+                                end_time=self.current_window_end_time,
+                                approach=self.APPROACH_NAME
                             )
                             continue
 
@@ -280,7 +303,7 @@ class PriceGapExecutor(Executor):
                             gap_anchor_candle=anchor_candle_A,
                             reversal_anchor_candle=alert_candle # The alert candle is the reversal anchor
                         )
-                        alerts.append(alert_data)
+                        self.alerts.append(alert_data)
                         PriceGapExecutor.LATEST_ALERT = alert_data
                         log(
                             logger=self.logger,
@@ -292,9 +315,10 @@ class PriceGapExecutor(Executor):
                             log_level=LogLevel.INFO,
                             execution_symbol=self.symbol,
                             start_time=self.current_window_start_time,
-                            end_time=self.current_window_end_time
+                            end_time=self.current_window_end_time,
+                            approach=self.APPROACH_NAME
                         )
-                        if not is_development_mode: return alerts
+                        if not self.is_development_mode: return self.alerts
                         break # Move to the next outer window
             if not gap_found_in_window:
                 log(
@@ -307,10 +331,11 @@ class PriceGapExecutor(Executor):
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
                 )
 
-        return alerts
+        return self.alerts
 
     def _validate_reversal_by_volume(self, window_df: pd.DataFrame, anchor_candle_A: pd.Series) -> Optional[pd.Series]:
         """
@@ -338,7 +363,8 @@ class PriceGapExecutor(Executor):
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
 
@@ -351,8 +377,8 @@ class PriceGapExecutor(Executor):
             return None
 
         # Validation 5: Final Volume Confirmation
-        # 5a: Max volume candle must be the alert candle (the last candle)
-        if max_volume_candle_in_reversal.name != alert_candle.name:
+        # 5a: Max volume candle must be at or before the alert candle (the last candle)
+        if max_volume_candle_in_reversal.name > alert_candle.name:
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -360,18 +386,19 @@ class PriceGapExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=2,
-                message=f"Max volume candle in reversal window is not the alert candle.",
+                message=f"Max volume candle in reversal window is after the alert candle.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
 
-        # 5b: Volume of the alert candle must meet the threshold by comparing with the average of the pre-reversal window.
+        # 5b: Volume of the max volume candle must meet the threshold by comparing with the average of the pre-reversal window.
         avg_volume_candle = pd.Series({'volume': avg_volume_pre_reversal})
         is_volume_confirmed, volume_ratio = candle_utils.validate_volume_ratio(
-            large_volume_candle=alert_candle,
+            large_volume_candle=max_volume_candle_in_reversal,
             small_volume_candle=avg_volume_candle,
             min_volume_multiplier=self.settings.volume_multiplier
         )
@@ -384,15 +411,64 @@ class PriceGapExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=3,
-                message=f"Alert candle volume confirmation failed. Ratio to average: {volume_ratio:.2f}",
+                message=f"Max volume candle volume confirmation failed. Ratio to average: {volume_ratio:.2f}",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
             return None
             
         return alert_candle
+
+    def _validate_reversal_alert_candle(self, alert_candle: pd.Series, reversal_signal: Signal) -> bool:
+        """
+        Validates the alert candle characteristics for a reversal signal.
+        Returns True if all validations pass, False otherwise.
+        """
+        # Validation 1: Alert candle color must be compatible with reversal signal
+        is_green = candle_utils.is_green_candle(alert_candle)
+        expected_green = reversal_signal == Signal.BUY
+        
+        if is_green != expected_green:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=1,
+                message=f"Alert candle color incompatible with reversal signal. Color: {'green' if is_green else 'red'}, Expected for {reversal_signal}: {'green' if expected_green else 'red'}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+        
+        # Validation 2: Alert candle body must be >= min_alert_body_size
+        alert_candle_body = abs(alert_candle['close'] - alert_candle['open'])
+        
+        if alert_candle_body < self.settings.min_alert_body_size:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=2,
+                message=f"Alert candle body ({alert_candle_body:.2f}) is smaller than minimum ({self.settings.min_alert_body_size:.2f}).",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+        
+        return True
 
     def _create_alert_data(self, signal: Signal, alert_candle: pd.Series, previous_candle: pd.Series, gap: float, alert_type: str, gap_anchor_candle: pd.Series = None, reversal_anchor_candle: pd.Series = None) -> AlertData:
         """
