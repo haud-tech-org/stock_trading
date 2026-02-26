@@ -22,6 +22,7 @@ The **CONSISTENT_MOMENTUM** approach identifies significant price movements wher
 | MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD | 2.0 | Maximum allowed ratio of max to min volume in confirmation window |
 | MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD | 2.0 | Minimum price range in confirmation window |
 | MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD | 6.0 | Maximum price range in confirmation window |
+| MAX_CONFIRMATION_GAP_THRESHOLD | (config) | Maximum allowed gap between consecutive candles (close[i] - open[i+1]) |
 
 ## Algorithm Steps
 
@@ -46,15 +47,44 @@ The **CONSISTENT_MOMENTUM** approach identifies significant price movements wher
 - This represents the "momentum period" being validated
 - **Validation Tracked**: Window extraction (Step 3, Validation 1)
 
-### Step 4: Validate Volume Consistency
+### Step 4: Validate Maximum Body at Window Boundaries
+- Ensure momentum strength at window boundaries with **two conditions (OR logic)**:
+  
+**Condition 1**: The first and last candles are the 1st and 2nd maximum body candles in the confirmation window
+  - Calculate body size: |close - open| for each candle
+  - Find the candle with the largest body and the candle with the second largest body
+  - Validate that **position 0 (first candle)** and **position n-1 (last candle)** are both in these top-2 positions
+
+**Condition 2**: The last candle is the maximum body candle in the confirmation window
+  - Find the candle with the largest body in the entire confirmation window
+  - Validate that the last candle is at this maximum body position
+
+- This ensures momentum is strongest at the end (and ideally beginning) of the confirmation window, indicating sustained powerful price movement
+- Pass if **EITHER** Condition 1 **OR** Condition 2 is satisfied
+
+**Examples:**
+
+Condition 1 Pass Example: Confirmation window bodies [2.5, 1.0, 0.8, 1.2, 2.3]
+  - Max bodies at positions 0 (2.5) and 4 (2.3) → ✅ PASS (first and last are 1st/2nd max)
+
+Condition 1 Fail Example: Confirmation window bodies [2.5, 1.5, 2.3, 1.0, 0.5]
+  - Max bodies at positions 0 (2.5) and 2 (2.3), but position 4 (last) is 0.5 → ❌ FAIL Condition 1
+  - But if last body was max: Max is 2.5 at position 0, not position 4 → ❌ FAIL Condition 2
+
+Condition 2 Pass Example: Confirmation window bodies [0.5, 1.0, 1.5, 2.0, 2.5]
+  - Max body is 2.5 at position 4 (last) → ✅ PASS (last is max, even though first is not in top 2)
+
+- **Validation Tracked**: Max body at boundaries check (Step 4, Validation 1)
+
+### Step 5: Validate Volume Consistency
 - Find **max volume** (Mx) in the confirmation window
 - Find **min volume** (Mn) in the confirmation window
 - Validate: **Mx ≤ Mn × MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD**
 - Ensures volume is consistent without excessive spikes
 - Configuration: MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD (default: 2.0)
-- **Validation Tracked**: Volume consistency check (Step 4, Validation 1)
+- **Validation Tracked**: Volume consistency check (Step 5, Validation 1)
 
-### Step 5: Validate Confirmation Window Price Range
+### Step 6: Validate Confirmation Window Price Range
 - Calculate the price range as the difference between highest and lowest **close prices** in the confirmation window
 - Validate: **MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD ≤ Price Range ≤ MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD**
 - **Minimum threshold (2.0)**: Ensures sufficient price movement in the confirmation window (avoids weak signals)
@@ -63,40 +93,56 @@ The **CONSISTENT_MOMENTUM** approach identifies significant price movements wher
 - Example BUY: Closes [100.0, 101.5, 102.0, 103.0] → Range = 3.0 ✅ PASS (within 2.0-6.0)
 - Example SELL: Closes [101.0, 100.5, 100.2, 99.8] → Range = 1.2 ❌ FAIL (below minimum 2.0)
 - Example SELL: Closes [101.5, 100.8, 100.2, 99.0] → Range = 2.5 ✅ PASS (within 2.0-6.0)
-- **Validation Tracked**: Price range minimum check (Step 5, Validation 1) and maximum check (Step 5, Validation 2)
+- **Validation Tracked**: Price range minimum check (Step 6, Validation 1) and maximum check (Step 6, Validation 2)
 
-### Step 6: Validate Color Consistency
+### Step 7: Validate Confirmation Window Gap Between Candles
+- Ensure there are no excessive gaps between consecutive candles in the confirmation window
+- A gap is calculated as: **|close[i] - open[i+1]|** for each consecutive pair
+- Validate: **gap ≤ MAX_CONFIRMATION_GAP_THRESHOLD** for all consecutive pairs
+- This ensures no significant price jumps between candles (no gaps or slippage that would break momentum continuity)
+- Configuration: MAX_CONFIRMATION_GAP_THRESHOLD
+- Example: Closes [100.0, 100.5, 101.0] with Opens [100.0, 100.5, 101.0]
+  - Gap[0] = |100.0 - 100.5| = 0.5 ✅ PASS (within threshold)
+  - Gap[1] = |100.5 - 101.0| = 0.5 ✅ PASS (within threshold)
+- Example: Closes [100.0, 100.5, 101.0] with Opens [100.0, 101.0, 101.5]
+  - Gap[0] = |100.0 - 101.0| = 1.0 ❌ FAIL (if threshold is 0.5)
+- **Validation Tracked**: Gap validation (Step 7, Validation 1)
+
+### Step 8: Validate Color Consistency
 - Verify all candles in confirmation window have matching color
 - **For BUY signal**: All candles must be **GREEN**
 - **For SELL signal**: All candles must be **RED**
 - Any candle breaking the color pattern fails validation
-- **Validation Tracked**: Color consistency check (Step 6, Validation 1)
+- **Validation Tracked**: Color consistency check (Step 8, Validation 1)
 
-### Step 7: Validate Open Price Direction
-- Ensure open prices follow the signal direction throughout the confirmation window
-- **For BUY signal**: Open prices must strictly increase (open[i] > open[i-1], no equal values allowed)
-- **For SELL signal**: Open prices must strictly decrease (open[i] < open[i-1], no equal values allowed)
-- This validates that price movement is consistent with the signal direction
-- Equal open prices between consecutive candles will fail validation
-- Example BUY: opens [100.0, 100.5, 101.0, 101.5] ✅ PASS (strictly increasing)
-- Example BUY: opens [100.0, 100.0, 101.0] ❌ FAIL (has equal values)
-- Example SELL: opens [100.5, 100.3, 100.1, 99.9] ✅ PASS (strictly decreasing)
-- Example SELL: opens [100.5, 100.5, 100.1] ❌ FAIL (has equal values)
-- **Validation Tracked**: Open price direction check (Step 7, Validation 1)
+### Step 9: Validate Open and Close Price Direction
+- Ensure both open AND close prices follow the signal direction throughout the confirmation window
+- **For BUY signal**: 
+  - Open prices must strictly increase: open[i] > open[i-1] (no equal values allowed)
+  - Close prices must strictly increase: close[i] > close[i-1] (no equal values allowed)
+- **For SELL signal**: 
+  - Open prices must strictly decrease: open[i] < open[i-1] (no equal values allowed)
+  - Close prices must strictly decrease: close[i] < close[i-1] (no equal values allowed)
+- This validates that price movement is consistent with the signal direction for both open AND close
+- Example BUY: opens [100.0, 100.5, 101.0, 101.5], closes [100.1, 100.6, 101.1, 101.6] ✅ PASS (both strictly increasing)
+- Example BUY: opens [100.0, 100.0, 101.0] ❌ FAIL (opens have equal values)
+- Example SELL: opens [100.5, 100.3, 100.1, 99.9], closes [100.4, 100.2, 100.0, 99.8] ✅ PASS (both strictly decreasing)
+- Example SELL: closes [100.5, 100.5, 100.1] ❌ FAIL (closes have equal values)
+- **Validation Tracked**: Open/close price direction check (Step 9, Validation 1)
 
-### Step 8: Validate Minimum Consistent Candles
+### Step 10: Validate Minimum Consistent Candles
 - Count consecutive candles with matching color in confirmation window
 - Verify count **≥ MIN_CONSISTENT_CANDLES** (3)
 - Ensures the momentum is not just a brief spike but sustained
-- **Validation Tracked**: Min candle count (Step 8, Validation 1)
+- **Validation Tracked**: Min candle count (Step 10, Validation 1)
 
-### Step 9: Cooldown Check
+### Step 11: Cooldown Check
 - Compare current alert time with last accepted alert of same signal
 - If time since last alert < COOLDOWN_WINDOW (3 minutes) AND signal matches
 - Skip alert to avoid alert spam
-- **Validation Tracked**: Cooldown validation (Step 9, Validation 1)
+- **Validation Tracked**: Cooldown validation (Step 11, Validation 1)
 
-### Step 10: Alert Creation
+### Step 12: Alert Creation
 - Create AlertData with:
   - **Signal**: BUY or SELL (from Step 1)
   - **Magnitude**: MAGNITUDE_THRESHOLD (4.5)
@@ -106,21 +152,23 @@ The **CONSISTENT_MOMENTUM** approach identifies significant price movements wher
 
 ## Validation Tracking
 
-The approach tracks **11 validations** across the steps:
+The approach tracks **13 validations** across 12 steps:
 
 | Validation # | Step | Name | Config Variable | Purpose |
 |--------------|------|------|-----------------|---------|
 | 1 | 1 | Signal determination | N/A | Verify last candle has clear color |
 | 2 | 2 | Anchor detection | N/A | Find extreme open price candle |
 | 3 | 3 | Window extraction | N/A | Extract confirmation window |
-| 4 | 4 | Volume consistency | MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD | Max volume ≤ min volume × threshold |
-| 5 | 5 | Price range minimum | MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD | Price range ≥ minimum threshold |
-| 6 | 5 | Price range maximum | MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD | Price range ≤ maximum threshold |
-| 7 | 6 | Color consistency | N/A | All candles match signal color |
-| 8 | 7 | Open price direction | N/A | Opens increase (BUY) or decrease (SELL) |
-| 9 | 8 | Min consistent candles | MIN_CONSISTENT_CANDLES | Count ≥ threshold |
-| 10 | 9 | Cooldown check | COOLDOWN_WINDOW | Time between same-signal alerts |
-| 11 | 10 | Alert creation | MAGNITUDE_THRESHOLD | Final alert generation |
+| 4 | 4 | Max body at boundaries | N/A | First and last are 1st/2nd max body candles |
+| 5 | 5 | Volume consistency | MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD | Max volume ≤ min volume × threshold |
+| 6 | 6 | Price range minimum | MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD | Price range ≥ minimum threshold |
+| 7 | 6 | Price range maximum | MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD | Price range ≤ maximum threshold |
+| 8 | 7 | Gap validation | MAX_CONFIRMATION_GAP_THRESHOLD | No excessive gaps between consecutive candles |
+| 9 | 8 | Color consistency | N/A | All candles match signal color |
+| 10 | 9 | Open/close price direction | N/A | Opens and closes increase (BUY) or decrease (SELL) |
+| 11 | 10 | Min consistent candles | MIN_CONSISTENT_CANDLES | Count ≥ threshold |
+| 12 | 11 | Cooldown check | COOLDOWN_WINDOW | Time between same-signal alerts |
+| 13 | 12 | Alert creation | MAGNITUDE_THRESHOLD | Final alert generation |
 
 ## Flow Diagram
 
@@ -142,27 +190,33 @@ Start: Reverse Loop on DataFrame
   │
   ├─ [Step 3] Extract Confirmation Window (anchor → last)
   │
-  ├─ [Step 4] Validate Volume Consistency
+  ├─ [Step 4] Validate Max Body at Boundaries
+  │   └─ First and last candles are 1st and 2nd max body candles
+  │
+  ├─ [Step 5] Validate Volume Consistency
   │   └─ Max volume ≤ min volume × MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD
   │
-  ├─ [Step 5] Validate Confirmation Window Price Range
+  ├─ [Step 6] Validate Confirmation Window Price Range
   │   ├─ MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD ≤ Price Range
   │   └─ Price Range ≤ MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD
   │
-  ├─ [Step 6] Validate Color Consistency
+  ├─ [Step 7] Validate Confirmation Window Gap
+  │   └─ All gaps between consecutive candles ≤ MAX_CONFIRMATION_GAP_THRESHOLD
+  │
+  ├─ [Step 8] Validate Color Consistency
   │   └─ All candles match signal color
   │
-  ├─ [Step 7] Validate Open Price Direction
-  │   ├─ BUY: Opens must increase (non-decreasing)
-  │   └─ SELL: Opens must decrease (non-increasing)
+  ├─ [Step 9] Validate Open and Close Price Direction
+  │   ├─ BUY: Opens AND closes must strictly increase
+  │   └─ SELL: Opens AND closes must strictly decrease
   │
-  ├─ [Step 8] Validate Min Consistent Candles
+  ├─ [Step 10] Validate Min Consistent Candles
   │   └─ Count ≥ MIN_CONSISTENT_CANDLES (3)
   │
-  ├─ [Step 9] Cooldown Check
+  ├─ [Step 11] Cooldown Check
   │   └─ Enough time since last same-signal alert
   │
-  ├─ [Step 10] Create & Return Alert
+  ├─ [Step 12] Create & Return Alert
   │   └─ AlertData with magnitude=MAGNITUDE_THRESHOLD
   │
   └─ End: Continue Loop or Return First Alert (non-development mode)
