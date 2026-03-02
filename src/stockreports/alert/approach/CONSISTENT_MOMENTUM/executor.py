@@ -83,37 +83,42 @@ class ConsistentMomentumExecutor(Executor):
             if confirmation_window_df is None or len(confirmation_window_df) == 0:
                 continue
 
-            # Step 4: Validate volume consistency
+            # Step 4: Validate that first and last candles have max body momentum
+            self.next_step()
+            if not self._step_validate_max_body_at_boundaries(confirmation_window_df, signal):
+                continue
+
+            # Step 5: Validate volume consistency
             self.next_step()
             if not self._step_validate_volume_consistency(confirmation_window_df):
                 continue
 
-            # Step 5: Validate confirmation window price range
+            # Step 6: Validate confirmation window price range
             self.next_step()
             if not self._step_validate_confirmation_window_price_range(confirmation_window_df):
                 continue
 
-            # Step 6: Validate confirmation window gap between candles
+            # Step 7: Validate confirmation window gap between candles
             self.next_step()
             if not self._step_validate_confirmation_window_gap(confirmation_window_df):
                 continue
 
-            # Step 7: Validate all candles have same color
+            # Step 8: Validate all candles have same color
             self.next_step()
             if not self._step_validate_color_consistency(confirmation_window_df, signal):
                 continue
 
-            # Step 8: Validate open and close price direction
+            # Step 9: Validate open and close price direction
             self.next_step()
             if not self._step_validate_open_close_price_direction(confirmation_window_df, signal):
                 continue
 
-            # Step 9: Validate minimum consistent candles
+            # Step 10: Validate minimum consistent candles
             self.next_step()
             if not self._step_validate_min_consistent_candles(confirmation_window_df):
                 continue
 
-            # Step 10: Cooldown check
+            # Step 11: Cooldown check
             self.next_step()
             if not self._step_cooldown_check(
                 last_alert=ConsistentMomentumExecutor.LATEST_ALERT,
@@ -122,7 +127,7 @@ class ConsistentMomentumExecutor(Executor):
             ):
                 continue
 
-            # Step 11: Alert creation
+            # Step 12: Alert creation
             self.next_step()
             details_dict = self._add_details_for_alert(
                 anchor_candle_index=anchor_idx,
@@ -287,9 +292,105 @@ class ConsistentMomentumExecutor(Executor):
         confirmation_window = lookback_window_df.iloc[anchor_idx:]
         return confirmation_window
 
+    def _step_validate_max_body_at_boundaries(self, confirmation_window_df: pd.DataFrame, signal: Signal) -> bool:
+        """
+        Step 4: Validate momentum strength at window boundaries with two conditions (OR logic):
+        
+        Condition 1: The first and last candles are the 1st and 2nd maximum body candles in the confirmation window
+        Condition 2: The last candle is the maximum body candle in the confirmation window
+        
+        This ensures that momentum is strongest at the end (and ideally beginning) of the confirmation window,
+        indicating sustained and powerful price movement throughout the period.
+        """
+        self.next_validation()
+        
+        if len(confirmation_window_df) < 2:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Confirmation window has {len(confirmation_window_df)} candles, need at least 2 for this validation.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+        
+        # Calculate body size for each candle in confirmation window
+        confirmation_window_copy = confirmation_window_df.copy()
+        confirmation_window_copy['body'] = confirmation_window_copy.apply(
+            lambda row: abs(row['close'] - row['open']),
+            axis=1
+        )
+        
+        first_position = 0
+        last_position = len(confirmation_window_copy) - 1
+        first_body = confirmation_window_copy.iloc[first_position]['body']
+        last_body = confirmation_window_copy.iloc[last_position]['body']
+        
+        # Find the max body candle position
+        max_body_idx = confirmation_window_copy['body'].idxmax()
+        max_body_position = confirmation_window_copy.index.get_loc(max_body_idx)
+        max_body_value = confirmation_window_copy.loc[max_body_idx, 'body']
+        
+        # Get the positions of 1st and 2nd max body candles
+        sorted_by_body = confirmation_window_copy.nlargest(2, 'body')
+        max_positions = sorted(confirmation_window_copy.index.get_loc(idx) for idx in sorted_by_body.index)
+        
+        # Condition 1: First and last are the 1st and 2nd max body candles
+        condition1 = (first_position in max_positions and last_position in max_positions)
+        
+        # Condition 2: Last candle is the max body candle
+        condition2 = (last_position == max_body_position)
+        
+        # Validate: Condition1 OR Condition2
+        if not (condition1 or condition2):
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Neither condition satisfied. Condition1 (first&last are 1st/2nd max): {condition1}, Condition2 (last is max): {condition2}. First body: {first_body:.2f}, Last body: {last_body:.2f}, Max body: {max_body_value:.2f} at position {max_body_position}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+        
+        # Validation passed - determine which condition satisfied
+        max_bodies = sorted_by_body['body'].values
+        condition_met = "Condition2 (last is max body)" if condition2 else "Condition1 (first&last are 1st/2nd max)"
+        
+        message = f"Body momentum validation passed ({condition_met}). First body: {first_body:.2f}, Last body: {last_body:.2f}, Max body: {max_body_value:.2f}. Top 2 bodies: {[f'{b:.2f}' for b in max_bodies]}."
+        self.validations.append(Validation(step=self.current_step, validation=self.validation_step, message=message, status=ValidationStatus.PASSED))
+        log(
+            logger=self.logger,
+            status=ValidationStatus.PASSED,
+            name=self.__class__.__name__,
+            alert_time=self.current_window_end_time,
+            step=self.current_step,
+            validation=self.validation_step,
+            message=message,
+            log_level=LogLevel.DEBUG,
+            execution_symbol=self.symbol,
+            start_time=self.current_window_start_time,
+            end_time=self.current_window_end_time,
+            approach=self.APPROACH_NAME
+        )
+        return True
+
     def _step_validate_volume_consistency(self, confirmation_window_df: pd.DataFrame) -> bool:
         """
-        Step 4: Validate that volume in the confirmation window is consistent.
+        Step 5: Validate that volume in the confirmation window is consistent.
         
         The volume ratio must satisfy: max_volume <= min_volume * MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD
         This ensures that volume doesn't spike excessively compared to the minimum, 
@@ -347,7 +448,7 @@ class ConsistentMomentumExecutor(Executor):
 
     def _step_validate_confirmation_window_price_range(self, confirmation_window_df: pd.DataFrame) -> bool:
         """
-        Step 5: Validate that the confirmation window price range is within min and max thresholds.
+        Step 6: Validate that the confirmation window price range is within min and max thresholds.
         
         The price range is calculated as the difference between the highest and lowest close prices
         in the confirmation window. This ensures the confirmation window is neither too narrow 
@@ -449,7 +550,7 @@ class ConsistentMomentumExecutor(Executor):
 
     def _step_validate_confirmation_window_gap(self, confirmation_window_df: pd.DataFrame) -> bool:
         """
-        Step 6: Validate that there is no excessive gap between consecutive candles in the confirmation window.
+        Step 7: Validate that there is no excessive gap between consecutive candles in the confirmation window.
         
         A gap is calculated as the absolute difference between the close price of one candle
         and the open price of the next candle. This ensures there are no significant price jumps
@@ -511,7 +612,7 @@ class ConsistentMomentumExecutor(Executor):
 
     def _step_validate_color_consistency(self, confirmation_window_df: pd.DataFrame, signal: Signal) -> bool:
         """
-        Step 7: Validate that all candles in the confirmation window have the same color
+        Step 8: Validate that all candles in the confirmation window have the same color
         matching the signal.
         """
         self.next_validation()
@@ -563,7 +664,7 @@ class ConsistentMomentumExecutor(Executor):
 
     def _step_validate_open_close_price_direction(self, confirmation_window_df: pd.DataFrame, signal: Signal) -> bool:
         """
-        Step 8: Validate that both open and close prices follow the signal direction.
+        Step 9: Validate that both open and close prices follow the signal direction.
         
         For BUY signal: 
             - Open prices must strictly increase (each candle's open > previous candle's open)
@@ -678,7 +779,7 @@ class ConsistentMomentumExecutor(Executor):
 
     def _step_validate_min_consistent_candles(self, confirmation_window_df: pd.DataFrame) -> bool:
         """
-        Step 9: Validate that the confirmation window has at least MIN_CONSISTENT_CANDLES.
+        Step 10: Validate that the confirmation window has at least MIN_CONSISTENT_CANDLES.
         """
         self.next_validation()
         consistent_count = len(confirmation_window_df)
