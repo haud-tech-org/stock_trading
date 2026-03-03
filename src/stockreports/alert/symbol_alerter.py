@@ -47,7 +47,7 @@ from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
 from src.stockreports.alert.common.requirements import get_min_required_len
 
 # --- Constants & Configuration ---
-DEFAULT_APPROACH = "RCM"
+DEFAULT_APPROACH = "VRA"
 
 
 class SymbolAlerter:
@@ -107,6 +107,46 @@ class SymbolAlerter:
         except (ImportError, AttributeError) as e:
             self.logger.error(f"Could not load approach '{approach_name}'. Error: {e}")
             return None
+
+    def _get_approaches_for_symbol(self) -> list:
+        """
+        Gets the list of approaches to run for this symbol.
+        
+        Priority order:
+        1. Symbol-specific approaches from SYMBOL_ALERT_APPROACHES
+        2. Default approaches from ALERT_APPROACHES_DEFAULT
+        3. Legacy approaches from ALERT_APPROACHES (backward compatibility)
+        4. Hard fallback: [DEFAULT_APPROACH]
+        
+        This allows different symbols to have different alert strategies,
+        with sensible fallbacks for backward compatibility.
+        
+        Returns:
+            list: List of approach names to run for this symbol
+        """
+        # Priority 1: Symbol-specific configuration
+        symbol_config = getattr(settings, 'SYMBOL_ALERT_APPROACHES', {})
+        if isinstance(symbol_config, dict) and self.symbol in symbol_config:
+            approaches = symbol_config[self.symbol]
+            self.logger.info(f"Symbol-specific approaches for '{self.symbol}': {approaches}")
+            return approaches
+        
+        # Priority 2: Default approaches for undefined symbols
+        default_approaches = getattr(settings, 'ALERT_APPROACHES_DEFAULT', None)
+        if default_approaches:
+            self.logger.info(f"Using default approaches for '{self.symbol}': {default_approaches}")
+            return default_approaches
+        
+        # Priority 3: Legacy global approaches (backward compatibility)
+        legacy_approaches = getattr(settings, 'ALERT_APPROACHES', None)
+        if legacy_approaches:
+            self.logger.info(f"Using legacy ALERT_APPROACHES for '{self.symbol}': {legacy_approaches}")
+            return legacy_approaches
+        
+        # Priority 4: Hard fallback
+        fallback = [DEFAULT_APPROACH]
+        self.logger.warning(f"No approaches configured for symbol '{self.symbol}'. Using fallback: {fallback}")
+        return fallback
 
     def execute(self):
         self.logger.info(f"Executing alerter for symbol: {self.symbol}...")
@@ -283,7 +323,7 @@ class SymbolAlerter:
                     time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                 continue
 
-            approaches_to_run = getattr(settings, 'ALERT_APPROACHES', [DEFAULT_APPROACH])
+            approaches_to_run = self._get_approaches_for_symbol()
             for approach_name in approaches_to_run:
                 self.logger.info(f"--- Running Approach: {approach_name} for {self.symbol} ---")
                 
@@ -362,7 +402,7 @@ class SymbolAlerter:
         self.logger.info(f"Loaded {len(daily_df)} data points for {self.symbol} on {processing_date}.")
         
         all_alerts_for_day = []
-        approaches_to_run = getattr(settings, 'ALERT_APPROACHES', [DEFAULT_APPROACH])
+        approaches_to_run = self._get_approaches_for_symbol()
         
         for approach_name in approaches_to_run:
             self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} on {processing_date} ---")
