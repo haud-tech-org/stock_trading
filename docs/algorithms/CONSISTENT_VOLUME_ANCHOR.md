@@ -17,6 +17,7 @@ The behavior of the CVA executor is controlled by the following parameters, conf
 | `MAX_CONSISTENT_BODY_SIZE_CANDLE`     | 0.5           | Maximum body size (in points) allowed for candles within the consistent volume window. Filters out large moves within the consistency zone.                     |
 | `MIN_VOLUME_CONFIRMATION_MULTIPLIER`  | 1.5           | Alert candle volume must be at least this multiple of the minimum volume in the consistent window (e.g., 1.5x).                                                |
 | `MIN_BODY_SIZE_ALERT_CANDLE`          | 0.3           | Minimum body size (in points) required for the alert candle to confirm a strong directional move.                                                             |
+| `MIN_BODY_RATIO`                      | 0.8           | Minimum body ratio (body / (high - low)) for the alert candle. Ensures the candle body represents at least 80% of the candle's total range, indicating a strong, decisive candle. |
 | `MIN_ALERT_MAGNITUDE`                 | 2.5           | The magnitude value assigned to the generated alert after all validations pass. Used for downstream processing and alert ranking.                             |
 | `COOLDOWN_WINDOW`                     | 3             | Time duration (in candle periods) after an alert is generated during which no new alert for the same symbol and signal can be issued.                         |
 
@@ -56,23 +57,35 @@ The CVA executor analyzes data in a reverse loop, starting from the most recent 
     *   Checks that the alert candle's body size is ≥ `MIN_BODY_SIZE_ALERT_CANDLE`.
     *   **Validation**: The check passes if the body size meets the minimum threshold. Otherwise, the window is discarded.
 
-7.  **Step 7: Determine Signal and Trend**
+7.  **Step 7: Validate Alert Candle Largest Body with Body Ratio** *(NEW)*
+    *   Validates that the alert candle has the **largest body** in the lookback window AND meets a minimum body ratio threshold.
+    *   **Largest Body Check**: Compares the alert candle's body size against all other candles in the lookback window.
+        *   Alert candle body must be ≥ all other candle bodies in the window.
+    *   **Body Ratio Check**: Calculates the body ratio as: `body_ratio = |close - open| / (high - low)`
+        *   The body ratio must be ≥ `MIN_BODY_RATIO` (default 0.8, meaning the body must represent at least 80% of the candle's range).
+        *   This ensures the candle is strong and decisive, with minimal wicks.
+    *   **Validation**: The check passes if **both** conditions are satisfied:
+        *   Alert candle has the largest body in the lookback window.
+        *   Body ratio ≥ `MIN_BODY_RATIO`.
+    *   If either condition fails, the window is discarded.
+
+8.  **Step 8: Determine Signal and Trend**
     *   Determines the candle color and trend:
         *   **Green candle** (close > open) → `Signal.BUY`, `Trend.UPTREND`
         *   **Red candle** (close < open) → `Signal.SELL`, `Trend.DOWNTREND`
     *   **Validation**: The check passes if a valid trend is determined (not `NEUTRAL`). Otherwise, the window is discarded.
 
-8.  **Step 8: Validate Alert Candle Close Price Relative to Consistent Volume Window**
+9.  **Step 9: Validate Alert Candle Close Price Relative to Consistent Volume Window**
     *   Validates the directional positioning of the alert candle relative to the consistent window.
     *   **For BUY Signal**: Alert close price must be **higher** than `max(open, close)` of all candles in the consistent window.
     *   **For SELL Signal**: Alert close price must be **lower** than `min(open, close)` of all candles in the consistent window.
     *   **Validation**: The check passes if the alert candle's close is positioned correctly relative to the consistent window. Otherwise, the window is discarded.
 
-9.  **Step 9: Cooldown Check**
+10. **Step 10: Cooldown Check**
     *   Checks if a similar alert (same symbol and signal) has been issued within the `COOLDOWN_WINDOW`.
     *   **Validation**: The check passes if sufficient time has elapsed since the last alert. If still in cooldown, the window is discarded.
 
-10. **Step 10: Alert Generation**
+11. **Step 11: Alert Generation**
     *   If all previous steps pass, a new `AlertData` object is created with:
         *   **Signal**: The determined signal (BUY or SELL)
         *   **Trend**: The determined trend (UPTREND or DOWNTREND)
@@ -108,21 +121,24 @@ graph TD
     O -- Yes --> P[Step 6: Validate Alert Body Size];
     P --> Q{Alert Body Size >= Minimum?};
     Q -- No --> B;
-    Q -- Yes --> R[Step 7: Determine Signal & Trend];
-    R --> S{Valid Trend Determined?};
+    Q -- Yes --> R[Step 7: Validate Largest Body & Body Ratio];
+    R --> S{Largest Body & Ratio OK?};
     S -- No --> B;
-    S -- Yes --> T[Step 8: Validate Alert Close Price];
-    T --> U{Close Price Positioned Correctly?};
+    S -- Yes --> T[Step 8: Determine Signal & Trend];
+    T --> U{Valid Trend Determined?};
     U -- No --> B;
-    U -- Yes --> V[Step 9: Cooldown Check];
-    V --> W{Alert Not in Cooldown?};
-    W -- Yes --> X[Create AlertData];
+    U -- Yes --> V[Step 9: Validate Alert Close Price];
+    V --> W{Close Price Positioned Correctly?};
     W -- No --> B;
-    X --> Y{Deployment Mode?};
-    Y -- Yes --> Z[Return Alert];
+    W -- Yes --> X[Step 10: Cooldown Check];
+    X --> Y{Alert Not in Cooldown?};
     Y -- No --> B;
-    Z --> AA[Update LATEST_ALERT];
-    AA --> B;
-    B -- End of Loop --> AB[Return All Alerts];
-    AB --> AC[End Execution];
+    Y -- Yes --> Z[Create AlertData];
+    Z --> AA{Deployment Mode?};
+    AA -- Yes --> AB[Return Alert];
+    AA -- No --> B;
+    AB --> AC[Update LATEST_ALERT];
+    AC --> B;
+    B -- End of Loop --> AD[Return All Alerts];
+    AD --> AE[End Execution];
 ```
