@@ -112,19 +112,24 @@ class ConsistentVolumeAnchorExecutor(Executor):
             if not self._step_validate_alert_candle_body(self.last_candle):
                 continue
 
-            # Step 7: Determine signal and trend
+            # Step 7: Validate alert candle has largest body and meets body ratio threshold
+            self.next_step()
+            if not self._step_validate_alert_candle_largest_body_with_ratio(self.last_candle, self.lookback_window_df):
+                continue
+
+            # Step 8: Determine signal and trend
             self.next_step()
             signal_trend_result = self._step_determine_signal_and_trend(self.last_candle)
             if signal_trend_result is None:
                 continue
             signal, trend = signal_trend_result
 
-            # Step 8: Validate alert candle open price relative to consistent volume window
+            # Step 9: Validate alert candle open price relative to consistent volume window
             self.next_step()
             if not self._step_validate_alert_candle_close_price(self.last_candle, signal, consistent_volume_window):
                 continue
 
-            # Step 9: Cooldown check
+            # Step 10: Cooldown check
             self.next_step()
             if not self._step_cooldown_check(
                 last_alert=ConsistentVolumeAnchorExecutor.LATEST_ALERT,
@@ -457,6 +462,92 @@ class ConsistentVolumeAnchorExecutor(Executor):
             step=self.current_step,
             validation=self.validation_step,
             message=f"Alert candle body size meets minimum. Body: {body_size:.2f}",
+            status=ValidationStatus.PASSED
+        ))
+
+        return True
+
+    def _step_validate_alert_candle_largest_body_with_ratio(
+        self, alert_candle: pd.Series, lookback_window_df: pd.DataFrame
+    ) -> bool:
+        """
+        Step 7: Validate alert candle has the largest body in the lookback window
+        and its body ratio (body / range) >= MIN_BODY_RATIO.
+        - Calculate body size for all candles in lookback window
+        - Ensure alert candle has the largest body
+        - Ensure body ratio (body / (high - low)) >= MIN_BODY_RATIO threshold
+        """
+        self.next_validation()
+        
+        # Calculate body sizes for all candles in the lookback window
+        bodies = (lookback_window_df['close'] - lookback_window_df['open']).abs()
+        alert_body = abs(alert_candle['close'] - alert_candle['open'])
+        
+        # Check if alert candle has the largest body
+        max_body = bodies.max()
+        
+        if alert_body < max_body:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Alert candle does not have the largest body. Alert body: {alert_body:.2f}, Max body: {max_body:.2f}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+
+        # Calculate body ratio for alert candle
+        self.next_validation()
+        alert_range = alert_candle['high'] - alert_candle['low']
+        
+        if alert_range <= 0:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Alert candle range is invalid (high <= low). Range: {alert_range:.2f}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+        
+        body_ratio = alert_body / alert_range
+        
+        if body_ratio < self.settings.min_body_ratio:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Alert candle body ratio below minimum. Ratio: {body_ratio:.2%}, Min: {self.settings.min_body_ratio:.2%}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
+
+        self.validations.append(Validation(
+            name=nameof(self.settings.min_body_ratio),
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Alert candle has largest body with sufficient ratio. Body: {alert_body:.2f}, Ratio: {body_ratio:.2%}",
             status=ValidationStatus.PASSED
         ))
 

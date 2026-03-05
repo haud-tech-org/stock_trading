@@ -367,6 +367,7 @@ APPROACH_CONFIG = {
         # Alert candle validation (last candle)
         "MIN_VOLUME_CONFIRMATION_MULTIPLIER": 1.5,  # alert_vol >= x.x * min_vol in consistent window
         "MIN_BODY_SIZE_ALERT_CANDLE": 0.3,  # minimum body size (in price points)
+        "MIN_BODY_RATIO": 0.6,  # Minimum body ratio (body / (high - low)) for alert candle
         
         # Alert magnitude
         "MIN_ALERT_MAGNITUDE": 2.5,  # Minimum window size (price range) for alert

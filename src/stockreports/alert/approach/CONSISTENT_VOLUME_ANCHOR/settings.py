@@ -25,6 +25,7 @@ class ConsistentVolumeAnchorSettings(BaseSettings):
         # --- Alert Candle Validation Parameters ---
         self.min_volume_confirmation_multiplier = self.get("MIN_VOLUME_CONFIRMATION_MULTIPLIER")
         self.min_body_size_alert_candle = self.get("MIN_BODY_SIZE_ALERT_CANDLE")
+        self.min_body_ratio = self.get("MIN_BODY_RATIO")
         
         # --- Alert Magnitude ---
         self.min_alert_magnitude = self.get("MIN_ALERT_MAGNITUDE")
