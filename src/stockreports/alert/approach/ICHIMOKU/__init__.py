@@ -1,2 +1,5 @@
 # src/stockreports/alert/approach/ICHIMOKU/__init__.py
-# This file marks the directory as a Python package.
+from .executor import IchimokuExecutor
+
+__all__ = ["IchimokuExecutor"]
+

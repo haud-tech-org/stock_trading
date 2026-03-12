@@ -1,27 +1,44 @@
-from src.stockreports.alert.common.confirmation.settings import ConfirmationSettings
+from src.stockreports.alert.common.base_settings import BaseSettings
 from src.stockreports.alert.common.constants import Approach
 
-class IchimokuSettings(ConfirmationSettings):
+
+class IchimokuSettings(BaseSettings):
+    """
+    Ichimoku approach settings.
+    Loads all configuration parameters from signal_settings.py
+    """
+    
     def __init__(self, symbol: str):
         super().__init__(symbol, Approach.ICHIMOKU)
         
-        self.tenkan_sen_period = self.get("TENKAN_SEN_PERIOD")
-        self.kijun_sen_period = self.get("KIJUN_SEN_PERIOD")
-        self.senkou_span_b_period = self.get("SENKOU_SPAN_B_PERIOD")
-        self.chikou_span_period = self.get("CHIKOU_SPAN_PERIOD")
+        # Core Ichimoku periods
+        self.tenkan_period = self.get("TENKAN_PERIOD")
+        self.kijun_period = self.get("KIJUN_PERIOD")
+        self.senkou_b_period = self.get("SENKOU_B_PERIOD")
+        self.chikou_period = self.get("CHIKOU_PERIOD")
         
-        self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION")
-        self.use_last_candle_max_volume_confirmation = self.get("USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION")
-        self.use_volume_increasing_confirmation = self.get("USE_VOLUME_INCREASING_CONFIRMATION")
+        # Senkou shift period (forward shift for cloud boundaries)
+        self.senkou_shift_period = self.get("SENKOU_SHIFT_PERIOD")
         
+        # Validation flags
         self.skip_chikou_confirmation = self.get("SKIP_CHIKOU_CONFIRMATION")
-        self.min_bars_between_alerts = self.get("MIN_BARS_BETWEEN_ALERTS")
+        self.skip_cloud_validation = self.get("SKIP_CLOUD_VALIDATION")
+    
+    @property
+    def lookback_window_size(self) -> int:
+        """
+        Calculate the lookback window size required for Ichimoku analysis.
         
-        self.use_divergence_filter = self.get("USE_DIVERGENCE_FILTER")
-        self.divergence_lookback_period = self.get("DIVERGENCE_LOOKBACK_PERIOD")
-        self.divergence_rsi_period = self.get("DIVERGENCE_RSI_PERIOD")
-        self.divergence_price_prominence = self.get("DIVERGENCE_PRICE_PROMINENCE")
-        self.divergence_rsi_prominence = self.get("DIVERGENCE_RSI_PROMINENCE")
+        Ichimoku requires:
+        - Senkou B period: 52 candles for longest moving average
+        - Chikou period: 26 candles for confirmation context
+        - Total: 52 + 26 = 78 candles minimum
         
-        self.use_confirmation_candle_filter = self.get("USE_CONFIRMATION_CANDLE_FILTER")
-        self.confirmation_candle_count = self.get("CONFIRMATION_CANDLE_COUNT")
+        Returns:
+            int: Window size in candles
+        """
+        return max(
+            self.tenkan_period,
+            self.kijun_period,
+            self.senkou_b_period
+        ) + self.chikou_period
