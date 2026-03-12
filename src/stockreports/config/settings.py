@@ -176,7 +176,8 @@ SYMBOL_ALERT_APPROACHES = {
         "STRONG_CANDLE",
         "VOLUME_SPIKE_CONFIRMATION",
         "VRA",
-        "CONSISTENT_VOLUME_ANCHOR",
+        "CONSISTENT_VOLUME_ANCHOR", 
+        "ICHIMOKU"
     ],
     "VN30": [
         "VRA",
