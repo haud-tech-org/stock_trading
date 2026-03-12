@@ -34,7 +34,8 @@ PERFORMANCE_BY_APPROACH = {
     'TREND_REVERSAL': {'avg_worst_loss_price': 1.3},
     'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8},
     'SESSION_EXTREME_VOLUME_REVERSAL': {'avg_worst_loss_price': 1.3},
-    'CONSISTENT_VOLUME_ANCHOR': {'avg_worst_loss_price': 0.9}
+    'CONSISTENT_VOLUME_ANCHOR': {'avg_worst_loss_price': 0.9},
+    'ICHIMOKU': {'avg_worst_loss_price': 1.4}
 }
 
 # Approach-specific profit threshold configuration for alert notifications.
@@ -53,7 +54,8 @@ PROFIT_THRESHOLD_BY_APPROACH = {
     'TREND_REVERSAL': 2.5,
     'VOLUME_REVERSAL': 3.0,
     'SESSION_EXTREME_VOLUME_REVERSAL': 3.25,
-    'CONSISTENT_VOLUME_ANCHOR': 2.75
+    'CONSISTENT_VOLUME_ANCHOR': 2.75,
+    'ICHIMOKU': 6.0
 }
 
 # A fixed offset added to all suggested price calculations to provide an extra buffer.

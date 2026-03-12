@@ -208,31 +208,13 @@ APPROACH_CONFIG = {
         "RSI_OVERBOUGHT_THRESHOLD": 70
     },
     "ICHIMOKU": {
-        "TENKAN_SEN_PERIOD": 9,
-        "KIJUN_SEN_PERIOD": 26,
-        "SENKOU_SPAN_B_PERIOD": 52,
-        "CHIKOU_SPAN_PERIOD": 26,
-        "USE_VOLUME_CONFIRMATION": True,
-        "USE_VOLUME_INCREASING_CONFIRMATION": False,
-        "USE_LAST_CANDLE_MAX_VOLUME_CONFIRMATION": False,
-        "SKIP_CHIKOU_CONFIRMATION": False,      # (optional, for future code support)
-        "MIN_BARS_BETWEEN_ALERTS": 10,           # Minimum bars between consecutive alerts
-        "USE_SHORT_TERM_MA_CONFIRMATION": False,
-        "USE_ADX_CONFIRMATION": False,
-        "USE_MA_CONFIRMATION": False,
-        "USE_RSI_CONFIRMATION": True,
-        "RSI_OVERSOLD_THRESHOLD": 30,
-        "RSI_OVERBOUGHT_THRESHOLD": 70,
-        "USE_MACD_CONFIRMATION": False,
-        "USE_LONG_TERM_MA_CONFIRMATION": False,
-        "NUM_CANDLES_FOR_RSI_CHECK": 1,
-        "USE_DIVERGENCE_FILTER": False,
-        "DIVERGENCE_LOOKBACK_PERIOD": 20,
-        "DIVERGENCE_RSI_PERIOD": 14,
-        "DIVERGENCE_PRICE_PROMINENCE": 0.5,
-        "DIVERGENCE_RSI_PROMINENCE": 2.0,
-        "USE_CONFIRMATION_CANDLE_FILTER": True,
-        "CONFIRMATION_CANDLE_COUNT": 1
+        "TENKAN_PERIOD": 9,
+        "KIJUN_PERIOD": 26,
+        "SENKOU_B_PERIOD": 52,
+        "CHIKOU_PERIOD": 26,
+        "SENKOU_SHIFT_PERIOD": 26,
+        "SKIP_CHIKOU_CONFIRMATION": False,
+        "SKIP_CLOUD_VALIDATION": False,
     },
     "STRONG_CANDLE": {
         "LOOKBACK_WINDOW": 6,
