@@ -94,7 +94,7 @@ python3 -m src.tools.centralized_report_generator.centralized_report_generator \
     --execution-symbol VN30F1M \
     --alert-sources VN30 VN30F1M \
     --from-date 2026-02-02 \
-    --to-date 2026-02-02 \
+    --to-date 2026-03-12 \
     --mode deployment \
     --update-price-alert-settings
 ```
@@ -123,6 +123,9 @@ Please review the documentation and code for the [APPROACH_NAME] approach. Doubl
 
 ```txt
 git diff in staged and provide a short description of changes for a new commit. It must be formatted as markdown.
+
+Reference
+docs/references/COMMIT_SUMMARY_CVA.md
 ```
 
 
