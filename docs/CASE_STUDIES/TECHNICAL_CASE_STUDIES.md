@@ -1,5 +1,18 @@
 # Technical Case Studies & Issue Resolution Log ✅
 
+## 🔗 Integration Note
+
+These case studies document the patterns referenced in:
+- `docs/PROMPTS/APPROACH_GENERATION_CODE/AI_APPROACH_GENERATION_PROMPT.md` (PART 2.5)
+- Code templates in `docs/PROMPTS/APPROACH_GENERATION_CODE/`
+
+**Use these case studies to understand the WHY behind patterns**, not just the WHAT. When implementing new approaches using the AI prompt, refer to the specific cases mentioned in PART 2.5 to understand:
+- Why each pattern was created
+- Real-world issues that led to each solution
+- How patterns evolved through actual implementation
+
+---
+
 ## Overview
 This document serves as a log of technical case studies, detailing issues encountered and resolutions implemented during the development, debugging, and refactoring of the system's components. It provides a historical record of problem-solving to guide future development and prevent regressions.
 
