@@ -10,6 +10,8 @@ from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from .settings import StrongCandleSettings
+from .analyzer import StrongCandleAnalyzer
+from .validator import StrongCandleValidator
 from src.stockreports.utils.log_factory import log
 from src.stockreports.utils import candle_utils, window_utils
 
@@ -24,6 +26,8 @@ class StrongCandleExecutor(Executor):
 
     def __init__(self, symbol: str):
         self.settings = StrongCandleSettings(symbol)
+        self.analyzer = StrongCandleAnalyzer()
+        self.validator = StrongCandleValidator()
         approach_name = Approach.STRONG_CANDLE
         super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
@@ -127,61 +131,57 @@ class StrongCandleExecutor(Executor):
         Returns the body size if validation passes, None otherwise.
         """
         self.next_validation()
-        is_thick_body, body_ratio = candle_utils.is_body_ratio_bigger_than_min(alert_candle, self.settings.min_body_ratio)
-        if not is_thick_body:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Body ratio {body_ratio:.2f} is below minimum {self.settings.min_body_ratio}.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
+        body_result = self.validator.validate_alert_candle_body(
+            alert_candle,
+            self.settings.min_body_ratio,
+            self.settings.min_body_size
+        )
+        
+        if body_result is None:
+            body_ratio = StrongCandleAnalyzer.calculate_body_ratio(alert_candle)
+            body_size = StrongCandleAnalyzer.calculate_body_size(alert_candle)
+            
+            if body_ratio < self.settings.min_body_ratio:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Body ratio {body_ratio:.2f} is below minimum {self.settings.min_body_ratio}.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
+            else:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Body size {body_size:.2f} is below minimum {self.settings.min_body_size}.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
             return None
 
         self.validations.append(Validation(
             name=nameof(self.settings.min_body_ratio),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Body ratio {body_ratio:.2f} is >= {self.settings.min_body_ratio}.",
+            message=f"Body ratio and size validation passed.",
             status=ValidationStatus.PASSED
         ))
 
-        # Validate body size
-        self.next_validation()
-        is_min_body_size, body_size = candle_utils.is_body_bigger_than_min(alert_candle, self.settings.min_body_size)
-        if not is_min_body_size:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Body size {body_size:.2f} is below minimum {self.settings.min_body_size}.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return None
-
-        self.validations.append(Validation(
-            name=nameof(self.settings.min_body_size),
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Body size {body_size:.2f} is >= {self.settings.min_body_size}.",
-            status=ValidationStatus.PASSED
-        ))
-
-        return body_size
+        return body_result
 
     def _step_validate_alert_candle_volume(self, lookback_window_df: pd.DataFrame, alert_candle: pd.Series) -> bool:
         """
@@ -190,12 +190,14 @@ class StrongCandleExecutor(Executor):
         Returns True if valid, False otherwise.
         """
         self.next_validation()
-        # Conditional window: exclude the last candle (the alert candle)
-        conditional_window_df = lookback_window_df.iloc[:-1]
-        max_conditional_volume = conditional_window_df['volume'].max()
-        max_allowed_volume = max_conditional_volume * self.settings.max_volume_multiplier
+        is_valid = self.validator.validate_alert_candle_volume(
+            lookback_window_df,
+            alert_candle,
+            self.settings.max_volume_multiplier
+        )
 
-        if alert_candle['volume'] > max_allowed_volume:
+        if not is_valid:
+            max_conditional_volume = StrongCandleAnalyzer.get_max_volume_in_conditional_window(lookback_window_df)
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -216,7 +218,7 @@ class StrongCandleExecutor(Executor):
             name=nameof(self.settings.max_volume_multiplier),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Alert candle volume {alert_candle['volume']:.0f} <= max conditional window volume {max_conditional_volume:.0f} * {self.settings.max_volume_multiplier}.",
+            message=f"Alert candle volume validation passed.",
             status=ValidationStatus.PASSED
         ))
         return True
@@ -229,111 +231,76 @@ class StrongCandleExecutor(Executor):
         Returns (signal, trend) tuple if valid, (None, None) otherwise.
         """
         self.next_validation()
-        # Use the full lookback window to determine trend and size
-        window_size_val, window_trend = window_utils.get_window_size_and_trend_by_close_extremes(lookback_window_df)
+        signal, window_trend = self.validator.validate_window_color_consistency(
+            lookback_window_df,
+            alert_candle,
+            self.settings.min_window_size_threshold,
+            self.settings.max_window_size_threshold
+        )
 
-        if window_trend is None:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message="Could not determine window trend by close extremes.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return (None, None)
-
-        # Validate window size is within minimum threshold
-        self.next_validation()
-        if window_size_val < self.settings.min_window_size_threshold:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Window price range {window_size_val:.2f} is below minimum {self.settings.min_window_size_threshold}.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return (None, None)
-
-        self.validations.append(Validation(
-            name=nameof(self.settings.min_window_size_threshold),
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Window price range {window_size_val:.2f} >= {self.settings.min_window_size_threshold}.",
-            status=ValidationStatus.PASSED
-        ))
-
-        # Validate window size is within maximum threshold
-        self.next_validation()
-        if window_size_val > self.settings.max_window_size_threshold:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Window price range {window_size_val:.2f} exceeds maximum {self.settings.max_window_size_threshold}.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return (None, None)
-
-        self.validations.append(Validation(
-            name=nameof(self.settings.max_window_size_threshold),
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Window price range {window_size_val:.2f} <= {self.settings.max_window_size_threshold}.",
-            status=ValidationStatus.PASSED
-        ))
-
-        # Determine if candle color matches trend
-        self.next_validation()
-        is_consistent = False
-        signal = None
-
-        if window_trend == Trend.UPTREND:
-            is_green = candle_utils.is_green_candle(alert_candle)
-            if is_green:
-                is_consistent = True
-                signal = Signal.BUY
-        elif window_trend == Trend.DOWNTREND:
-            is_red = candle_utils.is_red_candle(alert_candle)
-            if is_red:
-                is_consistent = True
-                signal = Signal.SELL
-
-        if not is_consistent:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-            message=f"Alert candle color not consistent with {window_trend} trend.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
+        if signal is None or window_trend is None:
+            window_size_val, wtrend = StrongCandleAnalyzer.get_window_size_and_trend(lookback_window_df)
+            
+            if wtrend is None:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message="Could not determine window trend by close extremes.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
+            elif window_size_val < self.settings.min_window_size_threshold:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Window price range {window_size_val:.2f} is below minimum {self.settings.min_window_size_threshold}.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
+            elif window_size_val > self.settings.max_window_size_threshold:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Window price range {window_size_val:.2f} exceeds maximum {self.settings.max_window_size_threshold}.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
+            else:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Alert candle color not consistent with {wtrend} trend.",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
             return (None, None)
 
         self.validations.append(Validation(
@@ -353,10 +320,17 @@ class StrongCandleExecutor(Executor):
         Returns True if valid, False otherwise.
         """
         self.next_validation()
-        conditional_window_df = lookback_window_df.iloc[:-1]
-        window_size_val, window_trend = window_utils.get_window_size_and_trend(conditional_window_df)
+        is_valid = self.validator.validate_window_price_range(
+            lookback_window_df,
+            self.settings.max_window_size_threshold
+        )
 
-        if window_size_val is None:
+        if not is_valid:
+            window_size_val = StrongCandleAnalyzer.calculate_conditional_window_price_range(lookback_window_df)
+            message = "Could not calculate window price range."
+            if window_size_val is not None:
+                message = f"Window price range {window_size_val:.2f} exceeds threshold {self.settings.max_window_size_threshold}."
+            
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -364,24 +338,7 @@ class StrongCandleExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message="Could not calculate window price range.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return False
-
-        if window_size_val > self.settings.max_window_size_threshold:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Window price range {window_size_val:.2f} exceeds threshold {self.settings.max_window_size_threshold}.",
+                message=message,
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -394,7 +351,7 @@ class StrongCandleExecutor(Executor):
             name=nameof(self.settings.max_window_size_threshold),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Window price range {window_size_val:.2f} <= {self.settings.max_window_size_threshold}.",
+            message=f"Conditional window price range validation passed.",
             status=ValidationStatus.PASSED
         ))
         return True
@@ -407,42 +364,34 @@ class StrongCandleExecutor(Executor):
         Returns True if valid, False otherwise.
         """
         self.next_validation()
-        conditional_window_df = lookback_window_df.iloc[:-1]
+        is_valid = self.validator.validate_opposite_color_candles_bodies(
+            lookback_window_df,
+            alert_candle,
+            self.settings.max_opposite_color_candle_body_size
+        )
 
-        # Determine alert candle color
-        alert_is_green = candle_utils.is_green_candle(alert_candle)
-
-        # Filter candles with opposite color against alert candle (exclude same color candles)
-        opposite_color_candles = []
-        for _, row in conditional_window_df.iterrows():
-            is_green = candle_utils.is_green_candle(row)
-            # Keep only candles with opposite color to alert candle
-            if is_green != alert_is_green:
-                opposite_color_candles.append(row)
-
-        # Validate body sizes of opposite-color candles
-        if len(opposite_color_candles) > 0:
-            all_small_bodies = all(
-                candle_utils.is_body_smaller_than_max(row, self.settings.max_opposite_color_candle_body_size)
-                for row in opposite_color_candles
+        if not is_valid:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Not all opposite-color candles have body size <= {self.settings.max_opposite_color_candle_body_size}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
+            return False
 
-            if not all_small_bodies:
-                log(
-                    logger=self.logger,
-                    status=ValidationStatus.FAILED,
-                    name=self.__class__.__name__,
-                    alert_time=self.current_window_end_time,
-                    step=self.current_step,
-                    validation=self.validation_step,
-                    message=f"Not all opposite-color candles have body size <= {self.settings.max_opposite_color_candle_body_size}.",
-                    log_level=LogLevel.DEBUG,
-                    execution_symbol=self.symbol,
-                    start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time,
-                    approach=self.APPROACH_NAME
-                )
-                return False
+        conditional_window_df = lookback_window_df.iloc[:-1]
+        opposite_color_candles = StrongCandleAnalyzer.get_opposite_color_candles(
+            conditional_window_df,
+            alert_candle
+        )
 
         self.validations.append(Validation(
             name=nameof(self.settings.max_opposite_color_candle_body_size),

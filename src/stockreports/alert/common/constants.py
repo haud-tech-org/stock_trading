@@ -31,6 +31,20 @@ class Trend:
     DOWNTREND = "downtrend"
     NEUTRAL = "neutral"
 
+class CandleColor:
+    """Candle color classification constants."""
+    GREEN = "GREEN"
+    RED = "RED"
+    NEUTRAL = "NEUTRAL"
+
+class Comparison:
+    """Comparison operator constants."""
+    GREATER = "greater"
+    LESS = "less"
+    EQUAL = "equal"
+    GREATER_EQUAL = "greater_equal"
+    LESS_EQUAL = "less_equal"
+
 class AlertKeys:
     TREND = "trend"
     SIGNAL = "signal"
@@ -44,6 +58,14 @@ class PriceColumn:
     HIGH = "high"
     LOW = "low"
     CLOSE = "close"
+
+class CandleColumn:
+    """Candle column name constants for OHLCV data access."""
+    OPEN = "open"
+    HIGH = "high"
+    LOW = "low"
+    CLOSE = "close"
+    VOLUME = "volume"
 
 class ValidationStatus():
     PASSED = "Passed"
