@@ -1,18 +1,8 @@
 import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import argparse
 import os
-import numpy as np
-from src.stockreports.config import loader
-# NEW: Import the preparation function directly from the confirmation script
-from src.stockreports.alert.common.constants_charts import ChartDefaults, PlotKeys, PlotConfigKeys, Chart
-from tests.debug.common.charts.configs.plot_config import PlotConfigurations
-import copy
 import json
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from mplfinance.original_flavor import candlestick_ohlc
 
 def generate_alert_chart(input_file: str, output_dir: str, approach_name: str, alerts_df: pd.DataFrame, alert_time=None):
     """

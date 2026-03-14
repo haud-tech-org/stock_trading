@@ -9,6 +9,8 @@ from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from .settings import ConsistentVolumeAnchorSettings
+from .analyzer import ConsistentVolumeAnchorAnalyzer
+from .validator import ConsistentVolumeAnchorValidator
 from src.stockreports.utils.log_factory import log
 from src.stockreports.utils import candle_utils, window_utils
 
@@ -23,6 +25,8 @@ class ConsistentVolumeAnchorExecutor(Executor):
 
     def __init__(self, symbol: str):
         self.settings = ConsistentVolumeAnchorSettings(symbol)
+        self.analyzer = ConsistentVolumeAnchorAnalyzer()
+        self.validator = ConsistentVolumeAnchorValidator()
         approach_name = Approach.CONSISTENT_VOLUME_ANCHOR
         super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
@@ -277,26 +281,27 @@ class ConsistentVolumeAnchorExecutor(Executor):
         """
         self.next_validation()
         
-        # Find min volume in the entire window
-        min_vol_candle = candle_utils.find_min_volume_candle(consistent_window_df)
-        min_vol = min_vol_candle['volume']
-
-        # Step 1: Filter by volume condition sequentially
-        volume_mask = (consistent_window_df['volume'] * self.settings.max_consistent_volume_multiplier) <= self.median_volume
-        volume_filtered_df = consistent_window_df[volume_mask]
+        result = self.validator.validate_volume_and_body_consistency(
+            consistent_window_df,
+            self.median_volume,
+            self.settings.max_consistent_volume_multiplier,
+            self.settings.max_consistent_body_size_candle,
+            self.settings.consistent_candle_percentage
+        )
         
-        # Step 2: Calculate body sizes only on volume-filtered data
-        body_sizes = (volume_filtered_df['close'] - volume_filtered_df['open']).abs()
-        body_size_mask = body_sizes <= self.settings.max_consistent_body_size_candle
-        
-        # Step 3: Get final consistent volume window with both conditions applied sequentially
-        consistent_volume_window = volume_filtered_df[body_size_mask]
-        
-        # Calculate percentage based on original window
-        consistent_candles_count = len(consistent_volume_window)
-        consistent_percentage = consistent_candles_count / len(consistent_window_df)
-
-        if consistent_percentage < self.settings.consistent_candle_percentage:
+        if result is None:
+            filtered_count = len(
+                ConsistentVolumeAnchorAnalyzer.filter_window_by_volume_and_body(
+                    consistent_window_df,
+                    self.median_volume,
+                    self.settings.max_consistent_volume_multiplier,
+                    self.settings.max_consistent_body_size_candle
+                )
+            )
+            percentage = (
+                filtered_count / len(consistent_window_df)
+                if len(consistent_window_df) > 0 else 0
+            )
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -304,7 +309,7 @@ class ConsistentVolumeAnchorExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Consistent candles percentage below threshold. Percentage: {consistent_percentage:.2%}, Required: {self.settings.consistent_candle_percentage:.2%}",
+                message=f"Consistent candles percentage below threshold. Percentage: {percentage:.2%}, Required: {self.settings.consistent_candle_percentage:.2%}",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -313,15 +318,13 @@ class ConsistentVolumeAnchorExecutor(Executor):
             )
             return None
         
-        # Find max volume in the filtered consistent volume window
-        max_vol_candle = candle_utils.find_max_volume_candle(consistent_volume_window)
-        max_vol = max_vol_candle['volume']
-
+        consistent_volume_window, min_vol, max_vol = result
+        
         self.validations.append(Validation(
             name=nameof(self.settings.consistent_candle_percentage),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Consistent candles meet percentage (volume <= median and body size <= threshold). Percentage: {consistent_percentage:.2%}",
+            message="Consistent candles meet percentage (volume <= median and body size <= threshold).",
             status=ValidationStatus.PASSED
         ))
 
@@ -339,31 +342,45 @@ class ConsistentVolumeAnchorExecutor(Executor):
         """
         self.next_validation()
         
-        window_size, _ = window_utils.get_window_size_and_trend(consistent_window_df)
-        window_size = abs(window_size)
-
-        if window_size > self.settings.max_consistent_window_size:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Window size exceeds threshold. Size: {window_size:.2f}, Max: {self.settings.max_consistent_window_size}",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
+        is_valid = self.validator.validate_window_price_range(
+            consistent_window_df,
+            self.settings.max_consistent_window_size
+        )
+        
+        if not is_valid:
+            window_size = (
+                ConsistentVolumeAnchorAnalyzer.calculate_window_price_range(
+                    consistent_window_df
+                )
             )
+            if window_size is not None:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Window size exceeds threshold. Size: {window_size:.2f}, Max: {self.settings.max_consistent_window_size}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
             return None
 
+        window_size = (
+            ConsistentVolumeAnchorAnalyzer.calculate_window_price_range(
+                consistent_window_df
+            )
+        )
+        
         self.validations.append(Validation(
             name=nameof(self.settings.max_consistent_window_size),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Window size within limits. Size: {window_size:.2f}",
+            message=f"Window size within limits. Size: {window_size:.2f}" if window_size else "Window size within limits.",
             status=ValidationStatus.PASSED
         ))
 
@@ -379,52 +396,56 @@ class ConsistentVolumeAnchorExecutor(Executor):
         """
         self.next_validation()
         
-        alert_vol = alert_candle['volume']
+        is_valid = self.validator.validate_alert_volume(
+            alert_candle,
+            max_vol,
+            min_vol,
+            self.settings.min_volume_confirmation_multiplier
+        )
         
-        # Check if alert volume >= max volume
-        if alert_vol < max_vol:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Alert candle volume less than max window volume. Alert: {alert_vol:.2f}, Max: {max_vol:.2f}",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return False
-
-        # Check if alert volume >= multiplier * min volume
-        self.next_validation()
-        threshold_vol = self.settings.min_volume_confirmation_multiplier * min_vol
-        
-        if alert_vol < threshold_vol:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Alert candle volume below confirmation threshold. Alert: {alert_vol:.2f}, Threshold: {threshold_vol:.2f}",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
+        if not is_valid:
+            alert_vol = alert_candle['volume']
+            if alert_vol < max_vol:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Alert candle volume less than max window volume. Alert: {alert_vol:.2f}, Max: {max_vol:.2f}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
+            else:
+                threshold_vol = (
+                    self.settings.min_volume_confirmation_multiplier *
+                    min_vol
+                )
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Alert candle volume below confirmation threshold. Alert: {alert_vol:.2f}, Threshold: {threshold_vol:.2f}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
             return False
 
         self.validations.append(Validation(
             name=nameof(self.settings.min_volume_confirmation_multiplier),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Alert candle volume confirmed. Volume: {alert_vol:.2f}",
+            message="Alert candle volume confirmed.",
             status=ValidationStatus.PASSED
         ))
 
@@ -436,11 +457,15 @@ class ConsistentVolumeAnchorExecutor(Executor):
         """
         self.next_validation()
         
-        is_valid, body_size = candle_utils.is_body_bigger_than_min(
-            alert_candle, self.settings.min_body_size_alert_candle
+        is_valid = self.validator.validate_alert_body_size(
+            alert_candle,
+            self.settings.min_body_size_alert_candle
         )
         
         if not is_valid:
+            body_size = abs(
+                alert_candle['close'] - alert_candle['open']
+            )
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -461,7 +486,7 @@ class ConsistentVolumeAnchorExecutor(Executor):
             name=nameof(self.settings.min_body_size_alert_candle),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Alert candle body size meets minimum. Body: {body_size:.2f}",
+            message="Alert candle body size meets minimum.",
             status=ValidationStatus.PASSED
         ))
 
@@ -479,75 +504,64 @@ class ConsistentVolumeAnchorExecutor(Executor):
         """
         self.next_validation()
         
-        # Calculate body sizes for all candles in the lookback window
-        bodies = (lookback_window_df['close'] - lookback_window_df['open']).abs()
-        alert_body = abs(alert_candle['close'] - alert_candle['open'])
+        is_valid = self.validator.validate_alert_largest_body_with_ratio(
+            alert_candle,
+            lookback_window_df,
+            self.settings.min_body_ratio
+        )
         
-        # Check if alert candle has the largest body
-        max_body = bodies.max()
-        
-        if alert_body < max_body:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Alert candle does not have the largest body. Alert body: {alert_body:.2f}, Max body: {max_body:.2f}",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
+        if not is_valid:
+            alert_body = abs(
+                alert_candle['close'] - alert_candle['open']
             )
-            return False
-
-        # Calculate body ratio for alert candle
-        self.next_validation()
-        alert_range = alert_candle['high'] - alert_candle['low']
-        
-        if alert_range <= 0:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Alert candle range is invalid (high <= low). Range: {alert_range:.2f}",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
+            max_body = (
+                ConsistentVolumeAnchorAnalyzer.get_max_body_in_window(
+                    lookback_window_df
+                )
             )
-            return False
-        
-        body_ratio = alert_body / alert_range
-        
-        if body_ratio < self.settings.min_body_ratio:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Alert candle body ratio below minimum. Ratio: {body_ratio:.2%}, Min: {self.settings.min_body_ratio:.2%}",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
+            
+            if alert_body < max_body:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Alert candle does not have the largest body. Alert body: {alert_body:.2f}, Max body: {max_body:.2f}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
+            else:
+                body_ratio = (
+                    ConsistentVolumeAnchorAnalyzer.calculate_alert_body_ratio(
+                        alert_candle
+                    ) or 0
+                )
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Alert candle body ratio below minimum. Ratio: {body_ratio:.2%}, Min: {self.settings.min_body_ratio:.2%}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
             return False
 
         self.validations.append(Validation(
             name=nameof(self.settings.min_body_ratio),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Alert candle has largest body with sufficient ratio. Body: {alert_body:.2f}, Ratio: {body_ratio:.2%}",
+            message="Alert candle has largest body with sufficient ratio.",
             status=ValidationStatus.PASSED
         ))
 
@@ -592,17 +606,20 @@ class ConsistentVolumeAnchorExecutor(Executor):
         """
         self.next_validation()
         
-        alert_close = alert_candle['close']
+        is_valid = self.validator.validate_alert_price_direction(
+            alert_candle,
+            signal,
+            consistent_volume_window
+        )
         
-        # Calculate the open and close prices of all candles in the consistent volume window
-        window_opens = consistent_volume_window['open']
-        window_closes = consistent_volume_window['close']
-        
-        if signal == Signal.BUY:
-            # For BUY: alert close must be higher than max of opens and closes
-            max_window_price = pd.concat([window_opens, window_closes]).max()
+        if not is_valid:
+            alert_close = alert_candle['close']
+            window_opens = consistent_volume_window['open']
+            window_closes = consistent_volume_window['close']
+            prices = pd.concat([window_opens, window_closes])
             
-            if alert_close <= max_window_price:
+            if signal == Signal.BUY:
+                max_price = prices.max()
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
@@ -610,20 +627,15 @@ class ConsistentVolumeAnchorExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message=f"BUY signal: Alert close price not above window max. Alert close: {alert_close:.2f}, Window max: {max_window_price:.2f}",
+                    message=f"BUY signal: Alert close price not above window max. Alert close: {alert_close:.2f}, Window max: {max_price:.2f}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
                     end_time=self.current_window_end_time,
                     approach=self.APPROACH_NAME
                 )
-                return False
-        
-        elif signal == Signal.SELL:
-            # For SELL: alert close must be lower than min of opens and closes
-            min_window_price = pd.concat([window_opens, window_closes]).min()
-            
-            if alert_close >= min_window_price:
+            else:  # SELL
+                min_price = prices.min()
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
@@ -631,15 +643,22 @@ class ConsistentVolumeAnchorExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message=f"SELL signal: Alert close price not below window min. Alert close: {alert_close:.2f}, Window min: {min_window_price:.2f}",
+                    message=f"SELL signal: Alert close price not below window min. Alert close: {alert_close:.2f}, Window min: {min_price:.2f}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     start_time=self.current_window_start_time,
                     end_time=self.current_window_end_time,
                     approach=self.APPROACH_NAME
                 )
-                return False
+            return False
 
+        self.validations.append(Validation(
+            name="alert_price_direction",
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Alert candle price in correct direction for {signal} signal.",
+            status=ValidationStatus.PASSED
+        ))
         return True
 
     def _setup_median_volume(self, df: pd.DataFrame) -> float:

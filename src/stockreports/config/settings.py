@@ -51,7 +51,7 @@ API_HEADERS = {
 # Guidance: A shorter interval (e.g., 5-10 seconds) provides more real-time data but increases API usage. A longer interval (e.g., 60 seconds) is less resource-intensive. Do not set this lower than the data resolution (e.g., don't check every 5 seconds for 1-minute data).
 # Range: Integer > 0.
 # Example: `MONITORING_INTERVAL_SECONDS = 5`
-MONITORING_INTERVAL_SECONDS = 7
+MONITORING_INTERVAL_SECONDS = 57
 
 
 # --- General Alerting & Reporting ---
@@ -86,7 +86,7 @@ LOGS_DIR = "logs"
 # Guidance: "INFO" provides a good balance of detail. "DEBUG" is very verbose and useful for troubleshooting. "WARNING" will only show potential problems.
 # Range: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL".
 # Example: `LOG_LEVEL = "INFO"`
-LOG_LEVEL = "WARNING"
+LOG_LEVEL = "DEBUG"
 
 
 # --- Data Source & Operational Mode ---
@@ -236,4 +236,4 @@ CONSOLIDATED_PROFITABILITY = {
 # Guidance: This is useful for testing how the system would have behaved in the past. Set this to a time within the `DEV_DATA_DATE_RANGE`.
 # Format: "YYYY-MM-DD HH:MM:SS"
 # Example: `DEBUG_REPLAY_START_TIME = "2026-01-08 09:05:00"`
-DEBUG_REPLAY_START_TIME = None
+DEBUG_REPLAY_START_TIME = "2026-03-13 14:10:00"
