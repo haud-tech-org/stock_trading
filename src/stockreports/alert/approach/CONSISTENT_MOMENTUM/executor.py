@@ -10,6 +10,8 @@ from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from .settings import ConsistentMomentumSettings
+from .analyzer import ConsistentMomentumAnalyzer
+from .validator import ConsistentMomentumValidator
 from src.stockreports.utils.log_factory import log
 from src.stockreports.utils import candle_utils, window_utils
 
@@ -25,6 +27,8 @@ class ConsistentMomentumExecutor(Executor):
 
     def __init__(self, symbol: str):
         self.settings = ConsistentMomentumSettings(symbol)
+        self.analyzer = ConsistentMomentumAnalyzer()
+        self.validator = ConsistentMomentumValidator()
         approach_name = Approach.CONSISTENT_MOMENTUM
         super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
@@ -304,52 +308,29 @@ class ConsistentMomentumExecutor(Executor):
         """
         self.next_validation()
         
-        if len(confirmation_window_df) < 2:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Confirmation window has {len(confirmation_window_df)} candles, need at least 2 for this validation.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return False
-        
-        # Calculate body size for each candle in confirmation window
-        confirmation_window_copy = confirmation_window_df.copy()
-        confirmation_window_copy['body'] = confirmation_window_copy.apply(
-            lambda row: abs(row['close'] - row['open']),
-            axis=1
+        is_valid = self.validator.validate_max_body_at_boundaries(
+            confirmation_window_df,
+            signal
         )
         
-        first_position = 0
-        last_position = len(confirmation_window_copy) - 1
-        first_body = confirmation_window_copy.iloc[first_position]['body']
-        last_body = confirmation_window_copy.iloc[last_position]['body']
-        
-        # Find the max body candle position
-        max_body_idx = confirmation_window_copy['body'].idxmax()
-        max_body_position = confirmation_window_copy.index.get_loc(max_body_idx)
-        max_body_value = confirmation_window_copy.loc[max_body_idx, 'body']
-        
-        # Get the positions of 1st and 2nd max body candles
-        sorted_by_body = confirmation_window_copy.nlargest(2, 'body')
-        max_positions = sorted(confirmation_window_copy.index.get_loc(idx) for idx in sorted_by_body.index)
-        
-        # Condition 1: First and last are the 1st and 2nd max body candles
-        condition1 = (first_position in max_positions and last_position in max_positions)
-        
-        # Condition 2: Last candle is the max body candle
-        condition2 = (last_position == max_body_position)
-        
-        # Validate: Condition1 OR Condition2
-        if not (condition1 or condition2):
+        if not is_valid:
+            max_pos1, max_pos2, max_body_value = (
+                ConsistentMomentumAnalyzer.calculate_max_body_positions(
+                    confirmation_window_df
+                )
+            )
+            first_position = 0
+            last_position = len(confirmation_window_df) - 1
+            condition1 = (
+                max_pos1 is not None and max_pos2 is not None and
+                first_position in [max_pos1, max_pos2] and
+                last_position in [max_pos1, max_pos2]
+            )
+            condition2 = (
+                max_pos1 is not None and
+                last_position == max_pos1
+            )
+            
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -357,7 +338,7 @@ class ConsistentMomentumExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Neither condition satisfied. Condition1 (first&last are 1st/2nd max): {condition1}, Condition2 (last is max): {condition2}. First body: {first_body:.2f}, Last body: {last_body:.2f}, Max body: {max_body_value:.2f} at position {max_body_position}.",
+                message=f"Neither condition satisfied. Condition1 (first&last are 1st/2nd max): {condition1}, Condition2 (last is max): {condition2}.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -366,26 +347,12 @@ class ConsistentMomentumExecutor(Executor):
             )
             return False
         
-        # Validation passed - determine which condition satisfied
-        max_bodies = sorted_by_body['body'].values
-        condition_met = "Condition2 (last is max body)" if condition2 else "Condition1 (first&last are 1st/2nd max)"
-        
-        message = f"Body momentum validation passed ({condition_met}). First body: {first_body:.2f}, Last body: {last_body:.2f}, Max body: {max_body_value:.2f}. Top 2 bodies: {[f'{b:.2f}' for b in max_bodies]}."
-        self.validations.append(Validation(step=self.current_step, validation=self.validation_step, message=message, status=ValidationStatus.PASSED))
-        log(
-            logger=self.logger,
-            status=ValidationStatus.PASSED,
-            name=self.__class__.__name__,
-            alert_time=self.current_window_end_time,
+        self.validations.append(Validation(
             step=self.current_step,
             validation=self.validation_step,
-            message=message,
-            log_level=LogLevel.DEBUG,
-            execution_symbol=self.symbol,
-            start_time=self.current_window_start_time,
-            end_time=self.current_window_end_time,
-            approach=self.APPROACH_NAME
-        )
+            message="Body momentum validation passed.",
+            status=ValidationStatus.PASSED
+        ))
         return True
 
     def _step_validate_volume_consistency(self, confirmation_window_df: pd.DataFrame) -> bool:
@@ -398,50 +365,40 @@ class ConsistentMomentumExecutor(Executor):
         """
         self.next_validation()
         
-        if len(confirmation_window_df) == 0:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message="Confirmation window is empty.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return False
+        is_valid = self.validator.validate_volume_consistency(
+            confirmation_window_df,
+            self.settings.max_multiplier_difference_volume_threshold
+        )
         
-        max_volume = confirmation_window_df['volume'].max()
-        min_volume = confirmation_window_df['volume'].min()
-        threshold = self.settings.max_multiplier_difference_volume_threshold
-        
-        # Validate: max_volume <= min_volume * threshold
-        if max_volume > min_volume * threshold:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Volume consistency failed: max_volume ({max_volume}) > min_volume ({min_volume}) * threshold ({threshold}). Ratio: {max_volume / min_volume if min_volume > 0 else 0:.2f}",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
+        if not is_valid:
+            vol_stats = (
+                ConsistentMomentumAnalyzer.calculate_volume_stats(
+                    confirmation_window_df
+                )
             )
+            if vol_stats:
+                min_vol, max_vol, ratio = vol_stats
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Volume consistency failed: max_volume ({max_vol}) > min_volume ({min_vol}) * threshold ({self.settings.max_multiplier_difference_volume_threshold}). Ratio: {ratio:.2f}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    start_time=self.current_window_start_time,
+                    end_time=self.current_window_end_time,
+                    approach=self.APPROACH_NAME
+                )
             return False
         
         self.validations.append(Validation(
             name=nameof(self.settings.max_multiplier_difference_volume_threshold),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Volume consistency passed: max_volume ({max_volume}) <= min_volume ({min_volume}) * threshold ({threshold}). Ratio: {max_volume / min_volume if min_volume > 0 else 0:.2f}",
+            message="Volume consistency passed.",
             status=ValidationStatus.PASSED
         ))
         return True
@@ -456,94 +413,56 @@ class ConsistentMomentumExecutor(Executor):
         """
         self.next_validation()
         
-        if len(confirmation_window_df) == 0:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message="Confirmation window is empty.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return False
+        is_valid = self.validator.validate_price_range(
+            confirmation_window_df,
+            self.settings.min_confirmation_window_price_threshold,
+            self.settings.max_confirmation_window_price_threshold
+        )
         
-        # Calculate price range using close extremes
-        window_size_val, window_trend = window_utils.get_window_size_and_trend_by_close_extremes(confirmation_window_df)
-        
-        if window_size_val is None:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message="Could not calculate confirmation window price range.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
+        if not is_valid:
+            window_size = (
+                ConsistentMomentumAnalyzer.calculate_window_price_range(
+                    confirmation_window_df
+                )
             )
-            return False
-        
-        # Validate minimum threshold
-        self.next_validation()
-        if window_size_val < self.settings.min_confirmation_window_price_threshold:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Confirmation window price range {window_size_val:.2f} is below minimum {self.settings.min_confirmation_window_price_threshold}.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
+            if window_size is not None:
+                if window_size < self.settings.min_confirmation_window_price_threshold:
+                    log(
+                        logger=self.logger,
+                        status=ValidationStatus.FAILED,
+                        name=self.__class__.__name__,
+                        alert_time=self.current_window_end_time,
+                        step=self.current_step,
+                        validation=self.validation_step,
+                        message=f"Confirmation window price range {window_size:.2f} is below minimum {self.settings.min_confirmation_window_price_threshold}.",
+                        log_level=LogLevel.DEBUG,
+                        execution_symbol=self.symbol,
+                        start_time=self.current_window_start_time,
+                        end_time=self.current_window_end_time,
+                        approach=self.APPROACH_NAME
+                    )
+                elif window_size > self.settings.max_confirmation_window_price_threshold:
+                    log(
+                        logger=self.logger,
+                        status=ValidationStatus.FAILED,
+                        name=self.__class__.__name__,
+                        alert_time=self.current_window_end_time,
+                        step=self.current_step,
+                        validation=self.validation_step,
+                        message=f"Confirmation window price range {window_size:.2f} exceeds maximum {self.settings.max_confirmation_window_price_threshold}.",
+                        log_level=LogLevel.DEBUG,
+                        execution_symbol=self.symbol,
+                        start_time=self.current_window_start_time,
+                        end_time=self.current_window_end_time,
+                        approach=self.APPROACH_NAME
+                    )
             return False
         
         self.validations.append(Validation(
             name=nameof(self.settings.min_confirmation_window_price_threshold),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Confirmation window price range {window_size_val:.2f} >= {self.settings.min_confirmation_window_price_threshold}.",
-            status=ValidationStatus.PASSED
-        ))
-        
-        # Validate maximum threshold
-        self.next_validation()
-        if window_size_val > self.settings.max_confirmation_window_price_threshold:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Confirmation window price range {window_size_val:.2f} exceeds maximum {self.settings.max_confirmation_window_price_threshold}.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return False
-        
-        self.validations.append(Validation(
-            name=nameof(self.settings.max_confirmation_window_price_threshold),
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Confirmation window price range {window_size_val:.2f} <= {self.settings.max_confirmation_window_price_threshold}.",
+            message="Confirmation window price range within thresholds.",
             status=ValidationStatus.PASSED
         ))
         return True
@@ -560,52 +479,39 @@ class ConsistentMomentumExecutor(Executor):
         """
         self.next_validation()
         
-        if len(confirmation_window_df) < 2:
-            # Only one candle, no gap to validate
-            self.validations.append(Validation(
-                name="confirmation_window_gap",
+        is_valid = self.validator.validate_gaps_between_candles(
+            confirmation_window_df,
+            self.settings.max_confirmation_gap_threshold
+        )
+        
+        if not is_valid:
+            gaps = (
+                ConsistentMomentumAnalyzer.calculate_gaps_between_candles(
+                    confirmation_window_df
+                )
+            )
+            max_gap = max(gaps) if gaps else 0
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Only one candle in confirmation window, gap validation skipped.",
-                status=ValidationStatus.PASSED
-            ))
-            return True
-        
-        threshold = self.settings.max_confirmation_gap_threshold
-        
-        # Check gaps between consecutive candles
-        for i in range(len(confirmation_window_df) - 1):
-            close_current = confirmation_window_df.iloc[i]['close']
-            open_next = confirmation_window_df.iloc[i + 1]['open']
-            gap = abs(close_current - open_next)
-            
-            if gap > threshold:
-                log(
-                    logger=self.logger,
-                    status=ValidationStatus.FAILED,
-                    name=self.__class__.__name__,
-                    alert_time=self.current_window_end_time,
-                    step=self.current_step,
-                    validation=self.validation_step,
-                    message=f"Gap between candle {i} and {i+1} exceeds threshold: gap={gap:.2f} > {threshold}. Close[{i}]={close_current:.2f}, Open[{i+1}]={open_next:.2f}",
-                    log_level=LogLevel.DEBUG,
-                    execution_symbol=self.symbol,
-                    start_time=self.current_window_start_time,
-                    end_time=self.current_window_end_time,
-                    approach=self.APPROACH_NAME
-                )
-                return False
-        
-        # All gaps are within threshold
-        gaps = [abs(confirmation_window_df.iloc[i]['close'] - confirmation_window_df.iloc[i + 1]['open']) 
-                for i in range(len(confirmation_window_df) - 1)]
-        max_gap = max(gaps) if gaps else 0
+                message=f"Gap exceeds threshold: max_gap={max_gap:.2f} > {self.settings.max_confirmation_gap_threshold}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
         
         self.validations.append(Validation(
             name="confirmation_window_gap",
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Confirmation window gap validation passed: max_gap={max_gap:.2f} <= {threshold}. All gaps: {[f'{g:.2f}' for g in gaps]}",
+            message="Confirmation window gaps within threshold.",
             status=ValidationStatus.PASSED
         ))
         return True
@@ -617,41 +523,27 @@ class ConsistentMomentumExecutor(Executor):
         """
         self.next_validation()
         
-        for _, candle in confirmation_window_df.iterrows():
-            if signal == Signal.BUY:
-                if not candle_utils.is_green_candle(candle):
-                    log(
-                        logger=self.logger,
-                        status=ValidationStatus.FAILED,
-                        name=self.__class__.__name__,
-                        alert_time=self.current_window_end_time,
-                        step=self.current_step,
-                        validation=self.validation_step,
-                        message=f"Candle at {candle['time']} is not green in BUY confirmation window.",
-                        log_level=LogLevel.DEBUG,
-                        execution_symbol=self.symbol,
-                        start_time=self.current_window_start_time,
-                        end_time=self.current_window_end_time,
-                        approach=self.APPROACH_NAME
-                    )
-                    return False
-            else:  # SELL
-                if not candle_utils.is_red_candle(candle):
-                    log(
-                        logger=self.logger,
-                        status=ValidationStatus.FAILED,
-                        name=self.__class__.__name__,
-                        alert_time=self.current_window_end_time,
-                        step=self.current_step,
-                        validation=self.validation_step,
-                        message=f"Candle at {candle['time']} is not red in SELL confirmation window.",
-                        log_level=LogLevel.DEBUG,
-                        execution_symbol=self.symbol,
-                        start_time=self.current_window_start_time,
-                        end_time=self.current_window_end_time,
-                        approach=self.APPROACH_NAME
-                    )
-                    return False
+        is_valid = self.validator.validate_color_consistency(
+            confirmation_window_df,
+            signal
+        )
+        
+        if not is_valid:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Not all candles match {signal} signal color.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
 
         self.validations.append(Validation(
             name="color_consistency",
@@ -677,102 +569,33 @@ class ConsistentMomentumExecutor(Executor):
         """
         self.next_validation()
         
-        if len(confirmation_window_df) < 2:
-            # Only one candle, no direction to validate
-            self.validations.append(Validation(
-                name="open_price_direction",
+        is_valid = self.validator.validate_open_close_price_direction(
+            confirmation_window_df,
+            signal
+        )
+        
+        if not is_valid:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Only one candle in confirmation window, direction validation skipped.",
-                status=ValidationStatus.PASSED
-            ))
-            return True
-        
-        opens = confirmation_window_df['open'].values
-        closes = confirmation_window_df['close'].values
-        
-        if signal == Signal.BUY:
-            # For BUY: check that opens are strictly increasing (open[i] > open[i-1])
-            for i in range(1, len(opens)):
-                if opens[i] <= opens[i-1]:
-                    log(
-                        logger=self.logger,
-                        status=ValidationStatus.FAILED,
-                        name=self.__class__.__name__,
-                        alert_time=self.current_window_end_time,
-                        step=self.current_step,
-                        validation=self.validation_step,
-                        message=f"BUY open price direction failed: open[{i}]={opens[i]:.2f} <= open[{i-1}]={opens[i-1]:.2f}",
-                        log_level=LogLevel.DEBUG,
-                        execution_symbol=self.symbol,
-                        start_time=self.current_window_start_time,
-                        end_time=self.current_window_end_time,
-                        approach=self.APPROACH_NAME
-                    )
-                    return False
-            
-            # For BUY: check that closes are strictly increasing (close[i] > close[i-1])
-            for i in range(1, len(closes)):
-                if closes[i] <= closes[i-1]:
-                    log(
-                        logger=self.logger,
-                        status=ValidationStatus.FAILED,
-                        name=self.__class__.__name__,
-                        alert_time=self.current_window_end_time,
-                        step=self.current_step,
-                        validation=self.validation_step,
-                        message=f"BUY close price direction failed: close[{i}]={closes[i]:.2f} <= close[{i-1}]={closes[i-1]:.2f}",
-                        log_level=LogLevel.DEBUG,
-                        execution_symbol=self.symbol,
-                        start_time=self.current_window_start_time,
-                        end_time=self.current_window_end_time,
-                        approach=self.APPROACH_NAME
-                    )
-                    return False
-        else:  # SELL
-            # For SELL: check that opens are strictly decreasing (open[i] < open[i-1])
-            for i in range(1, len(opens)):
-                if opens[i] >= opens[i-1]:
-                    log(
-                        logger=self.logger,
-                        status=ValidationStatus.FAILED,
-                        name=self.__class__.__name__,
-                        alert_time=self.current_window_end_time,
-                        step=self.current_step,
-                        validation=self.validation_step,
-                        message=f"SELL open price direction failed: open[{i}]={opens[i]:.2f} >= open[{i-1}]={opens[i-1]:.2f}",
-                        log_level=LogLevel.DEBUG,
-                        execution_symbol=self.symbol,
-                        start_time=self.current_window_start_time,
-                        end_time=self.current_window_end_time,
-                        approach=self.APPROACH_NAME
-                    )
-                    return False
-            
-            # For SELL: check that closes are strictly decreasing (close[i] < close[i-1])
-            for i in range(1, len(closes)):
-                if closes[i] >= closes[i-1]:
-                    log(
-                        logger=self.logger,
-                        status=ValidationStatus.FAILED,
-                        name=self.__class__.__name__,
-                        alert_time=self.current_window_end_time,
-                        step=self.current_step,
-                        validation=self.validation_step,
-                        message=f"SELL close price direction failed: close[{i}]={closes[i]:.2f} >= close[{i-1}]={closes[i-1]:.2f}",
-                        log_level=LogLevel.DEBUG,
-                        execution_symbol=self.symbol,
-                        start_time=self.current_window_start_time,
-                        end_time=self.current_window_end_time,
-                        approach=self.APPROACH_NAME
-                    )
-                    return False
+                message=f"Open and close prices do not follow {signal} direction.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return False
         
         self.validations.append(Validation(
             name="open_price_direction",
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Open and close price directions validated: {'increasing' if signal == Signal.BUY else 'decreasing'} for {signal} signal. Opens: {[f'{o:.2f}' for o in opens]}, Closes: {[f'{c:.2f}' for c in closes]}",
+            message=f"Open and close price directions validated for {signal} signal.",
             status=ValidationStatus.PASSED
         ))
         return True
@@ -782,9 +605,14 @@ class ConsistentMomentumExecutor(Executor):
         Step 10: Validate that the confirmation window has at least MIN_CONSISTENT_CANDLES.
         """
         self.next_validation()
-        consistent_count = len(confirmation_window_df)
-
-        if consistent_count < self.settings.min_consistent_candles:
+        
+        is_valid = self.validator.validate_min_consistent_candles(
+            confirmation_window_df,
+            self.settings.min_consistent_candles
+        )
+        
+        if not is_valid:
+            consistent_count = len(confirmation_window_df)
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -805,7 +633,7 @@ class ConsistentMomentumExecutor(Executor):
             name=nameof(self.settings.min_consistent_candles),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Consistent candles {consistent_count} >= {self.settings.min_consistent_candles}.",
+            message=f"Consistent candles >= {self.settings.min_consistent_candles}.",
             status=ValidationStatus.PASSED
         ))
         return True

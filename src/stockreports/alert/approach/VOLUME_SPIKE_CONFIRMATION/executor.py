@@ -9,14 +9,19 @@ from typing import Tuple
 from varname import nameof
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
+from src.stockreports.alert.model.models import AlertData, Validation
 from src.stockreports.alert.common.constants import Approach, Mode, Signal, ValidationStatus, LogLevel, Trend
 from src.stockreports.utils.log_factory import log
 from .settings import VolumeSpikeConfirmationSettings
-from src.stockreports.utils.candle_utils import is_green_candle, is_red_candle, get_last_candle
-from src.stockreports.utils.candle_utils import get_reversal_trend_signal
-from src.stockreports.utils.window_utils import get_window_size_and_trend
-from src.stockreports.utils.candle_utils import find_max_volume_candle, find_min_volume_candle, validate_volume_ratio
+from .analyzer import VolumeSpikeConfirmationAnalyzer
+from .validator import VolumeSpikeConfirmationValidator
+from src.stockreports.utils.candle_utils import (
+    is_green_candle, is_red_candle, get_last_candle,
+    get_reversal_trend_signal
+)
+from src.stockreports.utils.window_utils import (
+    get_window_size_and_trend
+)
 
 class VolumeSpikeConfirmationExecutor(Executor):
     # APPROACH_NAME = Approach.VOLUME_SPIKE_CONFIRMATION
@@ -24,6 +29,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
 
     def __init__(self, symbol: str):
         self.settings = VolumeSpikeConfirmationSettings(symbol)
+        self.analyzer = VolumeSpikeConfirmationAnalyzer()
+        self.validator = VolumeSpikeConfirmationValidator()
         approach_name = Approach.VOLUME_SPIKE_CONFIRMATION
         super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
@@ -128,7 +135,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
         return self.alerts[::-1]
 
     def _step1_extract_and_validate_trend_window(self, window_df: pd.DataFrame) -> Tuple[Optional[pd.DataFrame], Optional[float]]:
-        trend_window = self._extract_trend_window(window_df)
+        trend_window = self.analyzer.extract_trend_window(window_df)
 
         self.next_validation()
         if trend_window is None or len(trend_window) < self.settings.min_trend_candle_slice:
@@ -209,13 +216,17 @@ class VolumeSpikeConfirmationExecutor(Executor):
         return window_df.loc[trend_indices]
     
     def _step2_validate_volume_spike(self, trend_window: pd.DataFrame) -> Optional[tuple[pd.Series, pd.Series]]:
-        max_vol_candle = find_max_volume_candle(trend_window)
-        min_vol_candle = find_min_volume_candle(trend_window)
+        max_vol_candle = self.analyzer.find_max_volume_candle(trend_window)
+        min_vol_candle = self.analyzer.find_min_volume_candle(trend_window)
 
-        # New validation: min volume candle must be before max volume candle
-        min_idx = trend_window.index.get_loc(min_vol_candle.name)
-        max_idx = trend_window.index.get_loc(max_vol_candle.name)
-        if min_idx >= max_idx:
+        # Validation: min volume candle must be before max volume candle
+        is_valid_order = self.validator.validate_volume_candle_order(
+            min_vol_candle,
+            max_vol_candle,
+            trend_window
+        )
+        
+        if not is_valid_order:
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -223,7 +234,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Min volume candle (idx={min_idx}) does not occur before max volume candle (idx={max_idx}) in trend window.",
+                message=f"Min volume candle does not occur before max volume candle.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -233,8 +244,19 @@ class VolumeSpikeConfirmationExecutor(Executor):
             return None
         
         self.next_validation()
-        status, ratio = validate_volume_ratio(max_vol_candle, min_vol_candle, self.settings.trend_volume_multiplier)
-        if not status:
+        is_spike_valid = self.validator.validate_volume_spike(
+            max_vol_candle,
+            min_vol_candle,
+            self.settings.trend_volume_multiplier
+        )
+        
+        if not is_spike_valid:
+            ratio = (
+                self.analyzer.calculate_volume_spike_ratio(
+                    max_vol_candle['volume'],
+                    min_vol_candle['volume']
+                ) or 0
+            )
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -254,7 +276,7 @@ class VolumeSpikeConfirmationExecutor(Executor):
             name=nameof(self.settings.trend_volume_multiplier),
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Volume spike confirmed: {max_vol_candle['volume']} >= {min_vol_candle['volume']} * {self.settings.trend_volume_multiplier} (ratio: {ratio})",
+            message=f"Volume spike confirmed: {max_vol_candle['volume']} >= {min_vol_candle['volume']} * {self.settings.trend_volume_multiplier}",
             status=ValidationStatus.PASSED
         ))
         
