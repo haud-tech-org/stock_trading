@@ -10,7 +10,6 @@ from varname import nameof
 from src.stockreports.utils.conversion_data_utils import make_json_safe
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceColumn, LogLevel, Trend
-from src.stockreports.alert.common.data_utils import find_extreme_point
 from src.stockreports.alert.common.base_settings import BaseSettings
 from src.stockreports.utils import candle_utils
 from src.stockreports.alert.common.constants import ValidationStatus, Mode  # Add this import
@@ -133,49 +132,6 @@ class Executor(ABC):
         alert.structural_suggested_price = structural_suggested_price
         alert.performance_suggested_price = performance_suggested_price
         alert.suggested_profit_threshold = suggested_profit_threshold
-
-    def _confirm_breakout_price(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal, lookback_period: int, prominence: float) -> bool:
-        """
-        Analyzes the backward window to find a breakout price and confirms if the alert candle breaks it.
-        """
-        alert_candle_time_for_log = df_indexed.index[alert_candle_index]
-
-        # 1. Define the lookback period
-        if lookback_period is None:
-            lookback_df = df_indexed.iloc[:alert_candle_index]
-        else:
-            lookback_start_index = max(0, alert_candle_index - lookback_period)
-            lookback_df = df_indexed.iloc[lookback_start_index:alert_candle_index]
-
-        if lookback_df.empty:
-            self.logger.debug(f"[{alert_candle_time_for_log}] No lookback history available.")
-            return True # Bypass if no history
-
-        # 2. Find the breakout price using the new utility function
-        extreme_type = PeakTrough.PEAK if signal == Signal.BUY else PeakTrough.TROUGH
-        extreme_point_info = find_extreme_point(lookback_df, PriceColumn.CLOSE, extreme_type, prominence)
-
-        if extreme_point_info is None:
-            self.logger.debug(f"[{alert_candle_time_for_log}] No peak/trough found; ignoring breakout confirmation.")
-            return True
-
-        breakout_price, _ = extreme_point_info
-        self.logger.debug(f"[{alert_candle_time_for_log}] Breakout price set to {breakout_price:.2f} for {signal} signal.")
-
-        # 3. Confirm if the alert candle's price breaks the breakout price
-        alert_candle = df_indexed.iloc[alert_candle_index]
-        is_price_breakout = False
-        if signal == Signal.BUY:
-            is_price_breakout = alert_candle['close'] > breakout_price
-        elif signal == Signal.SELL:
-            is_price_breakout = alert_candle['close'] < breakout_price
-        
-        if not is_price_breakout:
-            self.logger.debug(f"[{alert_candle_time_for_log}] Price breakout not confirmed. Alert candle close {alert_candle['close']} vs breakout price {breakout_price}.")
-            return False
-
-        self.logger.debug(f"[{alert_candle_time_for_log}] Breakout confirmed. Alert candle close {alert_candle['close']} vs breakout price {breakout_price}.")
-        return True
 
     @abstractmethod
     def _find_alerts(self, df: pd.DataFrame, new_candle_count: int) -> AlertResult:
