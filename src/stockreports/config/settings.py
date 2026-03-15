@@ -166,7 +166,6 @@ SYMBOL_ALERT_APPROACHES = {
         "ICHIMOKU"
     ],
     "VN30": [
-        "VRA",
         "CONSISTENT_VOLUME_ANCHOR",
     ],
 }
