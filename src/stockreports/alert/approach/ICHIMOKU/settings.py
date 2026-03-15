@@ -23,6 +23,10 @@ class IchimokuSettings(BaseSettings):
         # Validation flags
         self.skip_chikou_confirmation = self.get("SKIP_CHIKOU_CONFIRMATION")
         self.skip_cloud_validation = self.get("SKIP_CLOUD_VALIDATION")
+        
+        # Magnitude threshold for alert creation
+        self.magnitude_threshold = self.get("MAGNITUDE_THRESHOLD")
+    
     
     @property
     def lookback_window_size(self) -> int:

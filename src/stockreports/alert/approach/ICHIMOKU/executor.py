@@ -61,12 +61,16 @@ class IchimokuExecutor(Executor):
             }
             
             # Use base class method to create alert with details
+            # Get the maximum of configured threshold or calculated magnitude
+            calculated_magnitude = abs(float(candle['close']) - float(self.first_candle['open']))
+            final_magnitude = max(self.settings.magnitude_threshold, calculated_magnitude)
+            
             alert = self._create_alert_with_details(
                 final_signal=signal,
                 final_trend=trend,
                 details=details,
                 final_alert_candle=candle,
-                final_magnitude=abs(float(candle['close']) - float(self.first_candle['open']))
+                final_magnitude=final_magnitude
             )
             
             return alert
