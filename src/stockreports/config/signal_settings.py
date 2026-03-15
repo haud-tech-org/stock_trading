@@ -75,7 +75,7 @@ APPROACH_CONFIG = {
         # --- Core Algorithm Parameters ---
         "LOOKBACK_WINDOW": 5,              # Number of candles to analyze for consistency
         "MIN_CONSISTENT_CANDLES": 3,       # Minimum consecutive consistent candles required
-        "MAGNITUDE_THRESHOLD": 4.5,        # Fixed alert magnitude
+        "MAGNITUDE_THRESHOLD": 6.5,        # Fixed alert magnitude
         "COOLDOWN_WINDOW": 5,              # Minutes to wait before next alert of same signal
         # --- Volume Validation Parameters ---
         "MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD": 1.5,  # Max volume <= Min volume * this threshold
@@ -93,6 +93,7 @@ APPROACH_CONFIG = {
         "SENKOU_SHIFT_PERIOD": 26,
         "SKIP_CHIKOU_CONFIRMATION": False,
         "SKIP_CLOUD_VALIDATION": False,
+        "MAGNITUDE_THRESHOLD": 8.5,        # Fixed alert magnitude for Ichimoku signals
     },
     "STRONG_CANDLE": {
         "LOOKBACK_WINDOW": 6,
@@ -102,7 +103,7 @@ APPROACH_CONFIG = {
         "MIN_DIFFERENCE_PRICE_THRESHOLD": 3.0,
         "MAX_DIFFERENCE_PRICE_THRESHOLD": 5.5,
         "MAX_VOLUME_MULTIPLIER": 1.5,
-        "MAGNITUDE_THRESHOLD": 4.5,
+        "MAGNITUDE_THRESHOLD": 6.5,
         "COOLDOWN_WINDOW": 3
     },
     # --- VRA (Volume-Reversal-Anchor) ---
