@@ -12,6 +12,7 @@ Inherits common validation methods from the base Validator class.
 from typing import Optional
 import pandas as pd
 from src.stockreports.alert.validator import Validator
+from src.stockreports.alert.common.constants import Trend, CandleColumn
 
 
 class VraValidator(Validator):
@@ -27,61 +28,6 @@ class VraValidator(Validator):
     This class extends the base Validator with VRA-specific validation
     methods.
     """
-
-    @staticmethod
-    def validate_volume_sequence(
-        min_vol_candle: pd.Series,
-        max_vol_candle: pd.Series,
-        alert_candle: pd.Series,
-        window_df: pd.DataFrame
-    ) -> bool:
-        """
-        Validate volume progression: min before max before alert.
-
-        Checks that the candles appear in correct order: minimum volume
-        before maximum volume before alert candle.
-
-        Args:
-            min_vol_candle (pd.Series): Candle with minimum volume.
-            max_vol_candle (pd.Series): Candle with maximum volume.
-            alert_candle (pd.Series): Alert candle.
-            window_df (pd.DataFrame): Full window for index lookup.
-
-        Returns:
-            bool: True if min_idx < max_idx < alert_idx.
-
-        Example:
-            >>> import pandas as pd
-            >>> df = pd.DataFrame({
-            ...     'volume': [100, 200, 150]
-            ... }, index=['a', 'b', 'c'])
-            >>> min_c = df.loc['a']
-            >>> max_c = df.loc['b']
-            >>> alert_c = df.loc['c']
-            >>> valid = VraValidator.validate_volume_sequence(
-            ...     min_c, max_c, alert_c, df
-            ... )
-            >>> valid
-            True
-
-        Note:
-            Returns False if candles not in window or order invalid.
-
-        Guidelines:
-            Volume reversal must show clear progression from low to
-            high to trigger signal.
-        """
-        try:
-            min_idx = window_df.index.get_loc(min_vol_candle.name)
-            max_idx = window_df.index.get_loc(max_vol_candle.name)
-            alert_idx = window_df.index.get_loc(alert_candle.name)
-
-            # Allow the max volume candle to be the same as the alert candle
-            # (original implementation accepted alert == max). Require only
-            # that min occurs before max, and max occurs at or before alert.
-            return min_idx < max_idx <= alert_idx
-        except (KeyError, AttributeError):
-            return False
 
     @staticmethod
     def validate_volume_ratio(
@@ -201,3 +147,118 @@ class VraValidator(Validator):
             return False
 
         return magnitude >= min_magnitude_threshold
+
+    @staticmethod
+    def validate_confirmation_window_size(
+        confirmation_window_df: pd.DataFrame,
+        min_candle_count: int = 3
+    ) -> bool:
+        """
+        Validate confirmation window has minimum required candle count.
+
+        Checks that the confirmation window (from max volume candle to end)
+        has at least min_candle_count candles for meaningful trend analysis.
+
+        Args:
+            confirmation_window_df (pd.DataFrame): Confirmation window to validate.
+            min_candle_count (int): Minimum candles required (default: 2).
+
+        Returns:
+            bool: True if len(confirmation_window_df) >= min_candle_count.
+
+        Example:
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({'high': [100, 102, 101]})
+            >>> valid = VraValidator.validate_confirmation_window_size(
+            ...     df, min_candle_count=2
+            ... )
+            >>> valid
+            True
+
+        Note:
+            Returns False if window is None or empty.
+
+        Guidelines:
+            Require sufficient candles in confirmation window for reversal consistency.
+        """
+        if confirmation_window_df is None or confirmation_window_df.empty:
+            return False
+
+        return len(confirmation_window_df) >= min_candle_count
+
+    @staticmethod
+    def validate_anchor_candle_found(
+        anchor_candle: Optional[pd.Series]
+    ) -> bool:
+        """
+        Validate that anchor candle was successfully identified.
+
+        Args:
+            anchor_candle (Optional[pd.Series]): The anchor candle to validate.
+
+        Returns:
+            bool: True if anchor_candle is not None, False otherwise.
+
+        Example:
+            >>> import pandas as pd
+            >>> candle = pd.Series({'high': 110, 'low': 100})
+            >>> valid = VraValidator.validate_anchor_candle_found(candle)
+            >>> valid
+            True
+
+        Note:
+            Simple validation to check if anchor candle identification succeeded.
+
+        Guidelines:
+            Used as a prerequisite check before reversal trend consistency validation.
+        """
+        return anchor_candle is not None
+
+    @staticmethod
+    def validate_max_volume_vs_alert_candle(
+        max_volume: float,
+        alert_volume: float,
+        multiplier_threshold: float
+    ) -> bool:
+        """
+        Validate that max volume candle volume is sufficient relative to alert candle volume.
+
+        Checks that max_volume >= alert_volume * multiplier_threshold to ensure
+        the volume spike at max volume candle is proportional to the alert candle volume.
+
+        Args:
+            max_volume (float): Volume of the maximum volume candle.
+            alert_volume (float): Volume of the alert candle (usually last candle).
+            multiplier_threshold (float): Multiplier threshold (e.g., 1.5).
+
+        Returns:
+            bool: True if max_volume >= alert_volume * multiplier_threshold.
+
+        Example:
+            >>> valid = VraValidator.validate_max_volume_vs_alert_candle(
+            ...     max_volume=1000.0,
+            ...     alert_volume=500.0,
+            ...     multiplier_threshold=1.5
+            ... )
+            >>> valid
+            True
+
+        Note:
+            Returns False if either volume is None or negative.
+
+        Guidelines:
+            Ensures the peak volume is meaningfully higher than current volume,
+            not just a marginal spike.
+        """
+        if max_volume is None or alert_volume is None:
+            return False
+
+        if max_volume < 0 or alert_volume < 0:
+            return False
+
+        # Handle zero volume edge case
+        if alert_volume == 0:
+            return max_volume > 0
+
+        required_volume = alert_volume * multiplier_threshold
+        return max_volume >= required_volume
