@@ -181,6 +181,61 @@ class Analyzer(ABC):
     # ===== COMMON VOLUME CALCULATIONS =====
     
     @staticmethod
+    def find_min_volume_candle_up_to_index(
+        window_df: pd.DataFrame,
+        target_candle: pd.Series
+    ) -> Optional[pd.Series]:
+        """
+        Find candle with minimum volume from start up to (but not including) target candle.
+
+        Searches for the minimum volume candle in the portion of the window
+        from the beginning up to (but not including) the target candle's index.
+        This is useful for finding min volume before a peak volume candle, ensuring
+        a strict ordering relationship.
+
+        Args:
+            window_df (pd.DataFrame): Full window with volume column.
+            target_candle (pd.Series): Target candle that defines the search boundary.
+
+        Returns:
+            Optional[pd.Series]: Candle with min volume up to (but not including)
+                target candle index, or None if invalid input or insufficient candles.
+
+        Example:
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({'volume': [100, 200, 150]}, index=['a', 'b', 'c'])
+            >>> target_c = df.loc['b']
+            >>> min_c = Analyzer.find_min_volume_candle_up_to_index(df, target_c)
+            >>> min_c['volume']
+            100
+            >>> min_c.name
+            'a'
+
+        Note:
+            Returns None if window is empty, target_candle not in window,
+            or if there are no candles before the target candle.
+
+        Guidelines:
+            Useful for ensuring volume progression patterns across approaches.
+        """
+        if window_df.empty:
+            return None
+
+        try:
+            target_idx = window_df.index.get_loc(target_candle.name)
+            # Slice from start to target index (exclusive)
+            slice_df = window_df.iloc[:target_idx]
+
+            if slice_df.empty:
+                # No candles before target candle
+                return None
+
+            min_idx = slice_df[CandleColumn.VOLUME].idxmin()
+            return window_df.loc[min_idx]
+        except (KeyError, AttributeError):
+            return None
+
+    @staticmethod
     def get_max_volume_in_window(df: pd.DataFrame) -> float:
         """
         Get maximum volume in a DataFrame window.
@@ -214,6 +269,58 @@ class Analyzer(ABC):
         
         conditional_window_df = lookback_window_df.iloc[:-1]
         return Analyzer.get_max_volume_in_window(conditional_window_df)
+    
+    # ===== COMMON WINDOW SLICING =====
+    
+    @staticmethod
+    def slice_window(
+        window_df: pd.DataFrame,
+        start_candle: pd.Series,
+        end_candle: pd.Series
+    ) -> Optional[pd.DataFrame]:
+        """
+        Slice window from start candle to end candle (inclusive).
+
+        Extracts the portion of the window between two candles, useful for
+        analyzing price movement patterns between key points.
+
+        Args:
+            window_df (pd.DataFrame): Full window.
+            start_candle (pd.Series): Starting candle (inclusive).
+            end_candle (pd.Series): Ending candle (inclusive).
+
+        Returns:
+            Optional[pd.DataFrame]: Sliced window from start_candle to end_candle,
+                or None if invalid (start > end or candles not in window).
+
+        Example:
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({
+            ...     'close': [100, 102, 101, 103]
+            ... }, index=['a', 'b', 'c', 'd'])
+            >>> start = df.loc['a']
+            >>> end = df.loc['d']
+            >>> sliced = Analyzer.slice_window(df, start, end)
+            >>> len(sliced)
+            4
+
+        Note:
+            Returns None if start_index > end_index or candles not found.
+
+        Guidelines:
+            Useful for analyzing price action between identified key points
+            (e.g., min volume to alert candle, support to resistance, etc).
+        """
+        try:
+            start_idx = window_df.index.get_loc(start_candle.name)
+            end_idx = window_df.index.get_loc(end_candle.name)
+
+            if start_idx > end_idx:
+                return None
+
+            return window_df.iloc[start_idx:end_idx + 1]
+        except (KeyError, AttributeError):
+            return None
     
     # ===== COMMON CANDLE FILTERING =====
     

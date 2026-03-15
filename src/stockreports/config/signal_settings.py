@@ -108,12 +108,22 @@ APPROACH_CONFIG = {
     },
     # --- VRA (Volume-Reversal-Anchor) ---
     "VRA": {
-        "LOOKBACK_WINDOW": 7,
+        "LOOKBACK_WINDOW": 10,
         "VOLUME_MULTIPLIER": 4.5,
         "MIN_TREND_MAGNITUDE": 6.5,
 
         # --- VRA Trend Window Edge Slice ---
         "TREND_WINDOW_EDGE_SLICE": 3,  # Number of candles from the edge for open price extremes validation in VRA
+        
+        # --- VRA Confirmation Window Validation ---
+        "MIN_CONFIRMATION_WINDOW_CANDLES": 3,  # Minimum candles required in confirmation window (from max volume to end) for reversal consistency validation
+        
+        # --- VRA Max Volume to Alert Candle Validation ---
+        "VOLUME_MULTIPLIER_BY_REVERSAL_TREND": 2.0,  # Multiplier for validating max candle volume >= alert candle volume * this factor
+        
+        # --- VRA Anchor Candle Position Validation ---
+        "MIN_CANDLES_BETWEEN_ANCHOR_AND_ALERT": 2,  # Minimum candles required between anchor candle and alert candle in confirmation window. Make sure it's always >= 2
+        
         "COOLDOWN_WINDOW": 3
     },
     "VOLUME_SPIKE_CONFIRMATION": {

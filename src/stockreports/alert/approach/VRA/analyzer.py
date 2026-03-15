@@ -12,7 +12,7 @@ Inherits common calculation methods from the base Analyzer class.
 from typing import Optional, Tuple
 import pandas as pd
 from src.stockreports.alert.analyzer import Analyzer
-from src.stockreports.alert.common.constants import Trend
+from src.stockreports.alert.common.constants import Trend, CandleColumn
 from src.stockreports.utils import window_utils
 
 
@@ -105,21 +105,22 @@ class VraAnalyzer(Analyzer):
 
     @staticmethod
     def calculate_volume_ratio(
-        alert_volume: float,
+        max_volume: float,
         min_volume: float
     ) -> float:
         """
-        Calculate volume ratio for alert candle vs minimum.
+        Calculate volume ratio between max and min volume candles.
 
-        Computes alert_volume / min_volume to measure spike magnitude.
+        Computes max_volume / min_volume to measure the magnitude of the
+        volume spike between the highest and lowest volume candles.
 
         Args:
-            alert_volume (float): Alert candle volume.
-            min_volume (float): Minimum volume in window.
+            max_volume (float): Maximum volume in the window.
+            min_volume (float): Minimum volume in the window.
 
         Returns:
             float: Volume ratio. Returns float('inf') if min_volume is 0
-                and alert_volume > 0, returns 1.0 if both are 0.
+                and max_volume > 0, returns 1.0 if both are 0.
 
         Example:
             >>> ratio = VraAnalyzer.calculate_volume_ratio(200, 100)
@@ -137,64 +138,14 @@ class VraAnalyzer(Analyzer):
             Ratio >= multiplier threshold indicates valid spike.
         """
         if min_volume == 0:
-            # If the min candle's volume is 0, return infinite ratio if alert
-            # volume > 0, otherwise return 1.0 (matching original logic)
-            if alert_volume > 0:
+            # If the min candle's volume is 0, return infinite ratio if max_volume
+            # > 0, otherwise return 1.0 (matching original logic)
+            if max_volume > 0:
                 return float('inf')
             else:
                 return 1.0
 
-        return alert_volume / min_volume
-
-    @staticmethod
-    def slice_trend_window(
-        window_df: pd.DataFrame,
-        min_vol_candle: pd.Series,
-        alert_candle: pd.Series
-    ) -> Optional[pd.DataFrame]:
-        """
-        Slice window from min volume candle to alert candle inclusive.
-
-        Extracts the portion of the window showing the volume recovery
-        from minimum to alert candle.
-
-        Args:
-            window_df (pd.DataFrame): Full window.
-            min_vol_candle (pd.Series): Starting candle (min volume).
-            alert_candle (pd.Series): Ending candle (alert).
-
-        Returns:
-            Optional[pd.DataFrame]: Sliced window, or None if invalid.
-
-        Example:
-            >>> import pandas as pd
-            >>> df = pd.DataFrame({
-            ...     'volume': [100, 200, 150]
-            ... }, index=['a', 'b', 'c'])
-            >>> min_c = df.loc['a']
-            >>> alert_c = df.loc['c']
-            >>> sliced = VraAnalyzer.slice_trend_window(
-            ...     df, min_c, alert_c
-            ... )
-            >>> len(sliced)
-            3
-
-        Note:
-            Returns None if start > end or candles not in window.
-
-        Guidelines:
-            Trend must show progression from min to max volume.
-        """
-        try:
-            start_idx = window_df.index.get_loc(min_vol_candle.name)
-            end_idx = window_df.index.get_loc(alert_candle.name)
-
-            if start_idx > end_idx:
-                return None
-
-            return window_df.iloc[start_idx:end_idx + 1]
-        except (KeyError, AttributeError):
-            return None
+        return max_volume / min_volume
 
     @staticmethod
     def get_window_trend_and_magnitude(
@@ -243,3 +194,62 @@ class VraAnalyzer(Analyzer):
             return None
 
         return (abs(window_size), trend)
+
+    @staticmethod
+    def find_anchor_candle(
+        confirmation_window_df: pd.DataFrame,
+        window_trend: Trend
+    ) -> Optional[pd.Series]:
+        """
+        Find anchor candle in confirmation window based on trend direction.
+
+        The anchor candle is:
+        - The candle with the highest high price if window_trend is UPTREND
+        - The candle with the lowest low price if window_trend is DOWNTREND
+
+        The anchor candle serves as the reference point for validating
+        reversal trend consistency in the confirmation window.
+
+        Args:
+            confirmation_window_df (pd.DataFrame): Confirmation window from
+                max volume candle to end of lookback window.
+            window_trend (Trend): The trend direction (UPTREND or DOWNTREND).
+
+        Returns:
+            Optional[pd.Series]: Anchor candle, or None if window is empty
+                or trend is invalid.
+
+        Example:
+            >>> import pandas as pd
+            >>> from src.stockreports.alert.common.constants import Trend, CandleColumn
+            >>> df = pd.DataFrame({
+            ...     'high': [105, 110, 108],
+            ...     'low': [100, 103, 101]
+            ... })
+            >>> anchor = VraAnalyzer.find_anchor_candle(df, Trend.UPTREND)
+            >>> anchor[CandleColumn.HIGH]
+            110
+
+        Note:
+            Returns None if window is empty or trend is None/NEUTRAL.
+
+        Guidelines:
+            Used to establish the pivot point for reversal consistency checks.
+        """
+        if confirmation_window_df.empty or window_trend is None:
+            return None
+
+        try:
+            if window_trend == Trend.UPTREND:
+                # Find candle with highest high
+                anchor_idx = confirmation_window_df[CandleColumn.HIGH].idxmax()
+                return confirmation_window_df.loc[anchor_idx]
+            elif window_trend == Trend.DOWNTREND:
+                # Find candle with lowest low
+                anchor_idx = confirmation_window_df[CandleColumn.LOW].idxmin()
+                return confirmation_window_df.loc[anchor_idx]
+            else:
+                return None
+        except (KeyError, AttributeError):
+            return None
+
