@@ -111,21 +111,5 @@ gcloud storage cp -r "gs://stock_trading/reports/" "/Users/tech/dev/development/
 python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
 ```
 
-## Prompts
-
-### Update approach's documentation
-
-```txt
-Please review the documentation and code for the [APPROACH_NAME] approach. Double-check that every validation and parameter described in the documentation matches the actual implementation in the codebase. If there are any mismatches, update the documentation to accurately reflect the code, ensuring all steps, parameters, and logic are consistent and correct.
-```
-
-### Summary of changes in Staged
-
-```txt
-git diff in staged and provide a short description of changes for a new commit. It must be formatted as markdown.
-
-Reference
-docs/references/COMMIT_SUMMARY_CVA.md
-```
 
 
