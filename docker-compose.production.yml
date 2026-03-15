@@ -1,0 +1,64 @@
+# docker-compose.production.yml
+# Override configuration for PRODUCTION environment
+# Used for live trading with 8-10 symbols
+#
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.production.yml up -d
+#
+# This file maximizes resources for reliable, high-performance monitoring
+# in production trading environments
+
+version: '3.8'
+
+services:
+  stock-alerter:
+    # Resource limits optimized for ENTERPRISE production (20-30 symbols)
+    deploy:
+      resources:
+        limits:
+          cpus: '8'          # 8 CPU cores for high-volume parallel processing
+          memory: 4096M      # 4 GB memory for large datasets and peak operations
+        reservations:
+          cpus: '4'          # Reserve 4 cores minimum
+          memory: 2048M      # Reserve 2 GB minimum
+      
+      # Restart policy for production reliability
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+    # Enhanced logging for production monitoring
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+        labels: "environment=production,service=stock-alerter"
+
+    # Health check for production orchestration
+    healthcheck:
+      test: ["CMD", "python", "-c", 
+             "import subprocess; \
+              result = subprocess.run(['python', '-c', \
+              'from src.stockreports.config.secrets_loader import SecretsLoader; \
+              loader = SecretsLoader(); \
+              assert loader.env_type == \"DOCKER\"'], \
+              capture_output=True, timeout=10); \
+              exit(result.returncode)"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+
+    # Environment overrides for production
+    environment:
+      # Use production-grade logging level
+      LOG_LEVEL: "INFO"  # Change from DEBUG if verbose logging not needed
+      
+      # Enable detailed performance metrics
+      ENABLE_PROFILING: "false"  # Set to "true" for performance analysis
+      
+      # Optimize garbage collection for sustained operations
+      PYTHONGC: "1"
