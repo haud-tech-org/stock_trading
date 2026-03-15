@@ -1,173 +1,106 @@
 """
-Command Line Interface for stockreports package.
+Command Line Interface for stockreports alerter system.
 
-This module provides CLI commands for extracting HAR data and aggregating
-stock market data with various options for customization.
+This module provides CLI commands for managing the stock trading alert system
+with support for secure credential management across multiple deployment
+environments (Local, Docker, Google Cloud, Azure, Kubernetes).
 """
 
 import argparse
 import sys
+import logging
+import os
 from pathlib import Path
 from typing import Optional
 
-from .extractors import HARExtractor
-from .aggregators import StockDataAggregator
+# --- Secure Credentials & Settings ---
+from src.stockreports.config import loader
+from src.stockreports.config.secrets_loader import SecretsLoader
+from src.stockreports.alert.common.environment import EnvironmentType
+
+# --- Core Alert Modules ---
+from src.stockreports.alert.symbol_alerter import SymbolAlerter
 
 
-def extract_har_data():
-    """CLI command for extracting HAR data to JSON responses."""
-    parser = argparse.ArgumentParser(
-        description='Extract stock market data from HAR files',
-        prog='stockreports-extract'
+def setup_logging(verbose: bool = False):
+    """Configure logging for the application."""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    
-    parser.add_argument(
-        'source_dir',
-        help='Directory containing HAR files to process'
-    )
-    
-    parser.add_argument(
-        'output_dir', 
-        help='Directory to save extracted JSON responses'
-    )
-    
-    parser.add_argument(
-        '--timezone',
-        default='Asia/Ho_Chi_Minh',
-        help='Timezone for timestamp conversion (default: Asia/Ho_Chi_Minh)'
-    )
-    
-    parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Enable verbose output'
-    )
-    
-    args = parser.parse_args()
-    
-    # Validate directories
-    source_path = Path(args.source_dir)
-    if not source_path.exists():
-        print(f"❌ Source directory does not exist: {args.source_dir}")
-        sys.exit(1)
-    
-    output_path = Path(args.output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Create extractor and process
+
+
+def verify_credentials():
+    """Verify that all required credentials are properly configured."""
     try:
-        extractor = HARExtractor(str(source_path), str(output_path), tz_name=args.timezone)
-        results = extractor.extract_all()
+        # Load secrets
+        secrets_loader = SecretsLoader()
         
-        if results['entries_extracted'] > 0:
-            print(f"✅ Extraction completed successfully!")
-            print(f"   - HAR files processed: {results['files_processed']}")
-            print(f"   - Responses extracted: {results['entries_extracted']}")
-            print(f"   - Output directory: {args.output_dir}")
-            sys.exit(0)
+        # Check environment detection
+        env_type = secrets_loader.env_type
+        print(f"✅ Environment detected: {EnvironmentType.get_display_name(env_type)}")
+        
+        # Load notification settings to verify credentials
+        notification_settings = loader.get_notification_settings()
+        
+        # Check email configuration
+        if notification_settings.EMAIL_ENABLED:
+            email_sender = getattr(notification_settings, 'EMAIL_SENDER', None)
+            email_password = secrets_loader.get_secret('EMAIL_APP_PASSWORD', required=False, is_sensitive=True)
+            
+            if email_sender and email_password:
+                print(f"✅ Email configured: {email_sender}")
+            else:
+                print("⚠️  Email not fully configured")
         else:
-            print("⚠️  No data was extracted from the HAR files!")
-            sys.exit(1)
-            
-    except Exception as e:
-        print(f"❌ Error during extraction: {e}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
-        sys.exit(1)
-
-
-def aggregate_stock_data():
-    """CLI command for aggregating stock data into reports."""
-    parser = argparse.ArgumentParser(
-        description='Aggregate stock market data and generate reports',
-        prog='stockreports-aggregate'
-    )
-    
-    parser.add_argument(
-        'responses_dir',
-        help='Directory containing JSON response files'
-    )
-    
-    parser.add_argument(
-        'output_dir',
-        help='Directory to save aggregated reports'
-    )
-    
-    parser.add_argument(
-        '--include-daily-analysis',
-        action='store_true',
-        help='Include detailed daily price analysis (default: enabled)'
-    )
-    
-    parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Enable verbose output'
-    )
-    
-    args = parser.parse_args()
-    
-    # Validate directories
-    responses_path = Path(args.responses_dir)
-    if not responses_path.exists():
-        print(f"❌ Responses directory does not exist: {args.responses_dir}")
-        sys.exit(1)
-    
-    output_path = Path(args.output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Create aggregator and process
-    try:
-        aggregator = StockDataAggregator(str(responses_path), str(output_path))
-        results = aggregator.process_all_symbols()
+            print("⚠️  Email is disabled")
         
-        if results and results.get('total_symbols', 0) > 0:
-            print(f"✅ Aggregation completed successfully!")
-            print(f"   - Symbols processed: {results['total_symbols']}")
-            print(f"   - Total records: {results['total_records']:,}")
-            print(f"   - Output directory: {args.output_dir}")
-            
-            # Show daily analysis summary if available
-            for symbol, symbol_data in results.items():
-                if isinstance(symbol_data, dict) and 'trading_days' in symbol_data:
-                    print(f"   - {symbol}: {symbol_data['trading_days']} trading days, "
-                          f"{symbol_data['trading_hours_data']:,} trading hours data points")
+        # Check Twilio configuration
+        if notification_settings.TWILIO_ENABLED:
+            twilio_account = secrets_loader.get_secret('TWILIO_ACCOUNT_SID', required=False, is_sensitive=True)
+            if twilio_account:
+                print(f"✅ Twilio configured")
+            else:
+                print("⚠️  Twilio not fully configured")
         else:
-            print("⚠️  No data was aggregated!")
-            sys.exit(1)
-            
-        sys.exit(0)
-            
+            print("⚠️  Twilio is disabled")
+        
+        print("\n✅ Credential verification completed successfully!")
+        return True
+        
     except Exception as e:
-        print(f"❌ Error during aggregation: {e}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
-        sys.exit(1)
+        print(f"❌ Credential verification failed: {e}")
+        return False
 
 
-def full_pipeline():
-    """CLI command for running the complete extraction and aggregation pipeline."""
+def run_alerter():
+    """CLI command for running the real-time stock alerter."""
     parser = argparse.ArgumentParser(
-        description='Run complete HAR extraction and stock data aggregation pipeline',
-        prog='stockreports-pipeline'
+        description='Run stock trading alert system with secure credentials',
+        prog='stockreports-alerter'
     )
     
     parser.add_argument(
-        'har_dir',
-        help='Directory containing HAR files to process'
+        '--symbols',
+        type=str,
+        default=None,
+        help='Comma-separated list of symbols to monitor (e.g., AAPL,GOOGL,MSFT)'
     )
     
     parser.add_argument(
-        'output_dir',
-        help='Base output directory for all generated files'
+        '--approach',
+        type=str,
+        default='VRA',
+        help='Trading approach to use (default: VRA)'
     )
     
     parser.add_argument(
-        '--timezone',
-        default='Asia/Ho_Chi_Minh',
-        help='Timezone for timestamp conversion (default: Asia/Ho_Chi_Minh)'
+        '--mode',
+        type=str,
+        choices=['live', 'development', 'backtest'],
+        default='live',
+        help='Execution mode (default: live)'
     )
     
     parser.add_argument(
@@ -176,92 +109,199 @@ def full_pipeline():
         help='Enable verbose output'
     )
     
+    args = parser.parse_args()
+    setup_logging(args.verbose)
+    
+    logger = logging.getLogger('stockreports-alerter')
+    
+    try:
+        # Verify credentials first
+        print("🔐 Verifying secure credentials...")
+        if not verify_credentials():
+            print("\n❌ Credential verification failed. Cannot proceed with alerter.")
+            sys.exit(1)
+        
+        print("\n🚀 Starting stock alerter system...\n")
+        
+        # Load settings
+        settings = loader.get_settings()
+        logger.info(f"Mode: {args.mode}, Approach: {args.approach}")
+        
+        # Parse symbols
+        if args.symbols:
+            symbols = [s.strip().upper() for s in args.symbols.split(',')]
+        else:
+            # Load from configuration
+            symbols = getattr(settings, 'SYMBOLS', ['AAPL', 'GOOGL', 'MSFT'])
+        
+        print(f"📊 Monitoring symbols: {', '.join(symbols)}\n")
+        
+        # Run alerter for each symbol
+        for symbol in symbols:
+            try:
+                print(f"📈 Processing {symbol}...")
+                alerter = SymbolAlerter(symbol)
+                alerter.run_alert_cycle()
+                print(f"✅ {symbol} processed successfully\n")
+            except Exception as e:
+                logger.error(f"Error processing {symbol}: {e}", exc_info=args.verbose)
+                print(f"❌ Error processing {symbol}: {e}\n")
+        
+        print("✅ Alerter cycle completed successfully!")
+        sys.exit(0)
+        
+    except Exception as e:
+        logger.error(f"Alerter error: {e}", exc_info=args.verbose)
+        print(f"❌ Alerter error: {e}")
+        sys.exit(1)
+
+
+def test_credentials():
+    """CLI command for testing credential loading and environment detection."""
+    parser = argparse.ArgumentParser(
+        description='Test credential loading and environment detection',
+        prog='stockreports-test-credentials'
+    )
+    
     parser.add_argument(
-        '--keep-responses',
+        '--verbose', '-v',
         action='store_true',
-        help='Keep extracted JSON response files after aggregation'
+        help='Enable verbose output'
+    )
+    
+    args = parser.parse_args()
+    setup_logging(args.verbose)
+    
+    logger = logging.getLogger('stockreports-test-credentials')
+    
+    try:
+        print("🧪 Testing Secure Credentials System\n")
+        print("=" * 70)
+        
+        # Initialize secrets loader
+        logger.info("Initializing SecretsLoader...")
+        secrets_loader = SecretsLoader()
+        
+        # Check environment detection
+        env_type = secrets_loader.env_type
+        is_prod = EnvironmentType.is_production(env_type)
+        is_cloud = EnvironmentType.is_cloud_environment(env_type)
+        is_containerized = EnvironmentType.is_containerized(env_type)
+        
+        print(f"\n🌍 Environment Detection:")
+        print(f"   Environment Type: {EnvironmentType.get_display_name(env_type)}")
+        print(f"   Is Production: {is_prod}")
+        print(f"   Is Cloud: {is_cloud}")
+        print(f"   Is Containerized: {is_containerized}")
+        
+        # Test credential loading
+        print(f"\n🔐 Testing Credential Loading:")
+        
+        test_keys = [
+            ('EMAIL_SENDER', False),
+            ('EMAIL_APP_PASSWORD', True),
+            ('TWILIO_ACCOUNT_SID', True),
+            ('TWILIO_AUTH_TOKEN', True),
+        ]
+        
+        for key, is_sensitive in test_keys:
+            try:
+                value = secrets_loader.get_secret(key, required=False, is_sensitive=is_sensitive)
+                if value:
+                    display_value = '***' if is_sensitive else value
+                    print(f"   ✅ {key}: {display_value}")
+                else:
+                    print(f"   ⚠️  {key}: Not configured")
+            except Exception as e:
+                logger.debug(f"Error loading {key}: {e}")
+                print(f"   ❌ {key}: Error - {e}")
+        
+        print(f"\n" + "=" * 70)
+        print("✅ Credential test completed!\n")
+        sys.exit(0)
+        
+    except Exception as e:
+        logger.error(f"Credential test error: {e}", exc_info=args.verbose)
+        print(f"\n❌ Credential test failed: {e}\n")
+        sys.exit(1)
+
+
+def show_config():
+    """CLI command for displaying current configuration."""
+    parser = argparse.ArgumentParser(
+        description='Display current configuration and environment',
+        prog='stockreports-config'
+    )
+    
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Show verbose configuration details'
     )
     
     args = parser.parse_args()
     
-    # Setup directory structure
-    base_output = Path(args.output_dir)
-    responses_dir = base_output / 'responses'
-    reports_dir = base_output / 'reports'
-    
-    base_output.mkdir(parents=True, exist_ok=True)
-    responses_dir.mkdir(parents=True, exist_ok=True)
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    
     try:
-        # Step 1: Extract HAR data
-        print("🔄 Step 1: Extracting HAR data...")
-        extractor = HARExtractor(args.har_dir, str(responses_dir), tz_name=args.timezone)
-        extraction_results = extractor.extract_all()
+        print("\n📋 Stock Trading Alerter Configuration\n")
+        print("=" * 70)
         
-        if extraction_results['entries_extracted'] == 0:
-            print("❌ No data extracted from HAR files!")
-            sys.exit(1)
+        # Environment
+        secrets_loader = SecretsLoader()
+        env_type = secrets_loader.env_type
+        print(f"\n🌍 Environment:")
+        print(f"   Deployment: {EnvironmentType.get_display_name(env_type)}")
+        print(f"   Python: {sys.version.split()[0]}")
+        print(f"   Project Root: {os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))}")
         
-        print(f"✅ Extraction completed: {extraction_results['entries_extracted']} responses")
+        # Settings
+        settings = loader.get_settings()
+        notification_settings = loader.get_notification_settings()
+        print(f"\n⚙️  Settings:")
+        print(f"   Mode: {settings.MODE}")
+        print(f"   Email Enabled: {notification_settings.EMAIL_ENABLED}")
+        print(f"   Twilio Enabled: {notification_settings.TWILIO_ENABLED}")
         
-        # Step 2: Aggregate data
-        print("🔄 Step 2: Aggregating stock data...")
-        har_responses_dir = responses_dir / 'har_responses'
-        aggregator = StockDataAggregator(str(har_responses_dir), str(reports_dir))
-        aggregation_results = aggregator.process_all_symbols()
-        
-        if not aggregation_results or aggregation_results.get('total_symbols', 0) == 0:
-            print("❌ No data aggregated!")
-            sys.exit(1)
-        
-        print(f"✅ Aggregation completed: {aggregation_results['total_symbols']} symbols")
-        
-        # Cleanup if requested
-        if not args.keep_responses:
-            import shutil
-            shutil.rmtree(responses_dir)
-            print("🧹 Cleaned up intermediate response files")
-        
-        print(f"\n🎉 Pipeline completed successfully!")
-        print(f"   - HAR files processed: {extraction_results['files_processed']}")
-        print(f"   - Symbols analyzed: {aggregation_results['total_symbols']}")
-        print(f"   - Total records: {aggregation_results['total_records']:,}")
-        print(f"   - Reports directory: {reports_dir}")
-        
-        sys.exit(0)
-    except Exception as e:
-        print(f"❌ Pipeline error: {e}")
         if args.verbose:
-            import traceback
-            traceback.print_exc()
+            print(f"\n📊 Verbose Details:")
+            print(f"   Settings Mode: {getattr(settings, 'MODE', 'N/A')}")
+            print(f"   Log Level: {getattr(settings, 'LOG_LEVEL', 'N/A')}")
+            
+        print(f"\n" + "=" * 70 + "\n")
+        sys.exit(0)
+        
+    except Exception as e:
+        print(f"❌ Error displaying configuration: {e}")
         sys.exit(1)
 
 
 def main():
     """Main CLI entry point that dispatches to appropriate command."""
     if len(sys.argv) < 2:
-        print("Usage: stockreports <command> [options]")
-        print("\nAvailable commands:")
-        print("  extract     - Extract data from HAR files") 
-        print("  aggregate   - Aggregate stock data into reports")
-        print("  pipeline    - Run complete extraction and aggregation")
+        print("\n" + "=" * 70)
+        print("📊 Stock Trading Alerter CLI")
+        print("=" * 70)
+        print("\nUsage: stockreports <command> [options]\n")
+        print("Available commands:")
+        print("  alerter           - Run real-time stock alerter system")
+        print("  test-credentials  - Test credential loading and environment detection")
+        print("  verify-config     - Display current configuration")
         print("\nUse 'stockreports <command> --help' for more information.")
+        print("\n" + "=" * 70 + "\n")
         sys.exit(1)
     
     command = sys.argv[1]
     # Remove command from sys.argv so subcommands parse correctly
     sys.argv = [sys.argv[0]] + sys.argv[2:]
     
-    if command == 'extract':
-        extract_har_data()
-    elif command == 'aggregate':
-        aggregate_stock_data()
-    elif command == 'pipeline':
-        full_pipeline()
+    if command == 'alerter':
+        run_alerter()
+    elif command == 'test-credentials':
+        test_credentials()
+    elif command == 'verify-config':
+        show_config()
     else:
         print(f"❌ Unknown command: {command}")
-        print("Available commands: extract, aggregate, pipeline")
+        print("Available commands: alerter, test-credentials, verify-config")
         sys.exit(1)
 
 

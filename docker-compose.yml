@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  stock-alerter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    environment:
+      # Load environment variables from .env file
+      # This file is in .gitignore and should contain your credentials for local development
+      DOCKER_CONTAINER: "true"
+      
+      # Email Configuration
+      EMAIL_ENABLED: "${EMAIL_ENABLED:-false}"
+      EMAIL_SENDER: "${EMAIL_SENDER:-}"
+      EMAIL_APP_PASSWORD: "${EMAIL_APP_PASSWORD:-}"
+      EMAIL_SENDER_DISPLAY_NAME: "${EMAIL_SENDER_DISPLAY_NAME:-Stock Alerter (No-Reply)}"
+      EMAIL_RECEIVERS: "${EMAIL_RECEIVERS:-}"
+      EMAIL_BCC_RECEIVERS: "${EMAIL_BCC_RECEIVERS:-}"
+      
+      # ntfy Configuration
+      NTFY_ENABLED: "${NTFY_ENABLED:-false}"
+      NTFY_TOPICS: "${NTFY_TOPICS:-}"
+      
+      # Twilio Configuration
+      TWILIO_ENABLED: "${TWILIO_ENABLED:-false}"
+      TWILIO_ACCOUNT_SID: "${TWILIO_ACCOUNT_SID:-}"
+      TWILIO_AUTH_TOKEN: "${TWILIO_AUTH_TOKEN:-}"
+      TWILIO_PHONE_NUMBER: "${TWILIO_PHONE_NUMBER:-}"
+      SMS_RECEIVER_PHONE_NUMBER: "${SMS_RECEIVER_PHONE_NUMBER:-}"
+    
+    # Load environment variables from .env file (local development)
+    env_file:
+      - .env
+    
+    # Container name for easy reference
+    container_name: stock-alerter-app
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Port mapping (if running web service)
+    ports:
+      - "5000:5000"
+    
+    # Volume mapping for development (optional)
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src
+      # Logs directory
+      - ./logs:/app/logs
+    
+    # Resource limits
+    # ┌──────────────────────────────────────────────────────────────────┐
+    # │ RESOURCE ALLOCATION GUIDE                                       │
+    # ├──────────────────────────────────────────────────────────────────┤
+    # │                                                                  │
+    # │ DEVELOPMENT (Current - Single Symbol Testing):                  │
+    # │   cpus: '1'        memory: 512M                                 │
+    # │   → Safe for 1-2 symbols, local development                     │
+    # │                                                                  │
+    # │ STAGING (2-5 Symbols, CI/CD):                                   │
+    # │   cpus: '2'        memory: 1024M                                │
+    # │   → Comfortable for 3-5 symbols, continuous testing             │
+    # │                                                                  │
+    # │ PRODUCTION (5-10 Symbols, Live Trading):                        │
+    # │   cpus: '4'        memory: 2048M                                │
+    # │   → Reliable for 8-10 symbols, 24/5 monitoring                  │
+    # │                                                                  │
+    # │ ENTERPRISE (20+ Symbols, High Volume):                          │
+    # │   cpus: '8'        memory: 4096M                                │
+    # │   → Consider sharding above this level                          │
+    # │                                                                  │
+    # │ See DOCKER_RESOURCE_ANALYSIS.md for detailed breakdown          │
+    # └──────────────────────────────────────────────────────────────────┘
+    deploy:
+      resources:
+        limits:
+          cpus: '8'        # CPU limit: 8 cores hard cap (ENTERPRISE)
+          memory: 4096M    # Memory limit: 4GB OOM threshold
+        reservations:
+          cpus: '4'        # CPU reserved: 4 cores guaranteed minimum
+          memory: 2048M    # Memory reserved: 2GB guaranteed minimum
+
+# Network configuration
+networks:
+  default:
+    name: stock-alerter-network
+    driver: bridge
+
+# ============================================================================
+# USAGE
+# ============================================================================
+#
+# 1. LOCAL DEVELOPMENT:
+#    cp .env.example .env
+#    docker-compose up
+#
+# 2. WITH CUSTOM CREDENTIALS:
+#    docker-compose -f docker-compose.yml up \
+#      -e EMAIL_SENDER="your@email.com" \
+#      -e EMAIL_APP_PASSWORD="xxxx xxxx xxxx xxxx"
+#
+# 3. PRODUCTION BUILD:
+#    docker build -t stock-alerter:latest .
+#    docker run \
+#      -e EMAIL_SENDER="your@email.com" \
+#      -e EMAIL_APP_PASSWORD="xxxx xxxx xxxx xxxx" \
+#      stock-alerter:latest
+#
+# For more information, see docs/SECURE_CREDENTIALS_MANAGEMENT.md

@@ -1,0 +1,419 @@
+# ============================================================================
+# KUBERNETES SECRETS
+# ============================================================================
+# This Secret resource stores sensitive credentials for the stock alerter.
+#
+# IMPORTANT: Fill in the actual values before deploying
+#
+# Create this secret using kubectl:
+#
+#   kubectl create secret generic stock-alerter-secrets \
+#     --from-literal=EMAIL_SENDER="haud.tech@gmail.com" \
+#     --from-literal=EMAIL_APP_PASSWORD="xxxx xxxx xxxx xxxx" \
+#     --from-literal=EMAIL_SENDER_DISPLAY_NAME="Stock Alerter (No-Reply)" \
+#     --from-literal=TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxx" \
+#     --from-literal=TWILIO_AUTH_TOKEN="your_auth_token_here" \
+#     --from-literal=TWILIO_PHONE_NUMBER="+1234567890" \
+#     --from-literal=SMS_RECEIVER_PHONE_NUMBER="+84983794189" \
+#     -n stock-alerter
+#
+# OR manually using base64 encoding:
+#
+#   $ echo -n "haud.tech@gmail.com" | base64
+#   aGF1ZC50ZWNoQGdtYWlsLmNvbQ==
+#
+# Then create the secret YAML and apply with kubectl apply -f
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: stock-alerter-secrets
+  namespace: stock-alerter
+  labels:
+    app: stock-alerter
+    component: secrets
+    version: v1
+
+type: Opaque
+
+stringData:
+  # Email Credentials (Required if EMAIL_ENABLED=true)
+  EMAIL_SENDER: "your-email@gmail.com"
+  EMAIL_APP_PASSWORD: "xxxx xxxx xxxx xxxx"
+  EMAIL_SENDER_DISPLAY_NAME: "Stock Alerter (No-Reply)"
+  
+  # Twilio Credentials (Required if TWILIO_ENABLED=true)
+  TWILIO_ACCOUNT_SID: "ACxxxxxxxxxxxxxxxxxx"
+  TWILIO_AUTH_TOKEN: "your_auth_token_here"
+  TWILIO_PHONE_NUMBER: "+1234567890"
+  SMS_RECEIVER_PHONE_NUMBER: "+84983794189"
+
+# ============================================================================
+# KUBERNETES CONFIGMAP
+# ============================================================================
+# Non-sensitive configuration for the stock alerter.
+# These values are not secrets and can be stored in ConfigMap.
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stock-alerter-config
+  namespace: stock-alerter
+  labels:
+    app: stock-alerter
+    component: config
+    version: v1
+
+data:
+  # Email Configuration
+  EMAIL_ENABLED: "true"
+  EMAIL_RECEIVERS: "recipient@example.com"
+  EMAIL_BCC_RECEIVERS: "admin@example.com"
+  
+  # ntfy Configuration (optional)
+  NTFY_ENABLED: "false"
+  NTFY_TOPICS: "vn30_alerts_f8a9b2c1"
+  
+  # Twilio Configuration
+  TWILIO_ENABLED: "false"
+
+# ============================================================================
+# KUBERNETES DEPLOYMENT
+# ============================================================================
+# Deployment configuration for stock-alerter application with secure
+# credential management using Kubernetes Secrets and secretKeyRef.
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stock-alerter
+  namespace: stock-alerter
+  labels:
+    app: stock-alerter
+    version: v1
+  annotations:
+    description: "Stock Alerter with Secure Credentials Management"
+
+spec:
+  replicas: 1
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  
+  selector:
+    matchLabels:
+      app: stock-alerter
+  
+  template:
+    metadata:
+      labels:
+        app: stock-alerter
+        version: v1
+    
+    spec:
+      # Service Account for accessing secrets
+      serviceAccountName: stock-alerter
+      automountServiceAccountToken: true
+      
+      # Pod-level security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      
+      # Image pull policy
+      imagePullPolicy: IfNotPresent
+      
+      # Restart policy
+      restartPolicy: Always
+      
+      # Grace period for shutdown
+      terminationGracePeriodSeconds: 30
+      
+      containers:
+      - name: stock-alerter
+        image: stock-alerter:latest  # Replace with your actual image URI
+        imagePullPolicy: IfNotPresent
+        
+        # Container-level security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+        
+        # Port configuration
+        ports:
+        - name: web
+          containerPort: 5000
+          protocol: TCP
+        
+        # Environment variables from ConfigMap (non-sensitive)
+        envFrom:
+        - configMapRef:
+            name: stock-alerter-config
+        
+        # Environment variables from Secrets (sensitive - using secretKeyRef)
+        # This ensures credentials are not exposed in ConfigMap
+        env:
+        # Email Credentials - from Kubernetes Secret using secretKeyRef
+        - name: EMAIL_SENDER
+          valueFrom:
+            secretKeyRef:
+              name: stock-alerter-secrets
+              key: EMAIL_SENDER
+        
+        - name: EMAIL_APP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: stock-alerter-secrets
+              key: EMAIL_APP_PASSWORD
+        
+        - name: EMAIL_SENDER_DISPLAY_NAME
+          valueFrom:
+            secretKeyRef:
+              name: stock-alerter-secrets
+              key: EMAIL_SENDER_DISPLAY_NAME
+        
+        # Twilio Credentials - from Kubernetes Secret using secretKeyRef
+        - name: TWILIO_ACCOUNT_SID
+          valueFrom:
+            secretKeyRef:
+              name: stock-alerter-secrets
+              key: TWILIO_ACCOUNT_SID
+        
+        - name: TWILIO_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: stock-alerter-secrets
+              key: TWILIO_AUTH_TOKEN
+        
+        - name: TWILIO_PHONE_NUMBER
+          valueFrom:
+            secretKeyRef:
+              name: stock-alerter-secrets
+              key: TWILIO_PHONE_NUMBER
+        
+        - name: SMS_RECEIVER_PHONE_NUMBER
+          valueFrom:
+            secretKeyRef:
+              name: stock-alerter-secrets
+              key: SMS_RECEIVER_PHONE_NUMBER
+        
+        # Kubernetes environment detection
+        - name: KUBERNETES_SERVICE_HOST
+          value: "true"
+        
+        # Pod metadata
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        
+        # Resource requests and limits
+        # ┌──────────────────────────────────────────────────────────┐
+        # │ ENTERPRISE PRODUCTION RESOURCES                          │
+        # ├──────────────────────────────────────────────────────────┤
+        # │ Requests: 4 cores CPU, 2GB memory (guaranteed minimum)   │
+        # │ Limits:   8 cores CPU, 4GB memory (maximum allowed)      │
+        # │                                                          │
+        # │ Supports: 20-30 concurrent symbol processing             │
+        # │ Memory breakdown:                                        │
+        # │   - Base Python + libs: ~500MB                           │
+        # │   - Data processing: ~1000MB (50-100 concurrent)         │
+        # │   - Buffer/Cache: ~500MB                                 │
+        # │   - Growth headroom: ~500MB                              │
+        # └──────────────────────────────────────────────────────────┘
+        resources:
+          requests:
+            cpu: 4000m          # 4 cores guaranteed
+            memory: 2048Mi      # 2GB guaranteed
+          limits:
+            cpu: 8000m          # 8 cores maximum hard limit
+            memory: 4096Mi      # 4GB maximum hard limit
+        
+        # Liveness probe - ensures pod is alive
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        
+        # Readiness probe - ensures pod is ready to handle traffic
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1
+        
+        # Volume mounts
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: tmp
+          mountPath: /tmp
+      
+      # Volumes
+      volumes:
+      - name: logs
+        emptyDir:
+          sizeLimit: 1Gi
+      
+      - name: tmp
+        emptyDir:
+          sizeLimit: 500Mi
+
+# ============================================================================
+# KUBERNETES SERVICE
+# ============================================================================
+# Service for exposing stock-alerter application within the cluster.
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stock-alerter-service
+  namespace: stock-alerter
+  labels:
+    app: stock-alerter
+    version: v1
+  annotations:
+    description: "ClusterIP service for stock-alerter"
+
+spec:
+  type: ClusterIP
+  selector:
+    app: stock-alerter
+  
+  ports:
+  - name: web
+    port: 80
+    targetPort: 5000
+    protocol: TCP
+  
+  sessionAffinity: None
+
+# ============================================================================
+# KUBERNETES SERVICE ACCOUNT
+# ============================================================================
+# Service Account for pod identity and RBAC permissions.
+# Required for accessing Kubernetes Secrets via secretKeyRef.
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stock-alerter
+  namespace: stock-alerter
+  labels:
+    app: stock-alerter
+    version: v1
+  annotations:
+    description: "Service account for stock-alerter pods"
+
+automountServiceAccountToken: true
+
+# ============================================================================
+# KUBERNETES NAMESPACE (Optional - Create if doesn't exist)
+# ============================================================================
+# Dedicated namespace for stock-alerter application and its resources.
+# Uncomment to create namespace automatically
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stock-alerter
+  labels:
+    app: stock-alerter
+    name: stock-alerter
+  annotations:
+    description: "Namespace for stock-alerter application"
+
+# ============================================================================
+# KUBERNETES ROLE (RBAC)
+# ============================================================================
+# Role for reading secrets from Kubernetes Secret Manager.
+# Grants minimal required permissions (principle of least privilege).
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stock-alerter-role
+  namespace: stock-alerter
+  labels:
+    app: stock-alerter
+    version: v1
+  annotations:
+    description: "Role for stock-alerter - read secrets only"
+
+rules:
+# Allow reading specific secret (stock-alerter-secrets)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["stock-alerter-secrets"]
+
+# Allow reading ConfigMap
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["stock-alerter-config"]
+
+# ============================================================================
+# KUBERNETES ROLEBINDING (RBAC)
+# ============================================================================
+# Binds the stock-alerter Role to the stock-alerter ServiceAccount.
+# Allows pods to use secretKeyRef to access secrets.
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stock-alerter-rolebinding
+  namespace: stock-alerter
+  labels:
+    app: stock-alerter
+    version: v1
+  annotations:
+    description: "RoleBinding for stock-alerter ServiceAccount"
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stock-alerter-role
+
+subjects:
+- kind: ServiceAccount
+  name: stock-alerter
+  namespace: stock-alerter
