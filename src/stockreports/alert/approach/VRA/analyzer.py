@@ -12,7 +12,7 @@ Inherits common calculation methods from the base Analyzer class.
 from typing import Optional, Tuple
 import pandas as pd
 from src.stockreports.alert.analyzer import Analyzer
-from src.stockreports.alert.common.constants import Trend, CandleColumn
+from src.stockreports.alert.common.constants import Trend, CandleColumn, CandleColor
 from src.stockreports.utils import window_utils
 
 
@@ -201,11 +201,13 @@ class VraAnalyzer(Analyzer):
         window_trend: Trend
     ) -> Optional[pd.Series]:
         """
-        Find anchor candle in confirmation window based on trend direction.
+        Find anchor candle in confirmation window based on trend direction and price validation.
 
-        The anchor candle is:
-        - The candle with the highest high price if window_trend is UPTREND
-        - The candle with the lowest low price if window_trend is DOWNTREND
+        The anchor candle must satisfy strict criteria:
+        - For UPTREND: The candle with the highest high price AND highest close price 
+          AND the longest upper wick (high - close) AND must be GREEN (close > open)
+        - For DOWNTREND: The candle with the lowest low price AND lowest close price 
+          AND the longest lower wick (close - low) AND must be RED (close < open)
 
         The anchor candle serves as the reference point for validating
         reversal trend consistency in the confirmation window.
@@ -216,38 +218,102 @@ class VraAnalyzer(Analyzer):
             window_trend (Trend): The trend direction (UPTREND or DOWNTREND).
 
         Returns:
-            Optional[pd.Series]: Anchor candle, or None if window is empty
-                or trend is invalid.
+            Optional[pd.Series]: Anchor candle, or None if window is empty,
+                trend is invalid, or no candle satisfies the criteria.
 
         Example:
             >>> import pandas as pd
             >>> from src.stockreports.alert.common.constants import Trend, CandleColumn
             >>> df = pd.DataFrame({
             ...     'high': [105, 110, 108],
+            ...     'close': [104, 109, 107],
+            ...     'open': [102, 105, 106],
             ...     'low': [100, 103, 101]
             ... })
             >>> anchor = VraAnalyzer.find_anchor_candle(df, Trend.UPTREND)
             >>> anchor[CandleColumn.HIGH]
             110
+            >>> anchor[CandleColumn.CLOSE]
+            109
 
         Note:
-            Returns None if window is empty or trend is None/NEUTRAL.
+            Returns None if window is empty, trend is None/NEUTRAL, or if no candle
+            satisfies all criteria (high/low + close + longest wick + correct color).
 
         Guidelines:
             Used to establish the pivot point for reversal consistency checks.
+            The anchor must show both high wick and strong close for uptrend (green),
+            or both low wick and weak close for downtrend (red).
         """
         if confirmation_window_df.empty or window_trend is None:
             return None
 
         try:
             if window_trend == Trend.UPTREND:
-                # Find candle with highest high
-                anchor_idx = confirmation_window_df[CandleColumn.HIGH].idxmax()
-                return confirmation_window_df.loc[anchor_idx]
+                # Find candle with highest high price
+                max_high_idx = confirmation_window_df[CandleColumn.HIGH].idxmax()
+                
+                # Find candle with highest close price
+                max_close_idx = confirmation_window_df[CandleColumn.CLOSE].idxmax()
+                
+                # Check if they're the same candle (satisfies high and close criteria)
+                if max_high_idx != max_close_idx:
+                    return None
+                
+                # Now check if this candle also has the longest upper wick
+                # Upper wick = high - close
+                confirmation_window_df_copy = confirmation_window_df.copy()
+                confirmation_window_df_copy['upper_wick'] = (
+                    confirmation_window_df_copy[CandleColumn.HIGH] - 
+                    confirmation_window_df_copy[CandleColumn.CLOSE]
+                )
+                max_upper_wick_idx = confirmation_window_df_copy['upper_wick'].idxmax()
+                
+                # Check if it's the same candle with max high, max close, and longest upper wick
+                if max_high_idx != max_upper_wick_idx:
+                    return None
+                
+                # Finally, check if the anchor candle is GREEN (close > open) for uptrend
+                anchor_candle = confirmation_window_df.loc[max_high_idx]
+                candle_color = Analyzer.get_candle_color(anchor_candle)
+                
+                if candle_color == CandleColor.GREEN:
+                    return anchor_candle
+                else:
+                    return None
+                    
             elif window_trend == Trend.DOWNTREND:
-                # Find candle with lowest low
-                anchor_idx = confirmation_window_df[CandleColumn.LOW].idxmin()
-                return confirmation_window_df.loc[anchor_idx]
+                # Find candle with lowest low price
+                min_low_idx = confirmation_window_df[CandleColumn.LOW].idxmin()
+                
+                # Find candle with lowest close price
+                min_close_idx = confirmation_window_df[CandleColumn.CLOSE].idxmin()
+                
+                # Check if they're the same candle (satisfies low and close criteria)
+                if min_low_idx != min_close_idx:
+                    return None
+                
+                # Now check if this candle also has the longest lower wick
+                # Lower wick = close - low
+                confirmation_window_df_copy = confirmation_window_df.copy()
+                confirmation_window_df_copy['lower_wick'] = (
+                    confirmation_window_df_copy[CandleColumn.CLOSE] - 
+                    confirmation_window_df_copy[CandleColumn.LOW]
+                )
+                max_lower_wick_idx = confirmation_window_df_copy['lower_wick'].idxmax()
+                
+                # Check if it's the same candle with min low, min close, and longest lower wick
+                if min_low_idx != max_lower_wick_idx:
+                    return None
+                
+                # Finally, check if the anchor candle is RED (close < open) for downtrend
+                anchor_candle = confirmation_window_df.loc[min_low_idx]
+                candle_color = Analyzer.get_candle_color(anchor_candle)
+                
+                if candle_color == CandleColor.RED:
+                    return anchor_candle
+                else:
+                    return None
             else:
                 return None
         except (KeyError, AttributeError):

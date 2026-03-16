@@ -44,8 +44,15 @@ The VRA executor analyzes data in a reverse loop, starting from the most recent 
     *   Extracts a confirmation window from the max volume candle to the end of the lookback window.
     *   **Validation 1 (Window Extraction)**: Confirms the confirmation window was successfully extracted.
     *   **Validation 2 (Window Size)**: The confirmation window must have at least `MIN_CONFIRMATION_WINDOW_CANDLES` candles.
-    *   **Validation 3 (Anchor Candle)**: Finds the anchor candle as the candle with highest high (for uptrends) or lowest low (for downtrends).
-    *   **Validation 4 (Anchor Position)**: The anchor candle position + `MIN_CANDLES_BETWEEN_ANCHOR_AND_ALERT` must be <= alert candle position. This ensures sufficient distance between the anchor reference point and the alert signal.
+    *   **Validation 3 (Anchor Candle)**: Finds the anchor candle with strict criteria:
+        *   For UPTREND: The candle must have **BOTH** the highest high price **AND** the highest close price **AND** the longest upper wick (high - close) **AND** must be GREEN (close > open) in the confirmation window.
+        *   For DOWNTREND: The candle must have **BOTH** the lowest low price **AND** the lowest close price **AND** the longest lower wick (close - low) **AND** must be RED (close < open) in the confirmation window.
+        *   Returns None if different candles have the extreme high/low, close prices, longest wick, or incorrect color (indicating inconsistent price action).
+    *   **Validation 4 (Trend Consistency)**: All candles from the max volume candle to the anchor candle must maintain the same trend color:
+        *   For UPTREND: All candles in this window must be GREEN (close > open).
+        *   For DOWNTREND: All candles in this window must be RED (close < open).
+        *   This ensures consistent reversal pressure throughout the confirmation phase.
+    *   **Validation 5 (Anchor Position)**: The anchor candle position + `MIN_CANDLES_BETWEEN_ANCHOR_AND_ALERT` must be <= alert candle position. This ensures sufficient distance between the anchor reference point and the alert signal.
     *   If any confirmation validation fails, the window is discarded.
     *   Computes `reversal_trend` as the opposite of `window_trend`.
 

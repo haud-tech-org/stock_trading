@@ -12,7 +12,7 @@ Inherits common validation methods from the base Validator class.
 from typing import Optional
 import pandas as pd
 from src.stockreports.alert.validator import Validator
-from src.stockreports.alert.common.constants import Trend, CandleColumn
+from src.stockreports.alert.common.constants import Trend, CandleColumn, CandleColor
 
 
 class VraValidator(Validator):
@@ -262,3 +262,73 @@ class VraValidator(Validator):
 
         required_volume = alert_volume * multiplier_threshold
         return max_volume >= required_volume
+
+    @staticmethod
+    def validate_trend_consistency(
+        window_slice: pd.DataFrame,
+        window_trend: Trend
+    ) -> bool:
+        """
+        Validate that all candles in window maintain consistent trend color.
+
+        Checks that all candles in the window slice have consistent color
+        matching the trend direction:
+        - For UPTREND: All candles must be GREEN (close > open)
+        - For DOWNTREND: All candles must be RED (close < open)
+
+        Args:
+            window_slice (pd.DataFrame): Window slice with OHLC data.
+            window_trend (Trend): Expected trend direction (UPTREND or DOWNTREND).
+
+        Returns:
+            bool: True if all candles maintain consistent color for the trend.
+
+        Example:
+            >>> import pandas as pd
+            >>> from src.stockreports.alert.common.constants import Trend, CandleColumn
+            >>> df = pd.DataFrame({
+            ...     'open': [100, 101, 102],
+            ...     'close': [102, 103, 104],
+            ... })
+            >>> valid = VraValidator.validate_trend_consistency(
+            ...     df, Trend.UPTREND
+            ... )
+            >>> valid
+            True
+
+        Note:
+            Returns False if window is None, empty, or trend is NEUTRAL.
+            Uses base Analyzer.get_candle_color() for color determination.
+
+        Guidelines:
+            Ensures reversal momentum is consistent throughout the confirmation phase.
+            Filters out weak or mixed-signal candles from the confirmation window.
+        """
+        if window_slice is None or window_slice.empty:
+            return False
+
+        if window_trend is None or window_trend == Trend.NEUTRAL:
+            return False
+
+        # Import here to avoid circular imports
+        from src.stockreports.alert.analyzer import Analyzer
+
+        try:
+            if window_trend == Trend.UPTREND:
+                # All candles must be GREEN (close > open)
+                for _, candle in window_slice.iterrows():
+                    candle_color = Analyzer.get_candle_color(candle)
+                    if candle_color != CandleColor.GREEN:
+                        return False
+            elif window_trend == Trend.DOWNTREND:
+                # All candles must be RED (close < open)
+                for _, candle in window_slice.iterrows():
+                    candle_color = Analyzer.get_candle_color(candle)
+                    if candle_color != CandleColor.RED:
+                        return False
+            else:
+                return False
+
+            return True
+        except (KeyError, AttributeError):
+            return False

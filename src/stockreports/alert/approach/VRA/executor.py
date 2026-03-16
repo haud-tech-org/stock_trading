@@ -247,8 +247,11 @@ class VraExecutor(Executor):
 
         The validation process:
         1. Extract confirmation window from max volume candle to end
-        2. Find anchor candle (highest high in uptrend, lowest low in downtrend)
-        3. Validate reversal trend consistency from anchor to end
+        2. Validate confirmation window has minimum candle count
+        3. Find anchor candle (highest high in uptrend, lowest low in downtrend)
+        4. Validate anchor candle found with correct color
+        5. Validate reversal trend consistency from max volume to anchor (same color)
+        6. Validate anchor candle position relative to alert candle
 
         Args:
             window_df (pd.DataFrame): Full lookback window.
@@ -297,7 +300,7 @@ class VraExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Confirmation window too short: only {len(confirmation_window)} candle(s) (minimum required: 2)",
+                message=f"Confirmation window too short: only {len(confirmation_window)} candle(s) (minimum required: {self.settings.min_confirmation_window_candles})",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -337,7 +340,61 @@ class VraExecutor(Executor):
             status=ValidationStatus.PASSED
         ))
 
-        # Validation 4: Validate anchor candle position relative to alert candle
+        # Validation 4: Validate trend consistency from max_vol_candle to anchor_candle
+        # Extract slice from max volume candle to anchor candle
+        self.next_validation()
+        trend_consistency_slice = self.analyzer.slice_window(
+            confirmation_window,
+            max_vol_candle,
+            anchor_candle
+        )
+        if trend_consistency_slice is None:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message="Failed to extract slice from max volume candle to anchor candle.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return None
+
+        # Validate trend consistency using validator
+        is_trend_consistent = self.validator.validate_trend_consistency(
+            trend_consistency_slice,
+            window_trend
+        )
+        if not is_trend_consistent:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Trend consistency failed from max volume to anchor candle. Expected all candles to match {window_trend} trend.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return None
+        self.validations.append(Validation(
+            name="trend_consistency",
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Trend consistency maintained from max volume to anchor: all candles match {window_trend} trend",
+            status=ValidationStatus.PASSED
+        ))
+
+        # Validation 5: Validate anchor candle position relative to alert candle
         # The anchor candle index + min_candles must be <= alert candle index
         # This ensures sufficient candles between anchor and alert candle
         self.next_validation()
