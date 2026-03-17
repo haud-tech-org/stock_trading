@@ -197,6 +197,11 @@ class IchimokuExecutor(Executor):
                     )
                     continue
                 
+                # Update window end time to the forward-shifted candle (for Senkou indicator alignment)
+                if not self.update_window_end_time_with_shift(i, df_indexed, shift_offset):
+                    # Shifted index out of bounds, skip this signal
+                    continue
+                
                 # Get the current candle at index i (not the last candle in the window which is at i-1)
                 if i >= len(df_indexed):
                     continue

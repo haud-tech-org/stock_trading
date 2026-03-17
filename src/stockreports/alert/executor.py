@@ -210,6 +210,55 @@ class Executor(ABC):
         # Reset validations for each alert search iteration to avoid duplication
         self.validations = []
 
+    def update_window_end_time_with_shift(
+        self,
+        scan_index: int,
+        df_indexed: pd.DataFrame,
+        shift_offset: int
+    ) -> bool:
+        """
+        Updates current_window_end_time to a forward-shifted candle's timestamp.
+        
+        Used by approaches with forward-shifted indicators (e.g., Ichimoku's Senkou Cloud).
+        This method allows approaches to align alert timing with shifted technical indicators.
+        
+        Args:
+            scan_index (int): Current scanning index in the dataframe
+            df_indexed (pd.DataFrame): Indexed dataframe with all candles
+            shift_offset (int): Number of periods to shift forward (e.g., senkou_shift_period)
+            
+        Returns:
+            bool: True if shift was successful, False if shifted index is out of bounds
+            
+        Example:
+            ```python
+            shifted_idx = i + shift_offset
+            if self.update_window_end_time_with_shift(i, df_indexed, shift_offset):
+                # Successfully updated current_window_end_time to shifted candle
+                alert = self._step_create_alert(shifted_candle, signal)
+            else:
+                # Shifted index out of bounds, skip this signal
+                continue
+            ```
+        """
+        if df_indexed is None or df_indexed.empty:
+            return False
+        
+        shifted_idx = scan_index + shift_offset
+        
+        # Safety check: ensure shifted index is within bounds
+        if shifted_idx >= len(df_indexed):
+            return False
+        
+        try:
+            shifted_candle = df_indexed.iloc[shifted_idx]
+            self.current_window_end_time = shifted_candle['time']
+            return True
+        except (IndexError, KeyError) as e:
+            self.logger.warning(f"Failed to update window end time with shift: {e}")
+            return False
+
+
     def _create_alert_with_details(
         self,
         final_signal: Signal,
