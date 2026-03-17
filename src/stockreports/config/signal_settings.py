@@ -108,7 +108,7 @@ APPROACH_CONFIG = {
     },
     # --- VRA (Volume-Reversal-Anchor) ---
     "VRA": {
-        "LOOKBACK_WINDOW": 10,
+        "LOOKBACK_WINDOW": 15,
         "VOLUME_MULTIPLIER": 4.5,
         "MIN_TREND_MAGNITUDE": 6.5,
 
@@ -121,15 +121,16 @@ APPROACH_CONFIG = {
         # --- VRA Max Volume to Alert Candle Validation ---
         "VOLUME_MULTIPLIER_BY_REVERSAL_TREND": 2.0,  # Multiplier for validating max candle volume >= alert candle volume * this factor
         
-        # --- VRA Anchor Candle Position Validation ---
-        "MIN_CANDLES_BETWEEN_ANCHOR_AND_ALERT": 2,  # Minimum candles required between anchor candle and alert candle in confirmation window. Make sure it's always >= 2
+        # --- VRA Peak/Trough Prominence Validation ---
+        "MIN_PEAK_TROUGH_PROMINENCE": 1.5,  # Minimum prominence required for anchor candle (peak for uptrend, trough for downtrend)
+        "MAX_PEAK_TROUGH_PROMINENCE": 3.0,  # Maximum prominence allowed for anchor candle (peak for uptrend, trough for downtrend)
         
         "COOLDOWN_WINDOW": 3
     },
     "VOLUME_SPIKE_CONFIRMATION": {
         "LOOKBACK_WINDOW": 5,
         "COOLDOWN_WINDOW": 3,
-        "MIN_TREND_WINDOW_SIZE": 5.0,
+        "MIN_TREND_WINDOW_SIZE": 6.5,
         "MIN_TREND_CANDLE_SLICE": 3,
         "TREND_VOLUME_MULTIPLIER": 5.0
     },

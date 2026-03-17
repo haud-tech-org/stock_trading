@@ -16,4 +16,5 @@ class VraSettings(BaseSettings):
         self.cooldown_window = self.get("COOLDOWN_WINDOW")
         self.min_confirmation_window_candles = self.get("MIN_CONFIRMATION_WINDOW_CANDLES")
         self.volume_multiplier_by_reversal_trend = self.get("VOLUME_MULTIPLIER_BY_REVERSAL_TREND")
-        self.min_candles_between_anchor_and_alert = self.get("MIN_CANDLES_BETWEEN_ANCHOR_AND_ALERT")
+        self.min_peak_trough_prominence = self.get("MIN_PEAK_TROUGH_PROMINENCE")
+        self.max_peak_trough_prominence = self.get("MAX_PEAK_TROUGH_PROMINENCE")

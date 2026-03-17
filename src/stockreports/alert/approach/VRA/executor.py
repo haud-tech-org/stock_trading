@@ -242,16 +242,12 @@ class VraExecutor(Executor):
         """
         Step 3: Confirmation Window Validation for VRA executor.
 
-        Validates that the reversal trend is consistently maintained in the
-        confirmation window (from max volume candle to end of window).
+        Validates the confirmation window with peak/trough prominence validation.
 
         The validation process:
         1. Extract confirmation window from max volume candle to end
         2. Validate confirmation window has minimum candle count
-        3. Find anchor candle (highest high in uptrend, lowest low in downtrend)
-        4. Validate anchor candle found with correct color
-        5. Validate reversal trend consistency from max volume to anchor (same color)
-        6. Validate anchor candle position relative to alert candle
+        3. Validate peak/trough prominence is within acceptable range
 
         Args:
             window_df (pd.DataFrame): Full lookback window.
@@ -309,100 +305,30 @@ class VraExecutor(Executor):
             )
             return None
 
-        # Validation 3: Find anchor candle based on window_trend
+        # Validation 3: Validate peak/trough prominence is within acceptable range
         self.next_validation()
-        anchor_candle = self.analyzer.find_anchor_candle(
-            confirmation_window,
-            window_trend
+        is_prominence_valid, prominence_value = self.validator.validate_peak_trough_prominence(
+            confirmation_window=confirmation_window,
+            window_trend=window_trend,
+            min_prominence=self.settings.min_peak_trough_prominence,
+            max_prominence=self.settings.max_peak_trough_prominence
         )
-        is_anchor_found = self.validator.validate_anchor_candle_found(anchor_candle)
-        if not is_anchor_found:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Failed to find anchor candle in confirmation window for {window_trend} trend.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return None
-        self.validations.append(Validation(
-            name="anchor_candle",
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Anchor candle found in confirmation window for {window_trend} trend",
-            status=ValidationStatus.PASSED
-        ))
-
-        # Validation 4: Validate trend consistency from max_vol_candle to anchor_candle
-        # Extract slice from max volume candle to anchor candle
-        self.next_validation()
-        trend_consistency_slice = self.analyzer.slice_window(
-            confirmation_window,
-            max_vol_candle,
-            anchor_candle
-        )
-        if trend_consistency_slice is None:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message="Failed to extract slice from max volume candle to anchor candle.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return None
-
-        # Validate trend consistency using validator
-        is_trend_consistent = self.validator.validate_trend_consistency(
-            trend_consistency_slice,
-            window_trend
-        )
-        if not is_trend_consistent:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"Trend consistency failed from max volume to anchor candle. Expected all candles to match {window_trend} trend.",
-                log_level=LogLevel.DEBUG,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return None
-        self.validations.append(Validation(
-            name="trend_consistency",
-            step=self.current_step,
-            validation=self.validation_step,
-            message=f"Trend consistency maintained from max volume to anchor: all candles match {window_trend} trend",
-            status=ValidationStatus.PASSED
-        ))
-
-        # Validation 5: Validate anchor candle position relative to alert candle
-        # The anchor candle index + min_candles must be <= alert candle index
-        # This ensures sufficient candles between anchor and alert candle
-        self.next_validation()
-        anchor_idx = confirmation_window.index.get_loc(anchor_candle.name)
-        alert_idx = confirmation_window.index.get_loc(self.last_candle.name)
-        min_candles_required = self.settings.min_candles_between_anchor_and_alert
         
-        if not (anchor_idx + min_candles_required <= alert_idx):
+        if not is_prominence_valid:
+            # Determine which trend for accurate error message
+            if window_trend == Trend.UPTREND:
+                if prominence_value is None:
+                    message = "Failed to identify highest peak candle in confirmation window."
+                else:
+                    message = f"Peak prominence {prominence_value:.2f} is outside valid range [{self.settings.min_peak_trough_prominence}, {self.settings.max_peak_trough_prominence}]."
+                validation_name = "peak_prominence"
+            else:  # DOWNTREND
+                if prominence_value is None:
+                    message = "Failed to identify lowest trough candle in confirmation window."
+                else:
+                    message = f"Trough prominence {prominence_value:.2f} is outside valid range [{self.settings.min_peak_trough_prominence}, {self.settings.max_peak_trough_prominence}]."
+                validation_name = "trough_prominence"
+            
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -410,7 +336,7 @@ class VraExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Anchor candle position validation failed: anchor_idx ({anchor_idx}) + {min_candles_required} > alert_idx ({alert_idx}). Not enough candles between anchor and alert.",
+                message=message,
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -418,14 +344,23 @@ class VraExecutor(Executor):
                 approach=self.APPROACH_NAME
             )
             return None
+        
+        # Validation passed - record with prominence value
+        if window_trend == Trend.UPTREND:
+            validation_name = "peak_prominence"
+            message = f"Peak prominence is valid: {prominence_value:.2f} (range: [{self.settings.min_peak_trough_prominence}, {self.settings.max_peak_trough_prominence}])"
+        else:  # DOWNTREND
+            validation_name = "trough_prominence"
+            message = f"Trough prominence is valid: {prominence_value:.2f} (range: [{self.settings.min_peak_trough_prominence}, {self.settings.max_peak_trough_prominence}])"
+        
         self.validations.append(Validation(
-            name="anchor_position",
+            name=validation_name,
             step=self.current_step,
             validation=self.validation_step,
-            message=f"Anchor candle position is valid: anchor_idx ({anchor_idx}) + {min_candles_required} <= alert_idx ({alert_idx})",
+            message=message,
             status=ValidationStatus.PASSED
         ))
-
+        
         return True
 
     def _step_trend_and_magnitude_validation(self, window_df, min_vol_candle: pd.Series, alert_candle: pd.Series) -> Optional[tuple[Trend, float]]:

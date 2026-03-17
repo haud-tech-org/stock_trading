@@ -13,6 +13,7 @@ from typing import Optional
 import pandas as pd
 from src.stockreports.alert.validator import Validator
 from src.stockreports.alert.common.constants import Trend, CandleColumn, CandleColor
+from src.stockreports.utils import window_utils
 
 
 class VraValidator(Validator):
@@ -187,34 +188,6 @@ class VraValidator(Validator):
         return len(confirmation_window_df) >= min_candle_count
 
     @staticmethod
-    def validate_anchor_candle_found(
-        anchor_candle: Optional[pd.Series]
-    ) -> bool:
-        """
-        Validate that anchor candle was successfully identified.
-
-        Args:
-            anchor_candle (Optional[pd.Series]): The anchor candle to validate.
-
-        Returns:
-            bool: True if anchor_candle is not None, False otherwise.
-
-        Example:
-            >>> import pandas as pd
-            >>> candle = pd.Series({'high': 110, 'low': 100})
-            >>> valid = VraValidator.validate_anchor_candle_found(candle)
-            >>> valid
-            True
-
-        Note:
-            Simple validation to check if anchor candle identification succeeded.
-
-        Guidelines:
-            Used as a prerequisite check before reversal trend consistency validation.
-        """
-        return anchor_candle is not None
-
-    @staticmethod
     def validate_max_volume_vs_alert_candle(
         max_volume: float,
         alert_volume: float,
@@ -332,3 +305,96 @@ class VraValidator(Validator):
             return True
         except (KeyError, AttributeError):
             return False
+
+    @staticmethod
+    def validate_peak_trough_prominence(
+        confirmation_window: pd.DataFrame,
+        window_trend: Trend,
+        min_prominence: float,
+        max_prominence: float
+    ) -> tuple[bool, Optional[float]]:
+        """
+        Validate peak (uptrend) or trough (downtrend) prominence is within acceptable range.
+
+        For UPTREND: Validate the highest peak prominence is in range.
+        For DOWNTREND: Validate the lowest trough prominence is in range.
+
+        Args:
+            confirmation_window (pd.DataFrame): Confirmation window to analyze.
+            window_trend (Trend): Trend direction (UPTREND or DOWNTREND).
+            min_prominence (float): Minimum prominence threshold.
+            max_prominence (float): Maximum prominence threshold.
+
+        Returns:
+            tuple[bool, Optional[float]]: (is_valid, prominence_value)
+                - is_valid: True if peak/trough prominence is in range.
+                - prominence_value: The calculated prominence value, or None if validation failed.
+
+        Example:
+            >>> import pandas as pd
+            >>> from src.stockreports.alert.common.constants import Trend
+            >>> df = pd.DataFrame({
+            ...     'high': [100, 105, 110, 108, 106],
+            ...     'low': [95, 100, 105, 103, 101]
+            ... })
+            >>> df.index = ['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05']
+            >>> is_valid, prominence = VraValidator.validate_peak_trough_prominence(
+            ...     df, Trend.UPTREND, min_prominence=0.5, max_prominence=5.0
+            ... )
+            >>> is_valid
+            True
+
+        Note:
+            Returns (False, None) if:
+            - confirmation_window is None/empty
+            - window_trend is not UPTREND/DOWNTREND
+            - Peak/trough detection fails
+            - Prominence is outside valid range
+
+        Guidelines:
+            Validates that the price extremum (peak for uptrend, trough for downtrend)
+            has meaningful prominence relative to surrounding candles. Prominence range
+            validation prevents overly shallow or excessively prominent peaks/troughs.
+        """
+        if confirmation_window is None or confirmation_window.empty:
+            return False, None
+
+        if window_trend is None:
+            return False, None
+
+        try:
+            if window_trend == Trend.UPTREND:
+                # Get highest peak with prominence from confirmation window
+                peak_result = window_utils.get_highest_peak(confirmation_window)
+                if peak_result is None:
+                    return False, None
+
+                peak_candle, prominence = peak_result
+
+                # Validate prominence is within range
+                is_prominence_valid = (min_prominence <= prominence <= max_prominence)
+                if not is_prominence_valid:
+                    return False, prominence
+
+                return True, prominence
+
+            elif window_trend == Trend.DOWNTREND:
+                # Get lowest trough with prominence from confirmation window
+                trough_result = window_utils.get_lowest_trough(confirmation_window)
+                if trough_result is None:
+                    return False, None
+
+                trough_candle, prominence = trough_result
+
+                # Validate prominence is within range
+                is_prominence_valid = (min_prominence <= prominence <= max_prominence)
+                if not is_prominence_valid:
+                    return False, prominence
+
+                return True, prominence
+
+            else:
+                return False, None
+
+        except (KeyError, AttributeError, TypeError):
+            return False, None
