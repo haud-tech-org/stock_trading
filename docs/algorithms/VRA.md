@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-The VRA (Volume-Reversal-Anchor) approach identifies high-probability trend reversals by detecting a comprehensive sequence of volume and trend events. It validates a significant trend with sufficient magnitude, followed by a volume spike (the anchor), and then ensures consistent reversal behavior in the confirmation window. The approach aims to capture market turning points by enforcing strict positional and volumetric relationships between key candles.
+The VRA (Volume-Reversal-Anchor) approach identifies high-probability trend reversals by detecting a comprehensive sequence of volume and trend events. It validates a significant trend with sufficient magnitude, followed by a volume spike, and then validates the confirmation window using peak/trough prominence analysis. The approach aims to capture market turning points by enforcing strict volumetric and price extremum relationships between key candles.
 
 ## 2. Key Parameters
 
@@ -10,13 +10,14 @@ The behavior of the VRA executor is controlled by the following parameters, conf
 
 | Parameter                               | Default Value | Description                                                                                                                                                                         |
 | --------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LOOKBACK_WINDOW`                       | 10            | The number of candles to include in the analysis window.                                                                                                                            |
+| `LOOKBACK_WINDOW`                       | 15            | The number of candles to include in the analysis window.                                                                                                                            |
 | `VOLUME_MULTIPLIER`                     | 4.5           | The ratio threshold for volume spike validation: max_volume must be >= min_volume × this multiplier.                                                                               |
 | `MIN_TREND_MAGNITUDE`                   | 6.5           | The minimum price change required for a trend to be considered significant within the trend window.                                                                                 |
 | `TREND_WINDOW_EDGE_SLICE`               | 3             | Number of candles from window edges for validating open price extremes (highest/lowest open positions).                                                                             |
 | `MIN_CONFIRMATION_WINDOW_CANDLES`       | 3             | Minimum number of candles required in the confirmation window (from max volume candle to end) for valid reversal pattern.                                                          |
 | `VOLUME_MULTIPLIER_BY_REVERSAL_TREND`   | 2.0           | The ratio threshold validating max volume candle: max_volume must be >= alert_volume × this multiplier.                                                                            |
-| `MIN_CANDLES_BETWEEN_ANCHOR_AND_ALERT`  | 2             | Minimum number of candles required between anchor candle and alert candle positions in the confirmation window (must be >= 2).                                                     |
+| `MIN_PEAK_TROUGH_PROMINENCE`            | 1.5           | Minimum prominence value required for peak (uptrend) or trough (downtrend) candles in the confirmation window.                                                                     |
+| `MAX_PEAK_TROUGH_PROMINENCE`            | 3.0           | Maximum prominence value allowed for peak (uptrend) or trough (downtrend) candles in the confirmation window.                                                                     |
 | `COOLDOWN_WINDOW`                       | 3             | Number of candles after an alert during which no new alert for the same symbol and signal can be issued.                                                                           |
 
 ## 3. Step-by-Step Logic
@@ -44,15 +45,10 @@ The VRA executor analyzes data in a reverse loop, starting from the most recent 
     *   Extracts a confirmation window from the max volume candle to the end of the lookback window.
     *   **Validation 1 (Window Extraction)**: Confirms the confirmation window was successfully extracted.
     *   **Validation 2 (Window Size)**: The confirmation window must have at least `MIN_CONFIRMATION_WINDOW_CANDLES` candles.
-    *   **Validation 3 (Anchor Candle)**: Finds the anchor candle with strict criteria:
-        *   For UPTREND: The candle must have **BOTH** the highest high price **AND** the highest close price **AND** the longest upper wick (high - close) **AND** must be GREEN (close > open) in the confirmation window.
-        *   For DOWNTREND: The candle must have **BOTH** the lowest low price **AND** the lowest close price **AND** the longest lower wick (close - low) **AND** must be RED (close < open) in the confirmation window.
-        *   Returns None if different candles have the extreme high/low, close prices, longest wick, or incorrect color (indicating inconsistent price action).
-    *   **Validation 4 (Trend Consistency)**: All candles from the max volume candle to the anchor candle must maintain the same trend color:
-        *   For UPTREND: All candles in this window must be GREEN (close > open).
-        *   For DOWNTREND: All candles in this window must be RED (close < open).
-        *   This ensures consistent reversal pressure throughout the confirmation phase.
-    *   **Validation 5 (Anchor Position)**: The anchor candle position + `MIN_CANDLES_BETWEEN_ANCHOR_AND_ALERT` must be <= alert candle position. This ensures sufficient distance between the anchor reference point and the alert signal.
+    *   **Validation 3 (Peak/Trough Prominence)**: Validates the prominence of the highest peak (uptrend) or lowest trough (downtrend) within the confirmation window.
+        *   For UPTREND: Finds the candle with the highest peak and validates its prominence (calculated relative to surrounding candles) is within the range `[MIN_PEAK_TROUGH_PROMINENCE, MAX_PEAK_TROUGH_PROMINENCE]`.
+        *   For DOWNTREND: Finds the candle with the lowest trough and validates its prominence is within the same range.
+        *   Prominence measures the strength of the price extremum relative to the candles around it. Values too low indicate weak reversals; values too high indicate overextended moves.
     *   If any confirmation validation fails, the window is discarded.
     *   Computes `reversal_trend` as the opposite of `window_trend`.
 
@@ -82,7 +78,7 @@ graph TD
     G --> H{Magnitude & Open Price Extremes OK?};
     H -- No --> B;
     H -- Yes --> I[Step 3: Confirmation Window Validation];
-    I --> J{Window Size & Anchor Position OK?};
+    I --> J{Window Size & Peak/Trough Prominence OK?};
     J -- No --> B;
     J -- Yes --> K[Determine Reversal Trend];
     K --> L[Step 4: Cooldown Check];
