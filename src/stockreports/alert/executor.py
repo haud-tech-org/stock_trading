@@ -14,6 +14,7 @@ from src.stockreports.alert.common.base_settings import BaseSettings
 from src.stockreports.utils import candle_utils
 from src.stockreports.alert.common.constants import ValidationStatus, Mode  # Add this import
 from src.stockreports.utils.alert_utils import is_in_cooldown, calculate_suggested_prices, get_suggested_take_profit
+from src.stockreports.alert.analyzer import Analyzer
 
 class Executor(ABC):
 
@@ -215,9 +216,12 @@ class Executor(ABC):
         scan_index: int,
         df_indexed: pd.DataFrame,
         shift_offset: int
-    ) -> bool:
+    ) -> Tuple[bool, Optional[pd.Series]]:
         """
-        Updates current_window_end_time to a forward-shifted candle's timestamp.
+        Orchestration method that updates current_window_end_time to a forward-shifted candle's timestamp.
+        
+        Delegates the pure calculation logic to Analyzer.get_shifted_candle() and then
+        updates the state (current_window_end_time) if successful.
         
         Used by approaches with forward-shifted indicators (e.g., Ichimoku's Senkou Cloud).
         This method allows approaches to align alert timing with shifted technical indicators.
@@ -228,35 +232,43 @@ class Executor(ABC):
             shift_offset (int): Number of periods to shift forward (e.g., senkou_shift_period)
             
         Returns:
-            bool: True if shift was successful, False if shifted index is out of bounds
+            Tuple[bool, Optional[pd.Series]]: 
+                - (True, shifted_candle): If shift was successful or fallback to last candle
+                - (False, None): If exception or empty dataframe
+            
+        Processing Results:
+            - success=True, shifted_candle exists: Use shifted_candle for further processing
+              (e.g., alert creation, validation, etc.)
+            - success=False, shifted_candle is None: Skip processing, failed to retrieve shifted candle
             
         Example:
             ```python
-            shifted_idx = i + shift_offset
-            if self.update_window_end_time_with_shift(i, df_indexed, shift_offset):
-                # Successfully updated current_window_end_time to shifted candle
+            success, shifted_candle = self.update_window_end_time_with_shift(i, df_indexed, shift_offset)
+            if success and shifted_candle is not None:
+                # Parse return values and process further steps
+                self.current_window_end_time = shifted_candle['time']
                 alert = self._step_create_alert(shifted_candle, signal)
+                # ... continue with validation and other processing
             else:
-                # Shifted index out of bounds, skip this signal
+                # Failed due to exception or empty dataframe - skip this iteration
                 continue
             ```
         """
-        if df_indexed is None or df_indexed.empty:
-            return False
+        # Delegate pure calculation to Analyzer
+        success, shifted_candle = Analyzer.get_shifted_candle(
+            scan_index=scan_index,
+            df_indexed=df_indexed,
+            shift_offset=shift_offset
+        )
         
-        shifted_idx = scan_index + shift_offset
-        
-        # Safety check: ensure shifted index is within bounds
-        if shifted_idx >= len(df_indexed):
-            return False
-        
-        try:
-            shifted_candle = df_indexed.iloc[shifted_idx]
+        # Parse return values and update state if calculation was successful
+        if success and shifted_candle is not None:
+            # Update orchestration state with shifted candle's timestamp
             self.current_window_end_time = shifted_candle['time']
-            return True
-        except (IndexError, KeyError) as e:
-            self.logger.warning(f"Failed to update window end time with shift: {e}")
-            return False
+            return True, shifted_candle
+        else:
+            # Failed to retrieve shifted candle - caller should skip processing
+            return False, None
 
 
     def _create_alert_with_details(

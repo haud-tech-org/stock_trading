@@ -198,13 +198,13 @@ class IchimokuExecutor(Executor):
                     continue
                 
                 # Update window end time to the forward-shifted candle (for Senkou indicator alignment)
-                if not self.update_window_end_time_with_shift(i, df_indexed, shift_offset):
-                    # Shifted index out of bounds, skip this signal
+                # and get the shifted candle for later use in alert creation
+                success, shifted_candle = self.update_window_end_time_with_shift(i, df_indexed, shift_offset)
+                if not success or shifted_candle is None:
+                    # Shifted index out of bounds or failed, skip this signal
                     continue
                 
-                # Get the current candle at index i (not the last candle in the window which is at i-1)
-                if i >= len(df_indexed):
-                    continue
+                # Get the current candle at index i for signal detection and validation
                 current_candle_full = df_indexed.iloc[i]
                 
                 # DEBUG: Log which index we're processing
@@ -245,9 +245,9 @@ class IchimokuExecutor(Executor):
                     if not self._step_validate_chikou_confirmation(chikou_window, window_current_idx, signal):
                         continue
                 
-                # Step 4: Create alert
+                # Step 4: Create alert - use shifted candle (aligned with Senkou indicators)
                 self.next_step()
-                alert = self._step_create_alert(current_candle_full, signal)
+                alert = self._step_create_alert(shifted_candle, signal)
                 if alert is None:
                     continue
                 
