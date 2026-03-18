@@ -5,8 +5,19 @@ This guide covers deploying the Stock Alerter application to Google Cloud Run us
 ## Prerequisites
 
 - Google Cloud CLI (gcloud) installed and configured
-- Active Google Cloud project
-- Docker image built and pushed to Google Container Registry
+- Active Google Cloud # Deploy to Cloud Run with all environment variables and secrets on a single line
+gcloud run deploy $SERVICE_NAME \
+  --image gcr.io/$PROJECT_ID/stock-alerter:latest \
+  --platform managed \
+  --region $REGION \
+  --service-account $SERVICE_ACCOUNT_EMAIL \
+  --allow-unauthenticated \
+  --memory 16Gi \
+  --cpu 8 \
+  --timeout 300 \
+  --max-instances 2 \
+  --set-env-vars EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
+  --set-secrets EMAIL_SENDER=email-sender:latest,EMAIL_APP_PASSWORD=email-app-password:latest,EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latestker image built and pushed to Google Container Registry
 - Appropriate IAM permissions
 - Python 3.12+
 
@@ -154,40 +165,110 @@ done
 
 ## Step 6: Grant Additional Permissions
 
-Grant the service account additional roles needed for the application to function.
+Grant the service account all necessary roles for deployment, execution, and Cloud Run management.
 
 ```bash
+# Define the roles needed for Cloud Run deployment and execution
+PROJECT_ID="stock-trading-489001"
+SERVICE_ACCOUNT_EMAIL="stock-alerter-sa@stock-trading-489001.iam.gserviceaccount.com"
+
+# Grant Cloud Run Admin role (full Cloud Run management and deployment)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/run.admin \
+  --condition=None
+
+# Grant Service Account User role (allows using service accounts)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/iam.serviceAccountUser \
+  --condition=None
+
 # Grant Storage Object Admin role (for Cloud Storage access)
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
   --role=roles/storage.objectAdmin \
   --condition=None
 
-# Grant Cloud Run Invoker role (allows execution)
+# Grant Cloud Run Invoker role (allows service invocation and scheduling)
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
   --role=roles/run.invoker \
+  --condition=None
+
+# Grant Artifact Registry Reader role (pull Docker images for deployment)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/artifactregistry.reader \
+  --condition=None
+
+# Grant Compute Admin role (manage compute resources)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/compute.admin \
+  --condition=None
+
+# Grant Logging Log Writer role (write application logs)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/logging.logWriter \
+  --condition=None
+
+# Grant Monitoring Metric Writer role (write metrics)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/monitoring.metricWriter \
   --condition=None
 ```
 
 **Argument Explanations**:
 - `gcloud projects add-iam-policy-binding`: Grants a role at the project level
 - `--member=serviceAccount:...`: The service account being granted the role
-- `roles/storage.objectAdmin`: Allows full read/write access to Cloud Storage buckets
-- `roles/run.invoker`: Allows the service account to invoke Cloud Run services
 - `--condition=None`: No conditions on this binding (applies in all contexts)
 
-**Permissions Granted**:
-- `storage.objectAdmin`: Access to stored alert data and reports
-- `run.invoker`: Ability to trigger scheduled executions via Cloud Scheduler
+**Roles Granted and Their Purpose**:
+| Role | Purpose |
+|------|---------|
+| `roles/run.admin` | Full Cloud Run service management and deployment |
+| `roles/iam.serviceAccountUser` | Allows using this service account for operations |
+| `roles/storage.objectAdmin` | Full read/write access to Cloud Storage buckets |
+| `roles/run.invoker` | Invoke Cloud Run services and trigger Cloud Scheduler jobs |
+| `roles/artifactregistry.reader` | Pull Docker images from Container Registry for deployment |
+| `roles/compute.admin` | Manage compute resources and instances |
+| `roles/logging.logWriter` | Write application logs to Cloud Logging |
+| `roles/monitoring.metricWriter` | Write metrics to Cloud Monitoring |
+
+**Verify Assigned Roles**:
+```bash
+# Check all roles assigned to the service account
+gcloud projects get-iam-policy $PROJECT_ID --format=json | \
+  jq ".bindings[] | select(.members[] | contains(\"$SERVICE_ACCOUNT_EMAIL\")) | .role" | sort
+```
+
+**Expected Output**:
+```
+"roles/artifactregistry.reader"
+"roles/compute.admin"
+"roles/iam.serviceAccountUser"
+"roles/logging.logWriter"
+"roles/monitoring.metricWriter"
+"roles/run.admin"
+"roles/run.invoker"
+"roles/secretmanager.secretAccessor"
+"roles/storage.objectAdmin"
+```
 
 ## Step 7: Build and Push Docker Image
 
-Build the Docker image locally and push to Google Container Registry.
+Build the Docker image with the correct platform (Linux x86_64 for Cloud Run) and push to Google Container Registry.
 
 ```bash
-# Build Docker image from Dockerfile in current directory
-docker build -t stock-alerter:latest .
+# Build Docker image for Linux x86_64 architecture (required for Cloud Run)
+# This is critical if you're building on Apple Silicon (M1/M2/M3) Mac
+docker buildx build --platform linux/amd64 -t stock-alerter:latest .
+
+# Alternative if buildx is not available (for Intel/AMD machines):
+# docker build -t stock-alerter:latest .
 
 # Tag image for Google Container Registry
 # Format: gcr.io/{project-id}/{image-name}:{tag}
@@ -202,17 +283,39 @@ docker push gcr.io/$PROJECT_ID/stock-alerter:latest
 
 # Verify image was pushed successfully
 gcloud container images list --repository=gcr.io/$PROJECT_ID
+
+# Check image details
+gcloud container images describe gcr.io/$PROJECT_ID/stock-alerter:latest
 ```
 
 **Argument Explanations**:
-- `docker build -t {image-name}:{tag} .`: Builds image from Dockerfile in current directory
-  - `-t`: Tag (name and version) for the image
-  - `.`: Build context (uses Dockerfile in current directory)
+- `docker buildx build --platform linux/amd64`: Builds image for Linux x86_64 architecture
+  - `--platform linux/amd64`: Specifies target architecture (required for Cloud Run, which runs on Linux x86_64)
+  - This ensures compatibility if building on Apple Silicon Macs
+  - If you get "buildx" not found, enable Docker Desktop experimental features or use regular `docker build`
+- `-t {image-name}:{tag}`: Tag (name and version) for the image
+- `.`: Build context (uses Dockerfile in current directory)
 - `docker tag {source} {target}`: Creates a new tag pointing to an existing image
 - `gcloud auth configure-docker`: Authenticates Docker with GCP credentials
 - `docker push {image}`: Uploads image to the registry
 
-**Alternative: Use Cloud Build** (builds on GCP infrastructure instead of locally):
+**Important: Platform Compatibility**
+
+If you're building on an Apple Silicon Mac and get error: `failed to load /usr/local/bin/python: exec format error`
+
+This means the image was built for ARM64 (Mac architecture) instead of x86_64 (Cloud Run architecture).
+
+**Solution**:
+```bash
+# Build with correct platform flag
+docker buildx build --platform linux/amd64 -t stock-alerter:latest .
+
+# If buildx is unavailable, enable it:
+docker buildx create --use
+docker buildx build --platform linux/amd64 -t stock-alerter:latest .
+```
+
+**Alternative: Use Cloud Build** (builds on GCP infrastructure, avoiding architecture issues):
 ```bash
 gcloud builds submit --region=$REGION \
   --tag=gcr.io/$PROJECT_ID/stock-alerter:latest
@@ -220,8 +323,10 @@ gcloud builds submit --region=$REGION \
 
 **Advantage of Cloud Build**:
 - No need to push from your machine
-- Uses GCP's infrastructure (faster for large images)
+- Uses GCP's infrastructure (avoids local architecture issues)
+- Automatically builds for correct Linux x86_64 architecture
 - Integrated with GCP ecosystem
+- Better for CI/CD pipelines
 
 ## Step 8: Deploy to Cloud Run
 
@@ -234,108 +339,126 @@ export REGION="europe-west1"
 export SERVICE_NAME="stock-alerter"
 export SERVICE_ACCOUNT_EMAIL="stock-alerter-sa@stock-trading-489001.iam.gserviceaccount.com"
 
-# Deploy to Cloud Run
+# Deploy to Cloud Run with all environment variables and secrets on a single line
 gcloud run deploy $SERVICE_NAME \
   --image gcr.io/$PROJECT_ID/stock-alerter:latest \
   --platform managed \
   --region $REGION \
-  --set-env-vars \
-    EMAIL_ENABLED=true,\
-    EMAIL_SMTP_SERVER="smtp.gmail.com",\
-    EMAIL_SMTP_PORT="587",\
-    EMAIL_RECEIVERS="haud.fin@gmail.com",\
-    EMAIL_BCC_RECEIVERS="haud.fin@gmail.com",\
-    NTFY_ENABLED=false,\
-    NTFY_TOPICS="vn30_alerts_f8a9b2c1",\
-    TWILIO_ENABLED=false,\
-    TWILIO_PHONE_NUMBER="",\
-    SMS_RECEIVER_PHONE_NUMBER="" \
-  --set-secrets \
-    EMAIL_SENDER=email-sender:latest,\
-    EMAIL_APP_PASSWORD=email-app-password:latest,\
-    EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,\
-    TWILIO_ACCOUNT_SID=twilio-account-sid:latest,\
-    TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
-  --service-account $SERVICE_ACCOUNT_EMAIL \
-  --allow-unauthenticated \
-  --memory 16Gi \
-  --cpu 8 \
-  --timeout 600 \
-  --max-instances 2
-```
-
-**Core Arguments**:
-- `--image`: Container image to deploy (from Container Registry)
-- `--platform managed`: Use Cloud Run fully managed (serverless)
-- `--region`: Geographic region for the service
-- `--service-account`: Service account with necessary permissions
-
-**Environment Variables** (`--set-env-vars`):
-- `EMAIL_ENABLED=true`: Enable email notifications
-- `EMAIL_SMTP_SERVER="smtp.gmail.com"`: Gmail SMTP server address
-- `EMAIL_SMTP_PORT="587"`: SMTP port (TLS)
-- `EMAIL_RECEIVERS`: Comma-separated list of recipient emails
-- `EMAIL_BCC_RECEIVERS`: Comma-separated list of BCC recipients
-- `NTFY_ENABLED=false`: Disable ntfy.sh notifications (set `true` to enable)
-- `NTFY_TOPICS`: Topic ID for ntfy.sh notifications
-- `TWILIO_ENABLED=false`: Disable SMS notifications (set `true` to enable)
-- `TWILIO_PHONE_NUMBER`: Sender phone number (if SMS enabled)
-- `SMS_RECEIVER_PHONE_NUMBER`: Recipient phone number (if SMS enabled)
-
-**Secrets** (`--set-secrets`):
-- Format: `ENV_VAR_NAME=secret-name:version`
-- `latest`: Always use the latest version of the secret
-- Secrets are injected as environment variables at runtime
-- Values are never visible in Cloud Console or logs
-
-**Resource Specifications**:
-- `--memory 16Gi`: Memory allocation (16 GB)
-  - Minimum: 256Mi
-  - Maximum: 16Gi
-  - More memory = faster startup, higher cost
-- `--cpu 8`: CPU allocation (8 cores)
-  - Minimum: 1 (with 256Mi-3.5Gi memory)
-  - Maximum: 8 (with 4Gi-16Gi memory)
-- `--timeout 600`: Maximum execution time in seconds (10 minutes)
-  - Must be 60-3600 seconds
-  - Longer timeouts wait longer before health check failure
-- `--max-instances 2`: Maximum number of concurrent service instances
-  - Limits cost and resource usage
-  - Auto-scales based on request load up to this limit
-- `--allow-unauthenticated`: Allow public access (no authentication required)
-  - Remove this flag to require authentication
-
-# Deploy to Cloud Run with secret references
-gcloud run deploy $SERVICE_NAME \
-  --image gcr.io/$PROJECT_ID/stock-alerter:latest \
-  --platform managed \
-  --region $REGION \
-  --set-env-vars \
-    GOOGLE_CLOUD_PROJECT=$PROJECT_ID,\
-    EMAIL_ENABLED=true,\
-    EMAIL_SMTP_SERVER="smtp.gmail.com",\
-    EMAIL_SMTP_PORT="587",\
-    EMAIL_RECEIVERS="recipient@example.com",\
-    EMAIL_BCC_RECEIVERS="admin@example.com",\
-    EMAIL_SENDER_DISPLAY_NAME="[GC] Stock Alerter (No-Reply)",\
-    NTFY_ENABLED=false,\
-    NTFY_TOPICS="vn30_alerts_f8a9b2c1",\
-    TWILIO_ENABLED=false,\
-    TWILIO_PHONE_NUMBER="",\
-    SMS_RECEIVER_PHONE_NUMBER="" \
-  --set-secrets \
-    EMAIL_SENDER=email-sender:latest,\
-    EMAIL_APP_PASSWORD=email-app-password:latest,\
-    EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,\
-    TWILIO_ACCOUNT_SID=twilio-account-sid:latest,\
-    TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
   --service-account $SERVICE_ACCOUNT_EMAIL \
   --allow-unauthenticated \
   --memory 512Mi \
   --cpu 1 \
   --timeout 300 \
-  --max-instances 10
+  --max-instances 10 \
+  --set-env-vars EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
+  --set-secrets EMAIL_SENDER=email-sender:latest,EMAIL_APP_PASSWORD=email-app-password:latest,EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest
 ```
+
+**Core Arguments Explanation**:
+- `gcloud run deploy`: Deploys a service to Cloud Run
+- `$SERVICE_NAME`: Name of the service (stock-alerter)
+- `--image`: Container image to deploy from Container Registry
+- `--platform managed`: Use Cloud Run fully managed (serverless, no infrastructure management)
+- `--region`: Geographic region for the service (europe-west1 for compliance/data residency)
+- `--service-account`: Service account with necessary permissions for secrets and storage access
+- `--allow-unauthenticated`: Allow public access without authentication
+  - Remove this flag if you want to require authentication
+- `--memory 16Gi`: Memory allocation for each instance
+  - Minimum: 256Mi, Maximum: 16Gi
+  - 16Gi provides maximum memory for complex computations
+  - Higher memory allows faster data processing and caching
+- `--cpu 8`: CPU allocation for each instance
+  - Minimum: 1, Maximum: 8 cores
+  - 8 cores (maximum) enables parallel processing and fast execution
+  - Matched with 16Gi memory for optimal performance
+- `--timeout 300`: Maximum execution time in seconds (5 minutes)
+  - Must be 60-3600 seconds
+  - For long-running alerts, increase to 600 (10 minutes)
+  - Increase if alert generation takes longer than timeout
+- `--max-instances 2`: Maximum number of concurrent instances
+  - Controls cost and resource usage
+  - Auto-scales based on request load up to this limit
+  - Limited to 2 instances for cost control with high-resource configuration
+
+**Environment Variables** (`--set-env-vars`) - All on one line with comma separation:
+- `EMAIL_ENABLED=true`: Enable email notifications
+- `EMAIL_SMTP_SERVER=smtp.gmail.com`: Gmail SMTP server
+- `EMAIL_SMTP_PORT=587`: SMTP port for TLS encryption
+- `EMAIL_RECEIVERS=haud.fin@gmail.com`: Primary recipient email
+- `EMAIL_BCC_RECEIVERS=haud.fin@gmail.com`: BCC recipient (for auditing/backup)
+- `NTFY_ENABLED=false`: Disable ntfy.sh push notifications (set `true` to enable)
+- `NTFY_TOPICS=vn30_alerts_f8a9b2c1`: ntfy.sh topic for notifications
+- `TWILIO_ENABLED=false`: Disable SMS notifications (set `true` to enable)
+- `TWILIO_PHONE_NUMBER=""`: Sender phone number (leave empty if SMS disabled)
+- `SMS_RECEIVER_PHONE_NUMBER=""`: Recipient phone number (leave empty if SMS disabled)
+
+**Secrets** (`--set-secrets`) - Format: `ENV_VAR_NAME=secret-name:version`
+- `EMAIL_SENDER=email-sender:latest`: Gmail address (from Secret Manager)
+- `EMAIL_APP_PASSWORD=email-app-password:latest`: Gmail App Password (from Secret Manager)
+- `EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest`: Display name for emails
+- `TWILIO_ACCOUNT_SID=twilio-account-sid:latest`: Twilio account ID (if SMS enabled)
+- `TWILIO_AUTH_TOKEN=twilio-auth-token:latest`: Twilio authentication token (if SMS enabled)
+
+**Important Notes**:
+- All environment variables must be on a single comma-separated line after `--set-env-vars`
+- All secrets must be on a single comma-separated line after `--set-secrets`
+- No line breaks within the variable/secret lists (this causes command parsing errors)
+- `:latest` always uses the most recent version of each secret
+- Secrets are never visible in Cloud Console or logs (encrypted transmission)
+
+**Alternative Command Format** (if you need to split across lines for readability):
+
+Save this as a shell script file `deploy.sh`:
+
+```bash
+#!/bin/bash
+export PROJECT_ID="stock-trading-489001"
+export REGION="europe-west1"
+export SERVICE_NAME="stock-alerter"
+export SERVICE_ACCOUNT_EMAIL="stock-alerter-sa@stock-trading-489001.iam.gserviceaccount.com"
+
+gcloud run deploy $SERVICE_NAME \
+  --image gcr.io/$PROJECT_ID/stock-alerter:latest \
+  --platform managed \
+  --region $REGION \
+  --service-account $SERVICE_ACCOUNT_EMAIL \
+  --allow-unauthenticated \
+  --memory 16Gi \
+  --cpu 8 \
+  --timeout 300 \
+  --max-instances 2 \
+  --set-env-vars \
+    EMAIL_ENABLED=true,\
+    EMAIL_SMTP_SERVER=smtp.gmail.com,\
+    EMAIL_SMTP_PORT=587,\
+    EMAIL_RECEIVERS=haud.fin@gmail.com,\
+    EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,\
+    NTFY_ENABLED=false,\
+    NTFY_TOPICS=vn30_alerts_f8a9b2c1,\
+    TWILIO_ENABLED=false,\
+    TWILIO_PHONE_NUMBER="",\
+    SMS_RECEIVER_PHONE_NUMBER="" \
+  --set-secrets \
+    EMAIL_SENDER=email-sender:latest,\
+    EMAIL_APP_PASSWORD=email-app-password:latest,\
+    EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,\
+    TWILIO_ACCOUNT_SID=twilio-account-sid:latest,\
+    TWILIO_AUTH_TOKEN=twilio-auth-token:latest
+```
+
+Then run it:
+```bash
+chmod +x deploy.sh
+./deploy.sh
+```
+
+**Troubleshooting Deployment**:
+
+If you get argument parsing errors:
+1. Ensure all environment variables are on ONE line with commas (no line breaks)
+2. Ensure all secrets are on ONE line with commas (no line breaks)
+3. Remove any trailing backslashes on the last variable/secret line
+4. Use the script file approach if you need multiple lines for readability
 
 ## Step 9: Verify Deployment
 
