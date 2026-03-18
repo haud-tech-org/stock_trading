@@ -322,6 +322,73 @@ class Analyzer(ABC):
         except (KeyError, AttributeError):
             return None
     
+    # ===== SHIFTED CANDLE RETRIEVAL =====
+    
+    @staticmethod
+    def get_shifted_candle(
+        scan_index: int,
+        df_indexed: pd.DataFrame,
+        shift_offset: int
+    ) -> Tuple[bool, Optional[pd.Series]]:
+        """
+        Retrieve a forward-shifted candle from the dataframe for shifted indicators.
+        
+        Pure static calculation method that retrieves candles at shifted indices,
+        commonly used by approaches with forward-shifted technical indicators
+        (e.g., Ichimoku's Senkou Cloud, VRA's shifted validation).
+        
+        Args:
+            scan_index (int): Current scanning index in the dataframe
+            df_indexed (pd.DataFrame): Indexed dataframe with all candles
+            shift_offset (int): Number of periods to shift forward (e.g., senkou_shift_period)
+            
+        Returns:
+            Tuple[bool, Optional[pd.Series]]:
+                - bool: True if shift was successful or fallback to last candle applied;
+                        False if exception or empty dataframe encountered
+                - pd.Series: The shifted candle if within bounds, 
+                            the last candle if out of bounds (graceful fallback),
+                            None if error occurred or dataframe is empty
+            
+        Behavior:
+            - Within bounds: Returns (True, shifted_candle) - exact shifted candle
+            - Out of bounds: Returns (True, last_candle) - graceful fallback to last available candle
+            - Exception/Empty: Returns (False, None) - clean failure signal
+            
+        Example:
+            ```python
+            success, shifted_candle = Analyzer.get_shifted_candle(i, df_indexed, senkou_shift)
+            if success and shifted_candle is not None:
+                # Successfully obtained candle for shifted indicator alignment
+                alert = create_alert_at_time(shifted_candle['time'])
+            else:
+                # Failed due to error or empty dataframe
+                continue
+            ```
+        
+        Guidelines:
+            - Executor calls this method and updates its current_window_end_time state
+            - This method is pure calculation with no state mutations
+            - Handles edge cases (out of bounds, exceptions) with clear return semantics
+        """
+        if df_indexed is None or df_indexed.empty:
+            return False, None
+        
+        shifted_idx = scan_index + shift_offset
+        
+        # Safety check: ensure shifted index is within bounds
+        if shifted_idx >= len(df_indexed):
+            # Return last candle if shifted index is out of bounds (graceful fallback)
+            last_candle = df_indexed.iloc[-1]
+            return True, last_candle
+        
+        try:
+            shifted_candle = df_indexed.iloc[shifted_idx]
+            return True, shifted_candle
+        except (IndexError, KeyError) as e:
+            # Return False with None on error (clean failure)
+            return False, None
+    
     # ===== COMMON CANDLE FILTERING =====
     
     @staticmethod
