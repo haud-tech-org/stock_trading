@@ -6,12 +6,13 @@ This guide covers deploying the Stock Alerter application to Google Cloud Run us
 
 - Google Cloud CLI (gcloud) installed and configured
 - Active Google Cloud # Deploy to Cloud Run with all environment variables and secrets on a single line
+# NOTE: Removed --allow-unauthenticated flag to require authentication (requires IAM invoker role)
 gcloud run deploy $SERVICE_NAME \
   --image gcr.io/$PROJECT_ID/stock-alerter:latest \
   --platform managed \
   --region $REGION \
   --service-account $SERVICE_ACCOUNT_EMAIL \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --memory 16Gi \
   --cpu 8 \
   --timeout 300 \
@@ -361,9 +362,12 @@ gcloud run deploy $SERVICE_NAME \
 - `--platform managed`: Use Cloud Run fully managed (serverless, no infrastructure management)
 - `--region`: Geographic region for the service (europe-west1 for compliance/data residency)
 - `--service-account`: Service account with necessary permissions for secrets and storage access
-- `--allow-unauthenticated`: Allow public access without authentication
-  - Remove this flag if you want to require authentication
-- `--memory 16Gi`: Memory allocation for each instance
+- `--no-allow-unauthenticated`: Require authentication to invoke the service
+  - Access is controlled by IAM permissions (IAM invoker role required)
+  - Only authorized users/service accounts can access the service
+  - More secure for production deployments
+  - Cloud Scheduler jobs can still invoke using service account authentication
+  - To allow public access, use `--allow-unauthenticated` flag instead
   - Minimum: 256Mi, Maximum: 16Gi
   - 16Gi provides maximum memory for complex computations
   - Higher memory allows faster data processing and caching
@@ -422,7 +426,7 @@ gcloud run deploy $SERVICE_NAME \
   --platform managed \
   --region $REGION \
   --service-account $SERVICE_ACCOUNT_EMAIL \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --memory 16Gi \
   --cpu 8 \
   --timeout 300 \
