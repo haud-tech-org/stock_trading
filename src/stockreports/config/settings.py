@@ -133,22 +133,8 @@ SAVE_DEV_API_RESPONSE_TO_FILE = True
 #           This is kept as a fallback for backward compatibility with existing configurations.
 # Example: `ALERT_APPROACHES = ["RCM"]` would run only the RCM strategy.
 ALERT_APPROACHES = [
-    #"RCM",
-    #"CONSISTENT_MOMENTUM",
-    #"ICHIMOKU",
-    #"STRONG_CANDLE",
-    #"SUPPORT_RESISTANCE_BREAK",
-    #"MOMENTUM_EXHAUSTION",
-    #"CONSECUTIVE_POWER_CANDLES",
-    #"CONSOLIDATION_BREAKOUT",
-    #"COMPARISON",
-    #"PROMINENT_PEAK_REVERSAL",
     "VOLUME_SPIKE_CONFIRMATION",
-    #"PRICE_GAP",
     "VRA",
-    #"TREND_REVERSAL",
-    #"VOLUME_REVERSAL",
-    #"SESSION_EXTREME_VOLUME_REVERSAL",
     "CONSISTENT_VOLUME_ANCHOR",
     #"MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
 ]
@@ -180,7 +166,6 @@ SYMBOL_ALERT_APPROACHES = {
         "ICHIMOKU"
     ],
     "VN30": [
-        "VRA",
         "CONSISTENT_VOLUME_ANCHOR",
     ],
 }

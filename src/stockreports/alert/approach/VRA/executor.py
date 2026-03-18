@@ -10,6 +10,8 @@ from src.stockreports.alert.common.constants import Approach, Signal, Mode, Vali
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.model.models import Validation
 from .settings import VraSettings
+from .analyzer import VraAnalyzer
+from .validator import VraValidator
 from src.stockreports.utils.alert_utils import get_reversal_trend
 from src.stockreports.utils.candle_utils import get_reversal_trend_signal
 from src.stockreports.utils.log_factory import log
@@ -23,6 +25,8 @@ class VraExecutor(Executor):
         approach_name = Approach.VRA
         super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
+        self.analyzer = VraAnalyzer()
+        self.validator = VraValidator()
 
     def _find_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:
         window_size = self.settings.lookback_window      
@@ -73,7 +77,18 @@ class VraExecutor(Executor):
             reversal_trend = get_reversal_trend(window_trend)
             reversal_signal = candle_utils.get_signal_from_trend(reversal_trend)
 
-            # Step 3: Cooldown Check
+            # Step 3: Confirmation Window Validation
+            self.next_step()
+            confirmation_result = self._step_confirmation_window_validation(
+                self.lookback_window_df,
+                max_vol_candle,
+                window_trend,
+                reversal_trend
+            )
+            if confirmation_result is None:
+                continue
+
+            # Step 4: Cooldown Check
             self.next_step()
             if not self._step_cooldown_check(
                 last_alert=VraExecutor.LATEST_ALERT,
@@ -82,7 +97,7 @@ class VraExecutor(Executor):
             ):
                 continue
             
-            # Step 4: Alert Creation
+            # Step 5: Alert Creation
             self.next_step()
             details_alert_dict = self._add_details_for_alert(
                 window_trend=window_trend,
@@ -124,9 +139,16 @@ class VraExecutor(Executor):
     def _step_volume_validation(self, window_df: pd.DataFrame, alert_candle: pd.Series) -> Optional[tuple[pd.Series, pd.Series]]:
         # Step 1: Find the max volume candle in the window
         self.next_validation()
-        max_vol_candle = candle_utils.find_max_volume_candle(window_df)
-        """ # Ensure the alert candle is the max volume candle
-        if alert_candle.name != max_vol_candle.name:
+        max_vol_candle = self.analyzer.find_max_volume_candle(window_df)
+
+        # Step 2: Find the min volume candle from start up to max volume candle's index
+        # This ensures min volume candle always occurs before max volume candle
+        self.next_validation()
+        min_vol_candle = self.analyzer.find_min_volume_candle_up_to_index(
+            window_df,
+            max_vol_candle
+        )
+        if min_vol_candle is None:
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -134,19 +156,25 @@ class VraExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message="Alert candle is not the max volume candle in the lookback window.",
+                message="Failed to find minimum volume candle up to max volume candle.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
             )
-            return None """
+            return None
 
-        # Step 2: Find the min volume candle and check volume ratio
+        # Step 3: Check volume ratio
         self.next_validation()
-        min_vol_candle = candle_utils.find_min_volume_candle(window_df)
-        is_volume_ratio_valid, volume_ratio = candle_utils.validate_volume_ratio(alert_candle, min_vol_candle, self.settings.volume_multiplier)
-        # Ensure the volume ratio between alert and min meets the threshold
+        volume_ratio = self.analyzer.calculate_volume_ratio(
+            max_vol_candle['volume'],
+            min_vol_candle['volume']
+        )
+        is_volume_ratio_valid = self.validator.validate_volume_ratio(
+            volume_ratio,
+            self.settings.volume_multiplier
+        )
         if not is_volume_ratio_valid:
             log(
                 logger=self.logger,
@@ -163,7 +191,6 @@ class VraExecutor(Executor):
                 approach=self.APPROACH_NAME
             )
             return None
-        # Log a successful volume ratio validation
         self.validations.append(Validation(
             name=nameof(self.settings.volume_multiplier),
             step=self.current_step,
@@ -172,9 +199,14 @@ class VraExecutor(Executor):
             status=ValidationStatus.PASSED
         ))
 
-        # Step 3: Ensure the min volume candle occurs before the max volume candle
+        # Step 4: Check max volume vs alert candle volume
         self.next_validation()
-        if min_vol_candle.name >= max_vol_candle.name:
+        is_max_volume_valid = self.validator.validate_max_volume_vs_alert_candle(
+            max_volume=max_vol_candle['volume'],
+            alert_volume=alert_candle['volume'],
+            multiplier_threshold=self.settings.volume_multiplier_by_reversal_trend
+        )
+        if not is_max_volume_valid:
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -182,7 +214,66 @@ class VraExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message="Min volume candle did not occur before max volume candle.",
+                message=f"Max volume candle volume ({max_vol_candle['volume']:.0f}) is not sufficiently higher than alert candle volume ({alert_candle['volume']:.0f}). Required multiplier: {self.settings.volume_multiplier_by_reversal_trend}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return None
+        self.validations.append(Validation(
+            name=nameof(self.settings.volume_multiplier_by_reversal_trend),
+            step=self.current_step,
+            validation=self.validation_step,
+            message=f"Max volume ({max_vol_candle['volume']:.0f}) is sufficiently higher than alert candle volume ({alert_candle['volume']:.0f})",
+            status=ValidationStatus.PASSED
+        ))
+
+        return max_vol_candle, min_vol_candle
+
+    def _step_confirmation_window_validation(
+        self,
+        window_df: pd.DataFrame,
+        max_vol_candle: pd.Series,
+        window_trend: Trend,
+        reversal_trend: Trend
+    ) -> Optional[bool]:
+        """
+        Step 3: Confirmation Window Validation for VRA executor.
+
+        Validates the confirmation window with peak/trough prominence validation.
+
+        The validation process:
+        1. Extract confirmation window from max volume candle to end
+        2. Validate confirmation window has minimum candle count
+        3. Validate peak/trough prominence is within acceptable range
+
+        Args:
+            window_df (pd.DataFrame): Full lookback window.
+            max_vol_candle (pd.Series): Maximum volume candle.
+            window_trend (Trend): Trend direction of the analysis window.
+            reversal_trend (Trend): Opposite trend (signal direction).
+
+        Returns:
+            Optional[bool]: True if confirmation passes, None if validation fails.
+        """
+        # Validation 1: Extract confirmation window from max_vol_candle to end
+        self.next_validation()
+        confirmation_window = self.analyzer.slice_window(
+            window_df,
+            max_vol_candle,
+            window_df.iloc[-1]
+        )
+        if confirmation_window is None:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message="Failed to extract confirmation window from max volume candle to end.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -191,12 +282,95 @@ class VraExecutor(Executor):
             )
             return None
 
-        # All validations passed; return the max and min volume candles
-        return max_vol_candle, min_vol_candle
+        # Validation 2: Validate confirmation window has minimum candle count
+        self.next_validation()
+        is_confirmation_window_valid = self.validator.validate_confirmation_window_size(
+            confirmation_window,
+            min_candle_count=self.settings.min_confirmation_window_candles
+        )
+        if not is_confirmation_window_valid:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Confirmation window too short: only {len(confirmation_window)} candle(s) (minimum required: {self.settings.min_confirmation_window_candles})",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return None
+
+        # Validation 3: Validate peak/trough prominence is within acceptable range
+        self.next_validation()
+        is_prominence_valid, prominence_value = self.validator.validate_peak_trough_prominence(
+            confirmation_window=confirmation_window,
+            window_trend=window_trend,
+            min_prominence=self.settings.min_peak_trough_prominence,
+            max_prominence=self.settings.max_peak_trough_prominence
+        )
+        
+        if not is_prominence_valid:
+            # Determine which trend for accurate error message
+            if window_trend == Trend.UPTREND:
+                if prominence_value is None:
+                    message = "Failed to identify highest peak candle in confirmation window."
+                else:
+                    message = f"Peak prominence {prominence_value:.2f} is outside valid range [{self.settings.min_peak_trough_prominence}, {self.settings.max_peak_trough_prominence}]."
+                validation_name = "peak_prominence"
+            else:  # DOWNTREND
+                if prominence_value is None:
+                    message = "Failed to identify lowest trough candle in confirmation window."
+                else:
+                    message = f"Trough prominence {prominence_value:.2f} is outside valid range [{self.settings.min_peak_trough_prominence}, {self.settings.max_peak_trough_prominence}]."
+                validation_name = "trough_prominence"
+            
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=message,
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                start_time=self.current_window_start_time,
+                end_time=self.current_window_end_time,
+                approach=self.APPROACH_NAME
+            )
+            return None
+        
+        # Validation passed - record with prominence value
+        if window_trend == Trend.UPTREND:
+            validation_name = "peak_prominence"
+            message = f"Peak prominence is valid: {prominence_value:.2f} (range: [{self.settings.min_peak_trough_prominence}, {self.settings.max_peak_trough_prominence}])"
+        else:  # DOWNTREND
+            validation_name = "trough_prominence"
+            message = f"Trough prominence is valid: {prominence_value:.2f} (range: [{self.settings.min_peak_trough_prominence}, {self.settings.max_peak_trough_prominence}])"
+        
+        self.validations.append(Validation(
+            name=validation_name,
+            step=self.current_step,
+            validation=self.validation_step,
+            message=message,
+            status=ValidationStatus.PASSED
+        ))
+        
+        return True
 
     def _step_trend_and_magnitude_validation(self, window_df, min_vol_candle: pd.Series, alert_candle: pd.Series) -> Optional[tuple[Trend, float]]:
         # Ensure min_vol_candle occurs before alert_candle
-        if min_vol_candle.name >= alert_candle.name:
+        trend_slice = self.analyzer.slice_window(
+            window_df,
+            min_vol_candle,
+            alert_candle
+        )
+        if trend_slice is None:
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -204,7 +378,7 @@ class VraExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message="Min volume candle did not occur before max volume candle.",
+                message="Min volume candle did not occur before alert candle.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -213,15 +387,13 @@ class VraExecutor(Executor):
             )
             return None
 
-        # Slice window_df from min_vol_candle to alert_candle (inclusive)
-        try:
-            start_idx = window_df.index.get_loc(min_vol_candle.name)
-            end_idx = window_df.index.get_loc(alert_candle.name)
-            if start_idx > end_idx:
-                # Defensive: should not happen due to check above
-                return None
-            trend_window = window_df.iloc[start_idx:end_idx+1]
-        except Exception as e:
+        # Validate trend_window size
+        self.next_validation()
+        is_window_size_valid = self.validator.validate_trend_window_size(
+            trend_slice,
+            min_candle_count=3
+        )
+        if not is_window_size_valid:
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,
@@ -229,25 +401,7 @@ class VraExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Error slicing window_df for trend validation: {e}",
-                log_level=LogLevel.ERROR,
-                execution_symbol=self.symbol,
-                start_time=self.current_window_start_time,
-                end_time=self.current_window_end_time,
-                approach=self.APPROACH_NAME
-            )
-            return None
-
-        # Additional validation: trend_window must have at least 3 candles
-        if len(trend_window) < 3:
-            log(
-                logger=self.logger,
-                status=ValidationStatus.FAILED,
-                name=self.__class__.__name__,
-                alert_time=self.current_window_end_time,
-                step=self.current_step,
-                validation=self.validation_step,
-                message=f"trend_window too short: only {len(trend_window)} candles (minimum required: 3)",
+                message=f"trend_window too short: only {len(trend_slice)} candles (minimum required: 3)",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,
@@ -257,7 +411,7 @@ class VraExecutor(Executor):
             return None
 
         # Validate trend and magnitude on the sliced window
-        window_trend, window_size_val = self._validate_trend_and_magnitude(trend_window)
+        window_trend, window_size_val = self._validate_trend_and_magnitude(trend_slice)
         if window_trend is None or window_size_val is None:
             return None
         return window_trend, window_size_val
@@ -282,7 +436,11 @@ class VraExecutor(Executor):
         # Validation 1: Magnitude threshold
         self.next_validation()
         window_size_val, window_trend = window_utils.get_window_size_and_trend(trend_window)
-        if abs(window_size_val) < self.settings.min_trend_magnitude:
+        is_magnitude_valid = self.validator.validate_trend_magnitude(
+            abs(window_size_val),
+            self.settings.min_trend_magnitude
+        )
+        if not is_magnitude_valid:
             log(
                 logger=self.logger,
                 status=ValidationStatus.FAILED,

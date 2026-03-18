@@ -3,6 +3,7 @@ import smtplib
 import ssl
 import logging
 import json
+import time
 from src.stockreports.utils.conversion_data_utils import default_serializer
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -84,9 +85,77 @@ def format_email_body(notification: AlertNotification) -> str:
     return body
 
 
+def _send_email_with_retry(sender_email: str, receiver_emails: list, bcc_receiver_emails: list, 
+                           app_password: str, smtp_server: str, smtp_port: int, message, 
+                           max_retries: int = 3, initial_delay: float = 1.0) -> bool:
+    """
+    Send email with exponential backoff retry logic.
+    
+    Args:
+        sender_email: Sender email address
+        receiver_emails: List of recipient email addresses
+        bcc_receiver_emails: List of BCC recipient email addresses
+        app_password: Email app password for authentication
+        smtp_server: SMTP server hostname
+        smtp_port: SMTP server port
+        message: MIME message object to send
+        max_retries: Maximum number of retry attempts (default: 3)
+        initial_delay: Initial delay in seconds (default: 1.0)
+        
+    Returns:
+        bool: True if email sent successfully, False otherwise
+    """
+    all_recipients = receiver_emails + bcc_receiver_emails
+    retry_count = 0
+    delay = initial_delay
+    
+    while retry_count <= max_retries:
+        try:
+            # Use SSL context to avoid SSL negotiation issues in container environments
+            context = ssl.create_default_context()
+            
+            # Try with explicit TLS configuration (port 587)
+            # Increased timeout from 10 to 20 seconds to handle slow SMTP servers
+            with smtplib.SMTP(smtp_server, smtp_port, timeout=20) as server:
+                server.starttls(context=context)
+                server.login(sender_email, app_password)
+                server.sendmail(sender_email, all_recipients, message.as_string())
+                logging.info(f"Email sent successfully to: {', '.join(receiver_emails) if receiver_emails else ''} (BCC: {', '.join(bcc_receiver_emails) if bcc_receiver_emails else ''})")
+                return True
+                
+        except (smtplib.SMTPServerDisconnected, TimeoutError, OSError) as e:
+            # These are transient errors that might resolve on retry
+            retry_count += 1
+            if retry_count <= max_retries:
+                logging.warning(f"Email send attempt {retry_count} failed with transient error: {type(e).__name__}: {e}. Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay *= 2  # Exponential backoff: 1s, 2s, 4s, etc.
+            else:
+                logging.error(f"Email send failed after {max_retries} retries. Last error: {type(e).__name__}: {e}", exc_info=True)
+                return False
+                
+        except Exception as e:
+            # Non-transient errors should fail immediately
+            logging.error(f"Email send failed with non-transient error: {type(e).__name__}: {e}", exc_info=True)
+            return False
+    
+    return False
+
+
 def send_email(subject: str, body: str):
     """
     Sends an email using the credentials and settings from the notification_settings module.
+    Implements retry logic with exponential backoff for transient network errors.
+    
+    Args:
+        subject: Email subject line
+        body: Email body content
+        
+    Returns:
+        bool: True if email sent successfully, False otherwise
+        
+    Raises:
+        No exceptions are raised; errors are logged and function returns False
     """
     # These are now accessed via the loaded notification_settings module
     sender_email = notification_settings.EMAIL_SENDER
@@ -102,7 +171,7 @@ def send_email(subject: str, body: str):
 
     if not all([sender_email, all_recipients, app_password]):
         logging.warning("Email credentials or recipients are not fully configured. Skipping email.")
-        return
+        return False
 
     message = MIMEMultipart()
     # Format the "From" header to show a display name instead of just the email
@@ -117,17 +186,16 @@ def send_email(subject: str, body: str):
 
     message.attach(MIMEText(body, 'plain'))
 
-    try:
-        # Use SSL context to avoid SSL negotiation issues in container environments
-        context = ssl.create_default_context()
-        
-        # Try with explicit TLS configuration (port 587)
-        with smtplib.SMTP(smtp_server, smtp_port, timeout=10) as server:
-            server.starttls(context=context)
-            server.login(sender_email, app_password)
-            server.sendmail(sender_email, all_recipients, message.as_string())
-            logging.info(f"Email sent successfully to: {', '.join(receiver_emails) if receiver_emails else ''} (BCC: {', '.join(bcc_receiver_emails) if bcc_receiver_emails else ''})")
-    except Exception as e:
-        logging.error(f"Failed to send email: {e}", exc_info=True)
-        raise  # Re-raise the exception to be handled by the caller
+    # Use retry logic with exponential backoff for transient network errors
+    return _send_email_with_retry(
+        sender_email=sender_email,
+        receiver_emails=receiver_emails or [],
+        bcc_receiver_emails=bcc_receiver_emails or [],
+        app_password=app_password,
+        smtp_server=smtp_server,
+        smtp_port=smtp_port,
+        message=message,
+        max_retries=3,
+        initial_delay=1.0
+    )
 

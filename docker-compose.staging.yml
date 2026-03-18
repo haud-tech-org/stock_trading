@@ -1,0 +1,42 @@
+# docker-compose.staging.yml
+# Override configuration for STAGING environment
+# Used for CI/CD, testing with 2-5 symbols
+#
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.staging.yml up
+#
+# This file increases resources for testing with multiple symbols
+# while maintaining cost efficiency
+
+version: '3.8'
+
+services:
+  stock-alerter:
+    # Resource limits optimized for staging (2-5 symbols)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'          # 2 CPU cores (2× from base)
+          memory: 1024M      # 1 GB memory (2× from base)
+        reservations:
+          cpus: '1.5'        # Reserve 1.5 cores
+          memory: 768M       # Reserve 768 MB
+
+    # Logging configuration for better diagnostics
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "environment=staging"
+
+    # Health check for CI/CD integration
+    healthcheck:
+      test: ["CMD", "python", "-c", 
+             "from src.stockreports.config.secrets_loader import SecretsLoader; \
+              loader = SecretsLoader(); \
+              print(f'Environment: {loader.env_type}')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

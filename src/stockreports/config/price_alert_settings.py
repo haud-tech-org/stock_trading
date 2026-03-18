@@ -23,17 +23,9 @@ USE_PERFORMANCE_BY_APPROACH = True
 
 PERFORMANCE_BY_APPROACH = {
     'VOLUME_SPIKE_CONFIRMATION': {'avg_worst_loss_price': 1.3},
-    'PROMINENT_PEAK_REVERSAL': {'avg_worst_loss_price': 0.0},
     'STRONG_CANDLE': {'avg_worst_loss_price': 0.8},
-    'CONSECUTIVE_POWER_CANDLES': {'avg_worst_loss_price': 0.0},
     'CONSISTENT_MOMENTUM': {'avg_worst_loss_price': 0.5},
-    'RCM': {'avg_worst_loss_price': 0.0},
-    'PRICE_GAP': {'avg_worst_loss_price': 0.0},
     'VRA': {'avg_worst_loss_price': 1.3},
-    'COMPARISON': {'avg_worst_loss_price': 0.0},
-    'TREND_REVERSAL': {'avg_worst_loss_price': 1.3},
-    'VOLUME_REVERSAL': {'avg_worst_loss_price': 0.8},
-    'SESSION_EXTREME_VOLUME_REVERSAL': {'avg_worst_loss_price': 1.3},
     'CONSISTENT_VOLUME_ANCHOR': {'avg_worst_loss_price': 0.9},
     'ICHIMOKU': {'avg_worst_loss_price': 1.4}
 }
@@ -43,17 +35,9 @@ PERFORMANCE_BY_APPROACH = {
 # Values are in percentage points or absolute price points (as configured for each approach).
 PROFIT_THRESHOLD_BY_APPROACH = {
     'VOLUME_SPIKE_CONFIRMATION': 3.5,
-    'PROMINENT_PEAK_REVERSAL': 2.0,
     'STRONG_CANDLE': 4.0,
-    'CONSECUTIVE_POWER_CANDLES': 2.5,
     'CONSISTENT_MOMENTUM': 3.15,
-    'RCM': 2.5,
-    'PRICE_GAP': 3.0,
     'VRA': 4.5,
-    'COMPARISON': 2.0,
-    'TREND_REVERSAL': 2.5,
-    'VOLUME_REVERSAL': 3.0,
-    'SESSION_EXTREME_VOLUME_REVERSAL': 3.25,
     'CONSISTENT_VOLUME_ANCHOR': 2.75,
     'ICHIMOKU': 6.0
 }

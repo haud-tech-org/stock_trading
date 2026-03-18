@@ -10,7 +10,6 @@ from varname import nameof
 from src.stockreports.utils.conversion_data_utils import make_json_safe
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceColumn, LogLevel, Trend
-from src.stockreports.alert.common.data_utils import find_extreme_point
 from src.stockreports.alert.common.base_settings import BaseSettings
 from src.stockreports.utils import candle_utils
 from src.stockreports.alert.common.constants import ValidationStatus, Mode  # Add this import
@@ -134,49 +133,6 @@ class Executor(ABC):
         alert.performance_suggested_price = performance_suggested_price
         alert.suggested_profit_threshold = suggested_profit_threshold
 
-    def _confirm_breakout_price(self, df_indexed: pd.DataFrame, alert_candle_index: int, signal: Signal, lookback_period: int, prominence: float) -> bool:
-        """
-        Analyzes the backward window to find a breakout price and confirms if the alert candle breaks it.
-        """
-        alert_candle_time_for_log = df_indexed.index[alert_candle_index]
-
-        # 1. Define the lookback period
-        if lookback_period is None:
-            lookback_df = df_indexed.iloc[:alert_candle_index]
-        else:
-            lookback_start_index = max(0, alert_candle_index - lookback_period)
-            lookback_df = df_indexed.iloc[lookback_start_index:alert_candle_index]
-
-        if lookback_df.empty:
-            self.logger.debug(f"[{alert_candle_time_for_log}] No lookback history available.")
-            return True # Bypass if no history
-
-        # 2. Find the breakout price using the new utility function
-        extreme_type = PeakTrough.PEAK if signal == Signal.BUY else PeakTrough.TROUGH
-        extreme_point_info = find_extreme_point(lookback_df, PriceColumn.CLOSE, extreme_type, prominence)
-
-        if extreme_point_info is None:
-            self.logger.debug(f"[{alert_candle_time_for_log}] No peak/trough found; ignoring breakout confirmation.")
-            return True
-
-        breakout_price, _ = extreme_point_info
-        self.logger.debug(f"[{alert_candle_time_for_log}] Breakout price set to {breakout_price:.2f} for {signal} signal.")
-
-        # 3. Confirm if the alert candle's price breaks the breakout price
-        alert_candle = df_indexed.iloc[alert_candle_index]
-        is_price_breakout = False
-        if signal == Signal.BUY:
-            is_price_breakout = alert_candle['close'] > breakout_price
-        elif signal == Signal.SELL:
-            is_price_breakout = alert_candle['close'] < breakout_price
-        
-        if not is_price_breakout:
-            self.logger.debug(f"[{alert_candle_time_for_log}] Price breakout not confirmed. Alert candle close {alert_candle['close']} vs breakout price {breakout_price}.")
-            return False
-
-        self.logger.debug(f"[{alert_candle_time_for_log}] Breakout confirmed. Alert candle close {alert_candle['close']} vs breakout price {breakout_price}.")
-        return True
-
     @abstractmethod
     def _find_alerts(self, df: pd.DataFrame, new_candle_count: int) -> AlertResult:
         pass
@@ -253,6 +209,55 @@ class Executor(ABC):
 
         # Reset validations for each alert search iteration to avoid duplication
         self.validations = []
+
+    def update_window_end_time_with_shift(
+        self,
+        scan_index: int,
+        df_indexed: pd.DataFrame,
+        shift_offset: int
+    ) -> bool:
+        """
+        Updates current_window_end_time to a forward-shifted candle's timestamp.
+        
+        Used by approaches with forward-shifted indicators (e.g., Ichimoku's Senkou Cloud).
+        This method allows approaches to align alert timing with shifted technical indicators.
+        
+        Args:
+            scan_index (int): Current scanning index in the dataframe
+            df_indexed (pd.DataFrame): Indexed dataframe with all candles
+            shift_offset (int): Number of periods to shift forward (e.g., senkou_shift_period)
+            
+        Returns:
+            bool: True if shift was successful, False if shifted index is out of bounds
+            
+        Example:
+            ```python
+            shifted_idx = i + shift_offset
+            if self.update_window_end_time_with_shift(i, df_indexed, shift_offset):
+                # Successfully updated current_window_end_time to shifted candle
+                alert = self._step_create_alert(shifted_candle, signal)
+            else:
+                # Shifted index out of bounds, skip this signal
+                continue
+            ```
+        """
+        if df_indexed is None or df_indexed.empty:
+            return False
+        
+        shifted_idx = scan_index + shift_offset
+        
+        # Safety check: ensure shifted index is within bounds
+        if shifted_idx >= len(df_indexed):
+            return False
+        
+        try:
+            shifted_candle = df_indexed.iloc[shifted_idx]
+            self.current_window_end_time = shifted_candle['time']
+            return True
+        except (IndexError, KeyError) as e:
+            self.logger.warning(f"Failed to update window end time with shift: {e}")
+            return False
+
 
     def _create_alert_with_details(
         self,

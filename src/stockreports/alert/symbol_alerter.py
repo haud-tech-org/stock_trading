@@ -44,7 +44,6 @@ from src.stockreports.alert.common.profitability_simulator import simulate_profi
 from src.stockreports.utils.report_utils import save_profitability_report, save_alert_report, update_alert_summary
 from src.stockreports.utils.alert_utils import calculate_suggested_prices
 from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
-from src.stockreports.alert.common.requirements import get_min_required_len
 
 # --- Constants & Configuration ---
 DEFAULT_APPROACH = "VRA"
@@ -326,12 +325,6 @@ class SymbolAlerter:
             approaches_to_run = self._get_approaches_for_symbol()
             for approach_name in approaches_to_run:
                 self.logger.info(f"--- Running Approach: {approach_name} for {self.symbol} ---")
-                
-                min_required_len = get_min_required_len(approach_name)
-
-                if len(master_df) < min_required_len:
-                    self.logger.warning(f"Skipping '{approach_name}' for {self.symbol}: requires {min_required_len} candles, but only {len(master_df)} are available.")
-                    continue
 
                 executor = self._get_approach_executor(approach_name)
                 if not executor: continue

@@ -1,4 +1,7 @@
 google-cloud-storage
+google-cloud-secret-manager
+azure-identity
+azure-keyvault-secrets
 varname
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.0

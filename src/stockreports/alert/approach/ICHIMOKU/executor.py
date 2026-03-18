@@ -61,12 +61,16 @@ class IchimokuExecutor(Executor):
             }
             
             # Use base class method to create alert with details
+            # Get the maximum of configured threshold or calculated magnitude
+            calculated_magnitude = abs(float(candle['close']) - float(self.first_candle['open']))
+            final_magnitude = max(self.settings.magnitude_threshold, calculated_magnitude)
+            
             alert = self._create_alert_with_details(
                 final_signal=signal,
                 final_trend=trend,
                 details=details,
                 final_alert_candle=candle,
-                final_magnitude=abs(float(candle['close']) - float(self.first_candle['open']))
+                final_magnitude=final_magnitude
             )
             
             return alert
@@ -191,6 +195,11 @@ class IchimokuExecutor(Executor):
                         execution_symbol=self.symbol,
                         approach=Approach.ICHIMOKU
                     )
+                    continue
+                
+                # Update window end time to the forward-shifted candle (for Senkou indicator alignment)
+                if not self.update_window_end_time_with_shift(i, df_indexed, shift_offset):
+                    # Shifted index out of bounds, skip this signal
                     continue
                 
                 # Get the current candle at index i (not the last candle in the window which is at i-1)

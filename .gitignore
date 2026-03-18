@@ -46,8 +46,43 @@ tests/debug/data/
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
-# Environments
+# ============================================================================
+# SENSITIVE CONFIGURATION & SECRETS
+# ============================================================================
+# CRITICAL: Never commit credentials, API keys, or secrets to version control
+# See docs/SECURE_CREDENTIALS_MANAGEMENT.md for proper credential handling
+
+# Environment variable files (local development)
 .env
+.env.local
+.env.*.local
+.env.production
+.env.production.local
+.env.development.local
+
+# Secret management and credentials
+secrets/
+**/secrets/
+**/*credentials*
+**/*secret*
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+
+# Cloud platform credential files
+**/GOOGLE_APPLICATION_CREDENTIALS
+**/*service-account*.json
+**/*azure-credentials*.json
+**/*aws-credentials*.json
+
+# SSH keys and certificates
+~/.ssh/
+**/.ssh/
+*.pub
+id_rsa
+id_rsa.pub
 .venv
 env/
 venv/

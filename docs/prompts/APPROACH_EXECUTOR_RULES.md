@@ -1,6 +1,15 @@
-# Approach Executor Implementation Rules
+# Approach Executor Implementation Rules - REFERENCE DOCUMENTATION
 
-This document defines the mandatory rules and patterns for implementing and refactoring any trading approach executor in the codebase. It must be referenced in all approach generation and refactor guides.
+⚠️ **Status**: ARCHIVED (Rules integrated into AI_APPROACH_GENERATION_PROMPT.md)
+
+**Last Updated**: March 13, 2026  
+**Deprecation Notice**: This document is maintained as a reference archive. For new approach development, use the unified prompt in `/APPROACH_GENERATION_CODE/AI_APPROACH_GENERATION_PROMPT.md` (PART 2: Architecture Context).
+
+---
+
+## Original Documentation
+
+This document defines the mandatory rules and patterns for implementing and refactoring any trading approach executor in the codebase. All rules have been integrated into the comprehensive AI approach generation prompt (Part 2).
 
 ---
 
@@ -61,10 +70,5 @@ This document defines the mandatory rules and patterns for implementing and refa
 - **Best practice**: If a utility function returns mixed types, document this in its docstring. Consider refactoring the utility to always return a consistent type (preferably the Enum member with a fallback to a default Enum value rather than None or a string).
 
 ---
-
-**Reference:**
-- This document is a mandatory reference for:
-    - [REFACTOR_APPROACH_GUIDE.md](REFACTOR_APPROACH_GUIDE.md)
-    - [NEW_APPROACH_GENERATION_GUIDE.md](NEW_APPROACH_GENERATION_GUIDE.md)
 
 All approach implementation and refactoring must strictly follow these rules.

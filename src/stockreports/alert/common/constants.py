@@ -1,20 +1,9 @@
 class Approach:
-    RCM = "RCM"
     STRONG_CANDLE = "STRONG_CANDLE"
     CONSISTENT_MOMENTUM = "CONSISTENT_MOMENTUM"
     ICHIMOKU = "ICHIMOKU"
-    SUPPORT_RESISTANCE_BREAK = "SUPPORT_RESISTANCE_BREAK"
-    MOMENTUM_EXHAUSTION = "MOMENTUM_EXHAUSTION"
-    CONSECUTIVE_POWER_CANDLES = "CONSECUTIVE_POWER_CANDLES"
-    CONSOLIDATION_BREAKOUT = "CONSOLIDATION_BREAKOUT"
-    COMPARISON = "COMPARISON"
     VOLUME_SPIKE_CONFIRMATION = "VOLUME_SPIKE_CONFIRMATION"
-    PROMINENT_PEAK_REVERSAL = "PROMINENT_PEAK_REVERSAL"
-    PRICE_GAP = "PRICE_GAP"
     VRA = "VRA"
-    TREND_REVERSAL = "TREND_REVERSAL"
-    VOLUME_REVERSAL = "VOLUME_REVERSAL"
-    SESSION_EXTREME_VOLUME_REVERSAL = "SESSION_EXTREME_VOLUME_REVERSAL"
     CONSISTENT_VOLUME_ANCHOR = "CONSISTENT_VOLUME_ANCHOR"
 
 class Mode:
@@ -31,6 +20,20 @@ class Trend:
     DOWNTREND = "downtrend"
     NEUTRAL = "neutral"
 
+class CandleColor:
+    """Candle color classification constants."""
+    GREEN = "GREEN"
+    RED = "RED"
+    NEUTRAL = "NEUTRAL"
+
+class Comparison:
+    """Comparison operator constants."""
+    GREATER = "greater"
+    LESS = "less"
+    EQUAL = "equal"
+    GREATER_EQUAL = "greater_equal"
+    LESS_EQUAL = "less_equal"
+
 class AlertKeys:
     TREND = "trend"
     SIGNAL = "signal"
@@ -44,6 +47,14 @@ class PriceColumn:
     HIGH = "high"
     LOW = "low"
     CLOSE = "close"
+
+class CandleColumn:
+    """Candle column name constants for OHLCV data access."""
+    OPEN = "open"
+    HIGH = "high"
+    LOW = "low"
+    CLOSE = "close"
+    VOLUME = "volume"
 
 class ValidationStatus():
     PASSED = "Passed"
