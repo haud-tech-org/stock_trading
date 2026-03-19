@@ -3,6 +3,7 @@ import logging
 from datetime import timedelta
 
 from src.stockreports.alert.model.models import AlertData
+from src.stockreports.alert.common.constants import Status, Signal, CandleColumn
 from src.stockreports.config import validation_settings
 
 # Get the minimum expected profit from settings, with a default of 2.0 if not set or None.
@@ -34,21 +35,21 @@ def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame,
     
     # Ensure the historical data has a DatetimeIndex for efficient slicing
     if not isinstance(historical_data.index, pd.DatetimeIndex):
-        historical_data = historical_data.set_index('time')
+        historical_data = historical_data.set_index(CandleColumn.TIME)
 
     # Filter the data to the validation window
     validation_window_df = historical_data.loc[start_time:end_time]
     
     if validation_window_df.empty:
         logging.warning(f"No data available in validation window for alert {alert.id}. Cannot calculate performance.")
-        alert.status = "Inconclusive"
+        alert.status = Status.INCONCLUSIVE
         return alert
 
     validation_price = None
     validation_price_time = None
     profit_loss = 0.0
 
-    if alert.signal.upper() == 'BUY':
+    if alert.signal == Signal.BUY:
         # For a BUY signal, find the highest high in the window
         peak_candle = validation_window_df.loc[validation_window_df['high'].idxmax()]
         validation_price = peak_candle['high']
@@ -57,11 +58,11 @@ def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame,
         # Profit is the difference between the peak and the alert price
         profit_loss = validation_price - alert.alert_price
         if profit_loss >= MIN_PROFIT_LOSS:
-            alert.status = 'Success'
+            alert.status = Status.PASSED
         else:
-            alert.status = 'Failed'
+            alert.status = Status.FAILED_VALIDATION
 
-    elif alert.signal.upper() == 'SELL':
+    elif alert.signal == Signal.SELL:
         # For a SELL signal, find the lowest low in the window
         bottom_candle = validation_window_df.loc[validation_window_df['low'].idxmin()]
         validation_price = bottom_candle['low']
@@ -70,9 +71,9 @@ def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame,
         # Profit is the difference between the alert price and the bottom
         profit_loss = alert.alert_price - validation_price
         if profit_loss >= MIN_PROFIT_LOSS:
-            alert.status = 'Success'
+            alert.status = Status.PASSED
         else:
-            alert.status = 'Failed'
+            alert.status = Status.FAILED_VALIDATION
 
     # Populate the alert object with validation results
     alert.profit_loss = round(profit_loss, 2)

@@ -4,7 +4,7 @@ import json
 import pandas as pd
 
 from src.stockreports.config import loader
-from src.stockreports.alert.model.models import AlertNotification, AlertResult
+from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData
 from src.stockreports.utils.notification.email_utils import send_email, format_email_subject, format_email_body
 from src.stockreports.utils.notification.sms_utils import send_sms, format_sms_body
 from src.stockreports.utils.notification.ntfy_utils import send_ntfy_notification
@@ -28,44 +28,40 @@ class NotificationManager:
         """
         Processes the latest alert from a result and sends notifications if applicable.
         This method checks for duplicates before sending and does not modify the input result.
-        The 'suggested_price' is expected to be pre-calculated in the result.
+        The suggested prices are expected to be pre-calculated in the result.
         """
         if not result.has_alerts:
             return
 
-        latest_alert_row = result.alerts.sort_values(by='alert_time', ascending=False).iloc[0]
-        alert_key = (result.approach_name, latest_alert_row['alert_time'])
+        # Get the most recent alert (O(n) instead of O(n log n) sort)
+        latest_alert: AlertData = max(result.confirmed_alerts, key=lambda a: a.alert_time)
+        alert_key = (result.approach_name, latest_alert.alert_time)
 
         if alert_key in self.alerts_sent_in_session:
-            self.logger.info(f"Alert for {result.approach_name} at {latest_alert_row['alert_time']} already sent. Skipping.")
+            self.logger.info(f"Alert for {result.approach_name} at {latest_alert.alert_time} already sent. Skipping.")
             return
 
-        self.logger.info(f"Latest alert from {result.approach_name}: {latest_alert_row['signal']} at {latest_alert_row['alert_price']:.2f}")
+        self.logger.info(f"Latest alert from {result.approach_name}: {latest_alert.signal} at {latest_alert.alert_price:.2f}")
         
         details_dict = {}
-        if pd.notna(latest_alert_row.get('details')) and isinstance(latest_alert_row.get('details'), str):
+        if latest_alert.details and isinstance(latest_alert.details, str):
             try:
-                details_dict = json.loads(latest_alert_row['details'])
+                details_dict = json.loads(latest_alert.details)
             except json.JSONDecodeError:
-                self.logger.warning(f"Could not decode details JSON: {latest_alert_row['details']}")
+                self.logger.warning(f"Could not decode details JSON: {latest_alert.details}")
 
-        # Use the new utility function to get the single, correct price for the notification.
-        suggested_price = get_primary_suggested_price(latest_alert_row)
-
-        suggested_profit_threshold = latest_alert_row['suggested_profit_threshold'] if 'suggested_profit_threshold' in latest_alert_row else None
-
-        # Ensure alert_time is a datetime object before creating the notification
-        alert_time_obj = pd.to_datetime(latest_alert_row['alert_time'])
+        # Use the new utility function to get the primary suggested price
+        suggested_price = get_primary_suggested_price(latest_alert)
 
         notification = AlertNotification(
             symbol=symbol,
-            signal=latest_alert_row['signal'],
-            alert_price=latest_alert_row['alert_price'],
-            alert_time=alert_time_obj,
-            approach=latest_alert_row['approach'],
+            signal=latest_alert.signal,
+            alert_price=latest_alert.alert_price,
+            alert_time=latest_alert.alert_time,
+            approach=latest_alert.approach,
             details=details_dict,
             suggested_price=suggested_price,
-            suggested_profit_threshold=suggested_profit_threshold
+            suggested_profit_threshold=latest_alert.suggested_profit_threshold
         )
         
         self._send_alert(notification)

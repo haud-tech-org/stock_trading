@@ -9,7 +9,7 @@ from src.stockreports.utils.log_factory import log
 from varname import nameof
 from src.stockreports.utils.conversion_data_utils import make_json_safe
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
-from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceColumn, LogLevel, Trend
+from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceColumn, LogLevel, Trend, Status
 from src.stockreports.alert.common.base_settings import BaseSettings
 from src.stockreports.utils import candle_utils
 from src.stockreports.alert.common.constants import ValidationStatus, Mode  # Add this import
@@ -72,21 +72,25 @@ class Executor(ABC):
                 execution_symbol=self.symbol,
                 approach=self.APPROACH_NAME
             )
-            alerts_df = pd.DataFrame([alert.to_dict() for alert in alerts_data])
 
             # Explicitly trigger garbage collection to free up system resources before returning
             gc.collect()
             return AlertResult(
                 approach_name=self.APPROACH_NAME,
-                alerts=alerts_df,
-                confirmed_alerts=alerts_data
+                confirmed_alerts=alerts_data,
+                status=Status.SUCCESS
             )
         except Exception as e:
             self.logger.error(f"An error occurred during '{self.APPROACH_NAME}' execution for {self.symbol}: {e}", exc_info=True)
             
             # Explicitly trigger garbage collection to free up system resources before returning in case of exception
             gc.collect()
-            return AlertResult(approach_name=self.APPROACH_NAME, alerts=pd.DataFrame(), status="FAILED", message=str(e))
+            return AlertResult(
+                approach_name=self.APPROACH_NAME,
+                confirmed_alerts=[],
+                status=Status.FAILED,
+                message=str(e)
+            )
 
     def _step_cooldown_check(self, last_alert: AlertData, signal: Signal, cooldown_window) -> bool:
         self.next_validation()

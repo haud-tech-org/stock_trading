@@ -12,7 +12,7 @@ Inherits common validation methods from the base Validator class.
 from typing import Optional, Tuple
 import pandas as pd
 from src.stockreports.alert.validator import Validator
-from src.stockreports.alert.common.constants import Trend
+from src.stockreports.alert.common.constants import Trend, CandleColumn
 from .analyzer import VolumeSpikeConfirmationAnalyzer
 
 
@@ -138,8 +138,8 @@ class VolumeSpikeConfirmationValidator(Validator):
             Ensures significant volume spike before max candle. Used
             to filter for meaningful volume confirmation.
         """
-        max_vol = max_vol_candle['volume']
-        min_vol = min_vol_candle['volume']
+        max_vol = max_vol_candle[CandleColumn.VOLUME]
+        min_vol = min_vol_candle[CandleColumn.VOLUME]
 
         ratio = (
             VolumeSpikeConfirmationAnalyzer.calculate_volume_spike_ratio(
