@@ -10,7 +10,7 @@ from varname import nameof
 
 from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.model.models import AlertData, Validation
-from src.stockreports.alert.common.constants import Approach, Mode, Signal, ValidationStatus, LogLevel, Trend
+from src.stockreports.alert.common.constants import Approach, Mode, Signal, ValidationStatus, LogLevel, Trend, CandleColumn
 from src.stockreports.utils.log_factory import log
 from .settings import VolumeSpikeConfirmationSettings
 from .analyzer import VolumeSpikeConfirmationAnalyzer
@@ -253,8 +253,8 @@ class VolumeSpikeConfirmationExecutor(Executor):
         if not is_spike_valid:
             ratio = (
                 self.analyzer.calculate_volume_spike_ratio(
-                    max_vol_candle['volume'],
-                    min_vol_candle['volume']
+                    max_vol_candle[CandleColumn.VOLUME],
+                    min_vol_candle[CandleColumn.VOLUME]
                 ) or 0
             )
             log(

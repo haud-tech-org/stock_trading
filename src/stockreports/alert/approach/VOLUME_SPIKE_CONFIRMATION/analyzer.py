@@ -12,6 +12,7 @@ Inherits common calculation methods from the base Analyzer class.
 from typing import Optional, Tuple
 import pandas as pd
 from src.stockreports.alert.analyzer import Analyzer
+from src.stockreports.alert.common.constants import CandleColumn
 from src.stockreports.utils import candle_utils, window_utils
 
 
@@ -138,7 +139,7 @@ class VolumeSpikeConfirmationAnalyzer(Analyzer):
         if window_df.empty:
             return None
 
-        max_idx = window_df['volume'].idxmax()
+        max_idx = window_df[CandleColumn.VOLUME].idxmax()
         return window_df.loc[max_idx]
 
     @staticmethod
@@ -181,7 +182,7 @@ class VolumeSpikeConfirmationAnalyzer(Analyzer):
         if window_df.empty:
             return None
 
-        min_idx = window_df['volume'].idxmin()
+        min_idx = window_df[CandleColumn.VOLUME].idxmin()
         return window_df.loc[min_idx]
 
     @staticmethod

@@ -12,6 +12,7 @@ Inherits common calculation methods from the base Analyzer class.
 from typing import Optional, Tuple
 import pandas as pd
 from src.stockreports.alert.analyzer import Analyzer
+from src.stockreports.alert.common.constants import CandleColumn
 from src.stockreports.utils import window_utils
 
 
@@ -77,7 +78,7 @@ class ConsistentMomentumAnalyzer(Analyzer):
         # Calculate body for each candle
         confirmation_copy = confirmation_window_df.copy()
         confirmation_copy['body'] = abs(
-            confirmation_copy['close'] - confirmation_copy['open']
+            confirmation_copy[CandleColumn.CLOSE] - confirmation_copy[CandleColumn.OPEN]
         )
 
         # Get top 2 by body size

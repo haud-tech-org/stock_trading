@@ -1,19 +1,15 @@
 # src/stockreports/utils/alert_utils.py
 import logging
 import pandas as pd
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
+from datetime import datetime
+import importlib
 
 from src.stockreports.config.validation_settings import VALIDATION_MIN_PROFIT_FOR_SUCCESS, VALIDATION_MAGNITUDE_PROFIT_FACTOR
-
 from src.stockreports.alert.common.constants import Trend, Signal
-# Import the settings to access the performance data
 from src.stockreports.config import price_alert_settings, settings
 from src.stockreports.utils.historical_data_manager import get_historical_data
-import importlib
-from typing import Optional
 from src.stockreports.alert.model.models import AlertData
-from src.stockreports.alert.common.constants import Signal
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -173,28 +169,42 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
     return performance_price, structural_price
 
 
-def get_primary_suggested_price(alert_row: pd.Series) -> Optional[float]:
+def get_primary_suggested_price(
+    alert_row: Union[AlertData, pd.Series, dict]
+) -> Optional[float]:
     """
     Selects the primary suggested price based on the USE_PERFORMANCE_BY_APPROACH flag.
 
+    Supports multiple input types for flexibility:
+    - AlertData: Refactored alert objects (recommended)
+    - pd.Series: Legacy DataFrame rows (backward compatibility)
+    - dict: Legacy dictionary format (backward compatibility)
+
     Args:
-        alert_row (pd.Series): A row from the alerts DataFrame, which must contain
-                               'performance_suggested_price' and 'structural_suggested_price'.
+        alert_row (Union[AlertData, pd.Series, dict]): Alert data containing
+                               'performance_suggested_price' and 'structural_suggested_price' fields.
 
     Returns:
         Optional[float]: The chosen suggested price, or None if neither is available.
     """
-    performance_price = alert_row.get('performance_suggested_price')
-    structural_price = alert_row.get('structural_suggested_price')
+    # Get the price fields based on input type
+    if isinstance(alert_row, AlertData):
+        performance_price = alert_row.performance_suggested_price
+        structural_price = alert_row.structural_suggested_price
+    else:
+        # Works for both pd.Series and dict
+        performance_price = alert_row.get('performance_suggested_price')
+        structural_price = alert_row.get('structural_suggested_price')
 
     # Reload settings to ensure the flag is current
     importlib.reload(price_alert_settings)
     
     if price_alert_settings.USE_PERFORMANCE_BY_APPROACH:
-        if pd.notna(performance_price):
+        # Check if performance_price is valid (not None and not NaN)
+        if performance_price is not None and (isinstance(performance_price, (int, float)) and not pd.isna(performance_price)):
             return performance_price
         else:
-            logger.warning("Performance price preferred but is NaN; falling back to structural price.")
+            logger.warning("Performance price preferred but is None/NaN; falling back to structural price.")
             return structural_price
     else:
         return structural_price

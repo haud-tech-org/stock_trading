@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 from varname import nameof
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
+from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend, CandleColumn
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from .settings import StrongCandleSettings
 from .analyzer import StrongCandleAnalyzer
@@ -104,8 +104,8 @@ class StrongCandleExecutor(Executor):
             self.next_step()
             details_dict = self._add_details_for_alert(
                 body_size=body_size,
-                window_trend=window_trend if window_trend else "UNKNOWN",
-                strong_candle_time=self.last_candle['time'].isoformat()
+                window_trend=window_trend if window_trend else Trend.NEUTRAL,
+                strong_candle_time=self.last_candle[CandleColumn.TIME].isoformat()
             )
 
             alert_data = self._create_alert_with_details(
@@ -205,7 +205,7 @@ class StrongCandleExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Alert candle volume {alert_candle['volume']:.0f} exceeds max conditional window volume {max_conditional_volume:.0f} * {self.settings.max_volume_multiplier}.",
+                message=f"Alert candle volume {alert_candle[CandleColumn.VOLUME]:.0f} exceeds max conditional window volume {max_conditional_volume:.0f} * {self.settings.max_volume_multiplier}.",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 start_time=self.current_window_start_time,

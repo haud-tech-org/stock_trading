@@ -1,7 +1,12 @@
 # src/stockreports/alert/price_movement_alerter.py
 
 import pandas as pd
+import json
+import uuid
+from typing import List
 from ..config.loader import get_price_alert_settings
+from .common.constants import Approach, Signal, Status
+from .model.models import AlertResult, AlertData
 import logging
 
 # Get a logger for this module
@@ -10,7 +15,10 @@ logger = logging.getLogger(__name__)
 class PriceMovementAlerter:
     """
     A stateless calculator to detect price movements against predefined levels.
+    Returns standardized AlertResult with confirmed_alerts containing AlertData objects.
     """
+    
+    APPROACH_NAME: str = Approach.PRICE_MOVEMENT
 
     def __init__(self, symbol: str, triggered_levels_today: set):
         """
@@ -28,34 +36,52 @@ class PriceMovementAlerter:
         self.allow_repeated_alerts = self.settings.ALLOW_REPEATED_LEVEL_ALERTS
         logger.info(f"PriceMovementAlerter initialized for {self.symbol}. Config found: {bool(self.config)}")
 
-    def execute(self, master_df: pd.DataFrame) -> list:
+    def execute(self, master_df: pd.DataFrame) -> AlertResult:
         """
-        Checks for price level crossings based on the latest data.
+        Checks for price level crossings and returns standardized AlertResult.
 
         Args:
             master_df (pd.DataFrame): All data received so far today.
 
         Returns:
-            list: A list of strings, where each string is a notification message
-                  for a triggered alert.
+            AlertResult: Standardized alert result with confirmed_alerts containing
+                        AlertData objects for each price movement detected.
         """
         if not self.config:
             logger.warning(f"No price alert configuration found for symbol '{self.symbol}'. Skipping.")
-            return []
+            return AlertResult(
+                approach_name=self.APPROACH_NAME,
+                confirmed_alerts=[],
+                status=Status.SUCCESS,
+                message="No price alert configuration found"
+            )
+        
         if master_df.empty:
             logger.warning("master_df is empty. Skipping price movement check.")
-            return []
+            return AlertResult(
+                approach_name=self.APPROACH_NAME,
+                confirmed_alerts=[],
+                status=Status.SUCCESS,
+                message="No data to process"
+            )
 
         if len(master_df) < 2:
             logger.warning("Not enough data points (< 2) to check for price movement. Skipping.")
-            return []
+            return AlertResult(
+                approach_name=self.APPROACH_NAME,
+                confirmed_alerts=[],
+                status=Status.SUCCESS,
+                message="Insufficient data points"
+            )
 
         # Use the last two entries of the master_df to represent the most recent price movement
         last_two_ticks = master_df.iloc[-2:]
         prev_price = last_two_ticks.iloc[0]['close']
         curr_price = last_two_ticks.iloc[-1]['close']
+        curr_time = last_two_ticks.iloc[-1]['time']
+        prev_time = last_two_ticks.iloc[0]['time']
 
-        triggered_alerts = []
+        confirmed_alerts: List[AlertData] = []
         newly_triggered_levels = set()
 
         # 1. Check for fixed level alerts
@@ -67,7 +93,25 @@ class PriceMovementAlerter:
                         direction = "crossed above" if curr_price > prev_price else "crossed below"
                         message = (f"'{self.symbol}' {direction} fixed price level of {level:.2f}. "
                                    f"Current price: {curr_price:.2f}.")
-                        triggered_alerts.append(message)
+                        
+                        # Create AlertData object for this alert
+                        alert = AlertData(
+                            approach=self.APPROACH_NAME,
+                            id=str(uuid.uuid4()),
+                            signal=Signal.NEUTRAL,  # Price movements are neutral signals
+                            alert_price=curr_price,
+                            alert_time=curr_time,
+                            start_price=prev_price,
+                            start_time=prev_time,
+                            magnitude=abs(curr_price - prev_price),
+                            details=json.dumps({
+                                'message': message,
+                                'level': level,
+                                'direction': direction
+                            })
+                            # No suggested prices for price movement alerts
+                        )
+                        confirmed_alerts.append(alert)
                         newly_triggered_levels.add(level)
 
         # 2. Check for absolute interval alerts
@@ -86,13 +130,37 @@ class PriceMovementAlerter:
                     direction = "crossed above" if curr_price > prev_price else "crossed below"
                     message = (f"'{self.symbol}' {direction} an interval price level. "
                                f"New level boundary: {crossed_boundary:.2f}. Current price: {curr_price:.2f}.")
-                    triggered_alerts.append(message)
+                    
+                    # Create AlertData object for this alert
+                    alert = AlertData(
+                        approach=self.APPROACH_NAME,
+                        id=str(uuid.uuid4()),
+                        signal=Signal.NEUTRAL,  # Price movements are neutral signals
+                        alert_price=curr_price,
+                        alert_time=curr_time,
+                        start_price=prev_price,
+                        start_time=prev_time,
+                        magnitude=abs(curr_price - prev_price),
+                        details=json.dumps({
+                            'message': message,
+                            'boundary': crossed_boundary,
+                            'interval': interval,
+                            'direction': direction
+                        })
+                        # No suggested prices for price movement alerts
+                    )
+                    confirmed_alerts.append(alert)
                     newly_triggered_levels.add(crossed_boundary)
 
         # Update the master set of triggered levels for the day
         self.triggered_levels_today.update(newly_triggered_levels)
 
-        return triggered_alerts
+        return AlertResult(
+            approach_name=self.APPROACH_NAME,
+            confirmed_alerts=confirmed_alerts,
+            status=Status.SUCCESS,
+            message=f"Found {len(confirmed_alerts)} price movement alerts"
+        )
 
     def _has_straddled(self, price1: float, price2: float, level: float) -> bool:
         """
