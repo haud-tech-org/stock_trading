@@ -183,7 +183,7 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
     reports_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), result.approach_name.lower())
     filepath = os.path.join(reports_dir, f"alert_notification_{date_str.replace('-', '')}.json")
 
-    new_alerts_df = result.alerts.copy()
+    new_alerts_df = result.to_dataframe()
 
     # Ensure 'details' is a dict, not a string, for each alert
     if 'details' in new_alerts_df.columns:
@@ -251,25 +251,24 @@ def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
     reports_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), result.approach_name.lower())
     filepath = os.path.join(reports_dir, "alert_summary.json")
 
-    total_alerts = len(result.alerts)
-    successful_alerts = len(result.alerts[result.alerts['status'] == 'Success'])
+    total_alerts = len(result.confirmed_alerts)
+    successful_alerts = len([a for a in result.confirmed_alerts if a.status == 'Success'])
     success_rate = (successful_alerts / total_alerts) * 100 if total_alerts > 0 else 0
     
-    successful_df = result.alerts[result.alerts['status'] == 'Success'].copy()
+    successful_list = [a for a in result.confirmed_alerts if a.status == 'Success']
     avg_profit_loss, min_time_to_best, avg_time_to_best, max_time_to_best = None, None, None, None
     min_expected_profit_loss = None
 
-    if not successful_df.empty:
-        successful_df['profit_loss'] = pd.to_numeric(successful_df['profit_loss'], errors='coerce')
-        successful_df['time_to_best_price'] = pd.to_numeric(successful_df['time_to_best_price'], errors='coerce')
-        successful_df.dropna(subset=['profit_loss', 'time_to_best_price'], inplace=True)
+    if successful_list:
+        profit_losses = [a.profit_loss for a in successful_list if a.profit_loss is not None]
+        times_to_best = [a.time_to_best_price for a in successful_list if a.time_to_best_price is not None]
         
-        if not successful_df.empty:
-            avg_profit_loss = successful_df['profit_loss'].mean()
-            min_time_to_best = int(successful_df['time_to_best_price'].min())
-            avg_time_to_best = int(successful_df['time_to_best_price'].mean())
-            max_time_to_best = int(successful_df['time_to_best_price'].max())
-            min_expected_profit_loss = successful_df['min_expected_profit_loss'].iloc[0] if 'min_expected_profit_loss' in successful_df.columns else None
+        if profit_losses and times_to_best:
+            avg_profit_loss = sum(profit_losses) / len(profit_losses)
+            min_time_to_best = int(min(times_to_best))
+            avg_time_to_best = int(sum(times_to_best) / len(times_to_best))
+            max_time_to_best = int(max(times_to_best))
+            min_expected_profit_loss = successful_list[0].min_expected_profit_loss if successful_list else None
 
     new_summary = AlertSummary(
         approach=result.approach_name, date=date_str, total_alerts=total_alerts,

@@ -8,7 +8,7 @@ from tabulate import tabulate
 import sys
 from datetime import datetime, timedelta
 import importlib
-from typing import Optional
+from typing import Optional, cast
 import time
 
 # --- Path Setup ---
@@ -47,6 +47,36 @@ from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
 
 # --- Constants & Configuration ---
 DEFAULT_APPROACH = "VRA"
+
+
+def ensure_alert_result(result: object) -> AlertResult:
+    """
+    Type guard function to ensure executor.run() returns AlertResult.
+    
+    Validates at runtime that the returned object is an AlertResult instance,
+    providing explicit type safety for further processing.
+    
+    Args:
+        result (object): The return value from executor.run()
+        
+    Returns:
+        AlertResult: The validated AlertResult instance
+        
+    Raises:
+        TypeError: If the result is not an AlertResult instance
+        
+    Example:
+        result: AlertResult = ensure_alert_result(executor.run(df=daily_df, new_candle_count=10))
+        if result.has_alerts:
+            for _, alert_row in result.alerts.iterrows():
+                # Process alert_row
+    """
+    if not isinstance(result, AlertResult):
+        raise TypeError(
+            f"executor.run() must return AlertResult, got {type(result).__name__}. "
+            f"Value: {result}"
+        )
+    return cast(AlertResult, result)
 
 
 class SymbolAlerter:
@@ -290,25 +320,24 @@ class SymbolAlerter:
 
             # --- Price Movement Alerter ---
             price_alerter = PriceMovementAlerter(self.symbol, triggered_levels_today)
-            price_alerts = price_alerter.execute(master_df)
-            if price_alerts:
-                self.logger.info(f"Found {len(price_alerts)} price movement alerts.")
-                price_alerts_data = []
-                for msg in price_alerts:
-                    price_alerts_data.append({
-                        'alert_time': master_df['time'].iloc[-1],
-                        'signal': 'Price Level Cross',
-                        'alert_price': master_df['close'].iloc[-1],
-                        'approach': 'PriceMovement',
-                        'details': json.dumps({'message': msg})
-                    })
+            price_alert_result: AlertResult = price_alerter.execute(master_df)
+            
+            if price_alert_result.has_alerts:
+                self.logger.info(f"Found {len(price_alert_result.confirmed_alerts)} price movement alerts.")
                 
-                price_alert_result = AlertResult(
-                    alerts=pd.DataFrame(price_alerts_data),
-                    approach_name="PriceMovement"
-                )
-                # The 'suggested_price' is not calculated for simple price movement alerts.
-                # The extra 'master_df' argument is removed to match the new function signature.
+                # Note: Price movement alerts typically don't have suggested entry points
+                # These remain None, which is acceptable for informational price alerts
+                for alert in price_alert_result.confirmed_alerts:
+                    # Optional: Apply suggested prices if needed for consistency
+                    # perf_price, struct_price = calculate_suggested_prices(
+                    #     signal=alert.signal,
+                    #     alert_time=alert.alert_time,
+                    #     approach=alert.approach
+                    # )
+                    # alert.performance_suggested_price = perf_price
+                    # alert.structural_suggested_price = struct_price
+                    pass
+                
                 self.notification_manager.process_and_notify(price_alert_result, self.symbol)
 
 
@@ -330,28 +359,21 @@ class SymbolAlerter:
                 if not executor: continue
                 
                 # Pass the full master_df to the executor's run method.
-                result = executor.run(df=master_df.copy(), new_candle_count=new_candle_count)
+                result: AlertResult = ensure_alert_result(
+                    executor.run(df=master_df.copy(), new_candle_count=new_candle_count)
+                )
                 if result.has_alerts:
-                    # Step 1: Enrich the result with both suggested prices.
-                    perf_prices = []
-                    struct_prices = []
-                    suggested_profit_thresholds = []
-                    for _, alert_row in result.alerts.iterrows():
-                        alert_time_obj = pd.to_datetime(alert_row['alert_time'])
+                    # Step 1: Enrich alerts with suggested prices
+                    for alert in result.confirmed_alerts:  # Type: AlertData (inferred from List[AlertData])
                         perf_price, struct_price = calculate_suggested_prices(
-                            signal=alert_row['signal'],
-                            alert_time=alert_time_obj,
-                            approach=alert_row['approach']
+                            signal=alert.signal,
+                            alert_time=alert.alert_time,
+                            approach=alert.approach
                         )
-                        perf_prices.append(perf_price)
-                        struct_prices.append(struct_price)
-                        suggested_profit_thresholds.append(alert_row['suggested_profit_threshold'])
+                        alert.performance_suggested_price = perf_price
+                        alert.structural_suggested_price = struct_price
 
-                    result.alerts['performance_suggested_price'] = perf_prices
-                    result.alerts['structural_suggested_price'] = struct_prices
-                    result.alerts['suggested_profit_threshold'] = suggested_profit_thresholds
-
-                    # Step 2: Send notification with the now-enriched data.
+                    # Step 2: Send notification with enriched data
                     self.notification_manager.process_and_notify(result, self.symbol)
                     
                     # Step 3: Save the enriched report.
@@ -403,45 +425,40 @@ class SymbolAlerter:
             if not executor: continue
             
             # Pass the full length of the daily dataframe as new_candle_count in development mode
-            result = executor.run(df=daily_df.copy(), new_candle_count=len(daily_df))
+            result: AlertResult = ensure_alert_result(
+                executor.run(df=daily_df.copy(), new_candle_count=len(daily_df))
+            )
             
             if result.has_alerts:
-                # Step 1: Enrich the result with both suggested prices.
-                perf_prices = []
-                struct_prices = []
-                suggested_profit_thresholds = []
-                for _, alert_row in result.alerts.iterrows():
-                    alert_time_obj = pd.to_datetime(alert_row['alert_time'])
+                # Step 1: Enrich alerts with suggested prices
+                for alert in result.confirmed_alerts:  # Type: AlertData (inferred from List[AlertData])
                     perf_price, struct_price = calculate_suggested_prices(
-                        signal=alert_row['signal'],
-                        alert_time=alert_time_obj,
-                        approach=alert_row['approach']
+                        signal=alert.signal,
+                        alert_time=alert.alert_time,
+                        approach=alert.approach
                     )
-                    perf_prices.append(perf_price)
-                    struct_prices.append(struct_price)
-                    suggested_profit_thresholds.append(alert_row['suggested_profit_threshold'])
-
-                result.alerts['performance_suggested_price'] = perf_prices
-                result.alerts['structural_suggested_price'] = struct_prices
-                result.alerts['suggested_profit_threshold'] = suggested_profit_thresholds
+                    alert.performance_suggested_price = perf_price
+                    alert.structural_suggested_price = struct_price
 
                 # Step 2: Send notifications (fire-and-forget)
                 self.notification_manager.process_and_notify(result, self.symbol)
 
                 # Step 3: Further enrich with validation data and save reports
                 if settings.MODE == "DEVELOPMENT":
-                    validated_alerts = []
-                    for _, alert_row in result.alerts.iterrows():
-                        alert_data = AlertData(**alert_row.to_dict())
-                        alert_data.symbol = self.symbol
-                        validated_alert = calculate_alert_performance(alert_data, daily_df, validation_settings.VALIDATION_PERIOD_MINUTES)
-                        validated_alerts.append(validated_alert.to_dict())
-                    result.alerts = pd.DataFrame(validated_alerts)
+                    for alert in result.confirmed_alerts:  # Type: AlertData (inferred from List[AlertData])
+                        alert.symbol = self.symbol
+                        validated_alert = calculate_alert_performance(alert, daily_df, validation_settings.VALIDATION_PERIOD_MINUTES)
+                        # Copy validated fields back to alert
+                        alert.status = validated_alert.status
+                        alert.profit_loss = validated_alert.profit_loss
+                        alert.time_to_best_price = validated_alert.time_to_best_price
+                        alert.min_expected_profit_loss = validated_alert.min_expected_profit_loss
+                        alert.validation_price_time = validated_alert.validation_price_time
                 
                 self._enrich_and_save_reports(result, processing_date)
                 
                 # Collect alerts for end-of-day profitability simulation
-                all_alerts_for_day.extend(result.alerts.to_dict('records'))
+                all_alerts_for_day.extend([a.to_dict() for a in result.confirmed_alerts])
 
         if settings.MODE == "DEVELOPMENT" and all_alerts_for_day:
             self.logger.info(f"\n--- Running Profitability Simulation for {self.symbol} on {processing_date} ---")

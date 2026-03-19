@@ -2,10 +2,11 @@
 import pandas as pd
 from typing import List
 import logging
+from varname import nameof
 
 from src.stockreports.alert.executor import Executor
 from src.stockreports.alert.model.models import AlertData, Validation
-from src.stockreports.alert.common.constants import Approach, Signal, Trend
+from src.stockreports.alert.common.constants import Approach, Signal, Trend, CandleColumn, IchimokuColumn
 from src.stockreports.utils.log_factory import log, LogLevel, ValidationStatus
 
 from .settings import IchimokuSettings
@@ -53,16 +54,16 @@ class IchimokuExecutor(Executor):
             
             # Build alert details with Ichimoku component values
             details = {
-                "tenkan_sen": round(float(candle.get('tenkan_sen', 0)), 2),
-                "kijun_sen": round(float(candle.get('kijun_sen', 0)), 2),
-                "senkou_a": round(float(candle.get('senkou_a', 0)), 2),
-                "senkou_b": round(float(candle.get('senkou_b', 0)), 2),
-                "chikou_span": round(float(candle.get('chikou_span', 0)), 2),
+                nameof(IchimokuColumn.TENKAN_SEN): round(float(candle.get(IchimokuColumn.TENKAN_SEN, 0)), 2),
+                nameof(IchimokuColumn.KIJUN_SEN): round(float(candle.get(IchimokuColumn.KIJUN_SEN, 0)), 2),
+                nameof(IchimokuColumn.SENKOU_A): round(float(candle.get(IchimokuColumn.SENKOU_A, 0)), 2),
+                nameof(IchimokuColumn.SENKOU_B): round(float(candle.get(IchimokuColumn.SENKOU_B, 0)), 2),
+                nameof(IchimokuColumn.CHIKOU_SPAN): round(float(candle.get(IchimokuColumn.CHIKOU_SPAN, 0)), 2),
             }
             
             # Use base class method to create alert with details
             # Get the maximum of configured threshold or calculated magnitude
-            calculated_magnitude = abs(float(candle['close']) - float(self.first_candle['open']))
+            calculated_magnitude = abs(float(candle[CandleColumn.CLOSE]) - float(self.first_candle[CandleColumn.OPEN]))
             final_magnitude = max(self.settings.magnitude_threshold, calculated_magnitude)
             
             alert = self._create_alert_with_details(
@@ -208,7 +209,7 @@ class IchimokuExecutor(Executor):
                 current_candle_full = df_indexed.iloc[i]
                 
                 # DEBUG: Log which index we're processing
-                candle_time = current_candle_full.get('time') if current_candle_full is not None else 'N/A'
+                candle_time = current_candle_full.get(CandleColumn.TIME) if current_candle_full is not None else 'N/A'
                 log(
                     logger=self.logger,
                     status=ValidationStatus.PASSED,

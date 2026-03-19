@@ -80,7 +80,80 @@ high-quality, production-ready code.
 
 ---
 
+### 🔒 MANDATORY: Type-Safe Standardization Rules
+
+**CRITICAL REQUIREMENT**: All generated code MUST follow the type-safe standardization pattern established in March 2026.
+
+**Reference Document**: 
+📖 `docs/IMPLEMENTATION/TYPE_SAFE_STANDARDIZATION_PATTERN.md`
+
+**This document is MANDATORY reading before Phase 4.** It provides:
+- ✅ **Three Pillars**: Centralized Enums, Type-Safe Models, Standardized Access Patterns
+- ✅ **Implementation Rules**: Column additions, new approaches, dynamic keys, type annotations
+- ✅ **Case Studies**: Real examples from ICHIMOKU, STRONG_CANDLE, VRA, CONSISTENT_MOMENTUM, CONSISTENT_VOLUME_ANCHOR, VOLUME_SPIKE_CONFIRMATION
+- ✅ **Checklist**: Type-safe standardization checklist for all code
+- ✅ **Metrics**: Before/after metrics showing impact
+
+**Quick Rules Summary** (full details in TYPE_SAFE_STANDARDIZATION_PATTERN.md):
+1. **All column access MUST use CandleColumn enum** (never string literals)
+   ```python
+   # ✅ CORRECT
+   volume = df[CandleColumn.VOLUME]
+   
+   # ❌ WRONG
+   volume = df['volume']
+   ```
+
+2. **All categorical values MUST use enums** (Signal, Status, Trend, etc.)
+   ```python
+   # ✅ CORRECT
+   if signal == Signal.BUY:
+       status = Status.PASSED
+   
+   # ❌ WRONG
+   if signal == 'BUY':
+       status = 'Success'
+   ```
+
+3. **Dynamic keys must use nameof() pattern** (for alert details)
+   ```python
+   # ✅ CORRECT
+   details = {
+       nameof(IchimokuColumn.TENKAN_SEN): value,
+   }
+   
+   # ❌ WRONG
+   details = {
+       "tenkan_sen": value,
+   }
+   ```
+
+4. **All default values must use enum constants** (never magic strings)
+   ```python
+   # ✅ CORRECT
+   trend = calculated if calculated else Trend.NEUTRAL
+   
+   # ❌ WRONG
+   trend = calculated if calculated else "UNKNOWN"
+   ```
+
+5. **All function signatures MUST have type annotations**
+   ```python
+   # ✅ CORRECT
+   def calculate_signal(window_df: pd.DataFrame) -> Signal:
+       return Signal.BUY if condition else Signal.SELL
+   
+   # ❌ WRONG
+   def calculate_signal(window_df):
+       return 'BUY' if condition else 'SELL'
+   ```
+
+**Do NOT proceed to Phase 4 until you've read TYPE_SAFE_STANDARDIZATION_PATTERN.md and understand all 5 rules.**
+
+---
+
 ### Phase 4: REFERENCE STRONG_CANDLE (10 minutes)
+
 
 **Objective**: Study actual working code to ensure your generated code matches patterns
 

@@ -5,6 +5,7 @@ class Approach:
     VOLUME_SPIKE_CONFIRMATION = "VOLUME_SPIKE_CONFIRMATION"
     VRA = "VRA"
     CONSISTENT_VOLUME_ANCHOR = "CONSISTENT_VOLUME_ANCHOR"
+    PRICE_MOVEMENT = "PRICE_MOVEMENT"  # Price level crossing alerts
 
 class Mode:
     DEVELOPMENT = "DEVELOPMENT"
@@ -14,6 +15,15 @@ class Signal:
     BUY = "BUY"
     SELL = "SELL"
     NEUTRAL = "NEUTRAL"
+
+class Status:
+    # AlertResult status values
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    # AlertData validation status values
+    INCONCLUSIVE = "Inconclusive"
+    PASSED = "Success"  # Alert validation passed (profit threshold met)
+    FAILED_VALIDATION = "Failed"  # Alert validation failed (profit threshold not met)
 
 class Trend:
     UPTREND = "uptrend"
@@ -55,6 +65,15 @@ class CandleColumn:
     LOW = "low"
     CLOSE = "close"
     VOLUME = "volume"
+    TIME = "time"  # Timestamp column for data indexing
+
+class IchimokuColumn:
+    """Ichimoku indicator column name constants."""
+    TENKAN_SEN = "tenkan_sen"
+    KIJUN_SEN = "kijun_sen"
+    SENKOU_A = "senkou_a"
+    SENKOU_B = "senkou_b"
+    CHIKOU_SPAN = "chikou_span"
 
 class ValidationStatus():
     PASSED = "Passed"

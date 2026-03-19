@@ -12,6 +12,7 @@ Inherits common calculation methods from the base Analyzer class.
 from typing import Optional, Tuple
 import pandas as pd
 from src.stockreports.alert.analyzer import Analyzer
+from src.stockreports.alert.common.constants import CandleColumn
 from src.stockreports.utils import candle_utils, window_utils
 
 
@@ -70,7 +71,7 @@ class ConsistentVolumeAnchorAnalyzer(Analyzer):
             Anchor marks the turning point in volume trend. Checked
             sequentially from position 1 onwards.
         """
-        volumes = lookback_window_df['volume'].values
+        volumes = lookback_window_df[CandleColumn.VOLUME].values
 
         for i in range(1, len(volumes)):
             # Check if volumes from 0 to i are strictly decreasing
@@ -182,14 +183,14 @@ class ConsistentVolumeAnchorAnalyzer(Analyzer):
         """
         # Filter by volume condition
         volume_mask = (
-            window_df['volume'] * max_volume_multiplier
+            window_df[CandleColumn.VOLUME] * max_volume_multiplier
         ) <= median_volume
         volume_filtered = window_df[volume_mask]
 
         # Filter by body size condition
         bodies = (
-            volume_filtered['close'] -
-            volume_filtered['open']
+            volume_filtered[CandleColumn.CLOSE] -
+            volume_filtered[CandleColumn.OPEN]
         ).abs()
         body_mask = bodies <= max_body_size
         filtered_result = volume_filtered[body_mask]
@@ -282,8 +283,8 @@ class ConsistentVolumeAnchorAnalyzer(Analyzer):
             Higher ratio means more of range is body (strong candle).
             Used to validate alert candle strength.
         """
-        body = abs(alert_candle['close'] - alert_candle['open'])
-        candle_range = alert_candle['high'] - alert_candle['low']
+        body = abs(alert_candle[CandleColumn.CLOSE] - alert_candle[CandleColumn.OPEN])
+        candle_range = alert_candle[CandleColumn.HIGH] - alert_candle[CandleColumn.LOW]
 
         if candle_range <= 0:
             return None
@@ -326,8 +327,8 @@ class ConsistentVolumeAnchorAnalyzer(Analyzer):
         if window_df.empty:
             return None
 
-        max_vol = window_df['volume'].max()
-        min_vol = window_df['volume'].min()
+        max_vol = window_df[CandleColumn.VOLUME].max()
+        min_vol = window_df[CandleColumn.VOLUME].min()
 
         return (max_vol, min_vol)
 
@@ -373,6 +374,6 @@ class ConsistentVolumeAnchorAnalyzer(Analyzer):
             return None
 
         bodies = (
-            window_df['close'] - window_df['open']
+            window_df[CandleColumn.CLOSE] - window_df[CandleColumn.OPEN]
         ).abs()
         return bodies.max()

@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 from varname import nameof
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
+from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend, CandleColumn
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from .settings import ConsistentVolumeAnchorSettings
 from .analyzer import ConsistentVolumeAnchorAnalyzer
@@ -188,7 +188,7 @@ class ConsistentVolumeAnchorExecutor(Executor):
         Find the first candle where volumes from start to this candle are always decreasing.
         Returns the index position in the DataFrame or None if not found.
         """
-        volumes = lookback_window_df['volume'].values
+        volumes = lookback_window_df[CandleColumn.VOLUME].values
         
         for i in range(1, len(volumes)):
             # Check if volumes from 0 to i are strictly decreasing
@@ -404,7 +404,7 @@ class ConsistentVolumeAnchorExecutor(Executor):
         )
         
         if not is_valid:
-            alert_vol = alert_candle['volume']
+            alert_vol = alert_candle[CandleColumn.VOLUME]
             if alert_vol < max_vol:
                 log(
                     logger=self.logger,
@@ -464,7 +464,7 @@ class ConsistentVolumeAnchorExecutor(Executor):
         
         if not is_valid:
             body_size = abs(
-                alert_candle['close'] - alert_candle['open']
+                alert_candle[CandleColumn.CLOSE] - alert_candle[CandleColumn.OPEN]
             )
             log(
                 logger=self.logger,
@@ -512,7 +512,7 @@ class ConsistentVolumeAnchorExecutor(Executor):
         
         if not is_valid:
             alert_body = abs(
-                alert_candle['close'] - alert_candle['open']
+                alert_candle[CandleColumn.CLOSE] - alert_candle[CandleColumn.OPEN]
             )
             max_body = (
                 ConsistentVolumeAnchorAnalyzer.get_max_body_in_window(
@@ -613,9 +613,9 @@ class ConsistentVolumeAnchorExecutor(Executor):
         )
         
         if not is_valid:
-            alert_close = alert_candle['close']
-            window_opens = consistent_volume_window['open']
-            window_closes = consistent_volume_window['close']
+            alert_close = alert_candle[CandleColumn.CLOSE]
+            window_opens = consistent_volume_window[CandleColumn.OPEN]
+            window_closes = consistent_volume_window[CandleColumn.CLOSE]
             prices = pd.concat([window_opens, window_closes])
             
             if signal == Signal.BUY:

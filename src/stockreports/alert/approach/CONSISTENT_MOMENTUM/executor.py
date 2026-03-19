@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 from varname import nameof
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
+from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend, CandleColumn
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
 from .settings import ConsistentMomentumSettings
 from .analyzer import ConsistentMomentumAnalyzer
@@ -211,9 +211,9 @@ class ConsistentMomentumExecutor(Executor):
 
         # Find the index of min open (BUY) or max open (SELL)
         if signal == Signal.BUY:
-            extreme_idx = lookback_window_df['open'].idxmin()
+            extreme_idx = lookback_window_df[CandleColumn.OPEN].idxmin()
         else:  # SELL
-            extreme_idx = lookback_window_df['open'].idxmax()
+            extreme_idx = lookback_window_df[CandleColumn.OPEN].idxmax()
 
         # Convert to positional index within the window
         extreme_position = lookback_window_df.index.get_loc(extreme_idx)

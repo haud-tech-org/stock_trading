@@ -64,7 +64,7 @@ class VraAnalyzer(Analyzer):
         if window_df.empty:
             return None
 
-        max_idx = window_df['volume'].idxmax()
+        max_idx = window_df[CandleColumn.VOLUME].idxmax()
         return window_df.loc[max_idx]
 
     @staticmethod
@@ -100,7 +100,7 @@ class VraAnalyzer(Analyzer):
         if window_df.empty:
             return None
 
-        min_idx = window_df['volume'].idxmin()
+        min_idx = window_df[CandleColumn.VOLUME].idxmin()
         return window_df.loc[min_idx]
 
     @staticmethod

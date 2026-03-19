@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional
 import pandas as pd
-from src.stockreports.alert.common.constants import ValidationStatus, Approach, Signal, Trend
+from src.stockreports.alert.common.constants import ValidationStatus, Approach, Signal, Status, Trend
 
 @dataclass
 class AlertData:
@@ -21,7 +21,7 @@ class AlertData:
     trend: Optional[Trend] = None
     profit_loss: Optional[float] = None
     period_time: Optional[int] = None
-    status: Optional[str] = None
+    status: Optional[Status] = None
     validation_price_time: Optional[pd.Timestamp] = None
     time_to_best_price: Optional[int] = None  # Time in minutes to reach best price
     min_expected_profit_loss: Optional[float] = None
@@ -47,17 +47,98 @@ class AlertData:
 class AlertResult:
     """
     Standard data object for returning results from an alert approach executor.
+    
+    REFACTORED (v2.0): Uses confirmed_alerts (List[AlertData]) as primary source.
+    The alerts DataFrame is generated on-demand for backward compatibility.
+    
+    Attributes:
+        approach_name: Name of the alert approach that generated these results
+        confirmed_alerts: List of typed AlertData objects (PRIMARY DATA SOURCE)
+                         Can be None or empty list if no alerts found or error occurred
+        status: Status.SUCCESS or Status.FAILED
+        message: Error message if status is Status.FAILED
     """
     approach_name: str
-    alerts: pd.DataFrame
-    status: str = "SUCCESS"
-    message: str = ""
     confirmed_alerts: Optional[List[AlertData]] = None
+    status: Status = Status.SUCCESS
+    message: str = ""
+
+    def __post_init__(self):
+        """Normalize and validate confirmed_alerts at construction time."""
+        # Normalize None to empty list for consistency
+        if self.confirmed_alerts is None:
+            self.confirmed_alerts = []
+        
+        # Validate that confirmed_alerts is a list
+        if not isinstance(self.confirmed_alerts, list):
+            raise TypeError(
+                f"confirmed_alerts must be List[AlertData] or None, "
+                f"got {type(self.confirmed_alerts).__name__}"
+            )
+        
+        # Validate that all items in list are AlertData
+        for item in self.confirmed_alerts:
+            if not isinstance(item, AlertData):
+                raise TypeError(
+                    f"All items in confirmed_alerts must be AlertData, "
+                    f"got {type(item).__name__}"
+                )
 
     @property
     def has_alerts(self) -> bool:
-        """Checks if any alerts were generated."""
-        return not self.alerts.empty
+        """
+        Checks if any alerts were generated.
+        
+        Returns:
+            bool: True if confirmed_alerts list is not empty
+        """
+        return len(self.confirmed_alerts) > 0 if self.confirmed_alerts else False
+    
+    @property
+    def alerts(self) -> pd.DataFrame:
+        """
+        DEPRECATED: Use confirmed_alerts instead.
+        
+        Returns DataFrame representation of confirmed_alerts.
+        Generated on-demand for backward compatibility only.
+        
+        WARNING: This property will be removed in v3.0.
+        Migrate code to use confirmed_alerts directly.
+        
+        Returns:
+            pd.DataFrame: Tabular representation of confirmed_alerts (empty if None or empty)
+        """
+        import warnings
+        warnings.warn(
+            "AlertResult.alerts DataFrame property is deprecated. "
+            "Use confirmed_alerts (List[AlertData]) instead. "
+            "This property will be removed in v3.0.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.to_dataframe()
+    
+    def to_dataframe(self) -> pd.DataFrame:
+        """
+        Convert confirmed_alerts list to DataFrame.
+        
+        Explicit method for converting typed list to DataFrame format.
+        Use this when you need DataFrame operations (grouping, sorting, etc).
+        Prefer using confirmed_alerts directly when possible.
+        
+        Returns:
+            pd.DataFrame: Each row is an alert with all AlertData fields
+                         Empty DataFrame if confirmed_alerts is None or empty
+            
+        Example:
+            >>> result = executor.run(df, new_candle_count)
+            >>> if result.has_alerts:
+            ...     df = result.to_dataframe()
+            ...     latest = df.sort_values('alert_time').iloc[-1]
+        """
+        if not self.confirmed_alerts:
+            return pd.DataFrame()
+        return pd.DataFrame([alert.to_dict() for alert in self.confirmed_alerts])
 
 @dataclass
 class ConfirmationResult:

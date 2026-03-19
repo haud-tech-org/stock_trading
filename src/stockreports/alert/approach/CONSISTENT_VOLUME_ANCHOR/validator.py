@@ -12,7 +12,7 @@ Inherits common validation methods from the base Validator class.
 from typing import Optional, Tuple
 import pandas as pd
 from src.stockreports.alert.validator import Validator
-from src.stockreports.alert.common.constants import Signal
+from src.stockreports.alert.common.constants import Signal, CandleColumn
 from src.stockreports.utils import candle_utils
 from .analyzer import ConsistentVolumeAnchorAnalyzer
 
@@ -212,7 +212,7 @@ class ConsistentVolumeAnchorValidator(Validator):
             Ensures alert candle shows significant volume spike
             compared to consistent window. Both conditions required.
         """
-        alert_vol = alert_candle['volume']
+        alert_vol = alert_candle[CandleColumn.VOLUME]
 
         # Check against max volume
         if alert_vol < max_window_volume:
@@ -259,7 +259,7 @@ class ConsistentVolumeAnchorValidator(Validator):
             Ensures alert candle has sufficient strength/size to
             confirm signal.
         """
-        body = abs(alert_candle['close'] - alert_candle['open'])
+        body = abs(alert_candle[CandleColumn.CLOSE] - alert_candle[CandleColumn.OPEN])
         return body >= min_body_size
 
     @staticmethod
@@ -316,7 +316,7 @@ class ConsistentVolumeAnchorValidator(Validator):
         """
         # Check if alert has largest body
         alert_body = abs(
-            alert_candle['close'] - alert_candle['open']
+            alert_candle[CandleColumn.CLOSE] - alert_candle[CandleColumn.OPEN]
         )
         max_body = (
             ConsistentVolumeAnchorAnalyzer.get_max_body_in_window(
@@ -384,9 +384,9 @@ class ConsistentVolumeAnchorValidator(Validator):
             Ensures alert confirms directional continuation beyond
             consistent window bounds.
         """
-        alert_close = alert_candle['close']
-        window_opens = consistent_window_df['open']
-        window_closes = consistent_window_df['close']
+        alert_close = alert_candle[CandleColumn.CLOSE]
+        window_opens = consistent_window_df[CandleColumn.OPEN]
+        window_closes = consistent_window_df[CandleColumn.CLOSE]
         prices = pd.concat([window_opens, window_closes])
 
         if signal == Signal.BUY:

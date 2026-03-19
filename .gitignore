@@ -47,6 +47,12 @@ tests/debug/data/
 __pypackages__/
 
 # ============================================================================
+# Shell Configuration (local backup/recovery files)
+# ============================================================================
+.zshrc_fixed
+.bashrc_fixed
+
+# ============================================================================
 # SENSITIVE CONFIGURATION & SECRETS
 # ============================================================================
 # CRITICAL: Never commit credentials, API keys, or secrets to version control

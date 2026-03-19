@@ -6,7 +6,7 @@ from typing import Optional
 from varname import nameof
 
 from src.stockreports.alert.executor import Executor
-from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend
+from src.stockreports.alert.common.constants import Approach, Signal, Mode, ValidationStatus, LogLevel, Trend, CandleColumn
 from src.stockreports.alert.model.models import AlertResult, AlertData
 from src.stockreports.alert.model.models import Validation
 from .settings import VraSettings
@@ -168,8 +168,8 @@ class VraExecutor(Executor):
         # Step 3: Check volume ratio
         self.next_validation()
         volume_ratio = self.analyzer.calculate_volume_ratio(
-            max_vol_candle['volume'],
-            min_vol_candle['volume']
+            max_vol_candle[CandleColumn.VOLUME],
+            min_vol_candle[CandleColumn.VOLUME]
         )
         is_volume_ratio_valid = self.validator.validate_volume_ratio(
             volume_ratio,
@@ -202,8 +202,8 @@ class VraExecutor(Executor):
         # Step 4: Check max volume vs alert candle volume
         self.next_validation()
         is_max_volume_valid = self.validator.validate_max_volume_vs_alert_candle(
-            max_volume=max_vol_candle['volume'],
-            alert_volume=alert_candle['volume'],
+            max_volume=max_vol_candle[CandleColumn.VOLUME],
+            alert_volume=alert_candle[CandleColumn.VOLUME],
             multiplier_threshold=self.settings.volume_multiplier_by_reversal_trend
         )
         if not is_max_volume_valid:
@@ -467,7 +467,7 @@ class VraExecutor(Executor):
         # Validation 2: Open price extremes and their positions
         self.next_validation()
         trend_window_edge_size = self.settings.trend_window_edge_slice
-        open_prices = trend_window['open']
+        open_prices = trend_window[CandleColumn.OPEN]
         L_idx = open_prices.idxmin()
         H_idx = open_prices.idxmax()
         L_pos = trend_window.index.get_loc(L_idx)
