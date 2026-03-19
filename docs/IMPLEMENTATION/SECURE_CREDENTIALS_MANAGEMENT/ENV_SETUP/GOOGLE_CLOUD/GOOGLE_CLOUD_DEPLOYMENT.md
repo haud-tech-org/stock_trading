@@ -341,16 +341,23 @@ export SERVICE_NAME="stock-alerter"
 export SERVICE_ACCOUNT_EMAIL="stock-alerter-sa@stock-trading-489001.iam.gserviceaccount.com"
 
 # Deploy to Cloud Run with all environment variables and secrets on a single line
+# NOTE: Updated with actual production configuration:
+# - Memory: 8Gi (from 512Mi) for better performance
+# - CPU: 8 cores (from 1) for parallel processing
+# - Max Instances: 2 (from 10) for cost control
+# - Authentication: --no-allow-unauthenticated for secure production
+# - Cloud Storage: Bucket mounted at /mnt via gcsfuse
 gcloud run deploy $SERVICE_NAME \
   --image gcr.io/$PROJECT_ID/stock-alerter:latest \
   --platform managed \
   --region $REGION \
   --service-account $SERVICE_ACCOUNT_EMAIL \
-  --allow-unauthenticated \
-  --memory 512Mi \
-  --cpu 1 \
+  --no-allow-unauthenticated \
+  --memory 8Gi \
+  --cpu 8 \
   --timeout 300 \
-  --max-instances 10 \
+  --max-instances 2 \
+  --execution-environment gen2 \
   --set-env-vars EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
   --set-secrets EMAIL_SENDER=email-sender:latest,EMAIL_APP_PASSWORD=email-app-password:latest,EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest
 ```
@@ -368,21 +375,31 @@ gcloud run deploy $SERVICE_NAME \
   - More secure for production deployments
   - Cloud Scheduler jobs can still invoke using service account authentication
   - To allow public access, use `--allow-unauthenticated` flag instead
+- `--memory 8Gi`: Memory allocation for each instance
   - Minimum: 256Mi, Maximum: 16Gi
-  - 16Gi provides maximum memory for complex computations
+  - 8Gi provides good balance for complex stock alert computations
   - Higher memory allows faster data processing and caching
+  - Paired with 8 CPU cores for optimal performance
 - `--cpu 8`: CPU allocation for each instance
-  - Minimum: 1, Maximum: 8 cores
+  - Minimum: 1, Maximum: 8 cores (maximum)
   - 8 cores (maximum) enables parallel processing and fast execution
-  - Matched with 16Gi memory for optimal performance
+  - Optimal for concurrent alert generation and data analysis
+  - Matched with 8Gi memory for balanced performance
+  - **Billing Model**: Instance-based (see section below)
 - `--timeout 300`: Maximum execution time in seconds (5 minutes)
   - Must be 60-3600 seconds
-  - For long-running alerts, increase to 600 (10 minutes)
+  - 300 seconds provides enough time for complete alert generation cycle
+  - For long-running alerts, can increase to 600 (10 minutes)
   - Increase if alert generation takes longer than timeout
 - `--max-instances 2`: Maximum number of concurrent instances
   - Controls cost and resource usage
   - Auto-scales based on request load up to this limit
-  - Limited to 2 instances for cost control with high-resource configuration
+  - Limited to 2 instances for cost control with high-resource (8Gi/8CPU) configuration
+  - Prevents runaway costs while maintaining availability
+- `--execution-environment gen2`: Use Cloud Run 2nd generation runtime
+  - Better performance and flexibility compared to gen1
+  - Supports longer timeouts and larger memory allocations
+  - Default for new deployments, recommended for production
 
 **Environment Variables** (`--set-env-vars`) - All on one line with comma separation:
 - `EMAIL_ENABLED=true`: Enable email notifications
@@ -409,6 +426,183 @@ gcloud run deploy $SERVICE_NAME \
 - No line breaks within the variable/secret lists (this causes command parsing errors)
 - `:latest` always uses the most recent version of each secret
 - Secrets are never visible in Cloud Console or logs (encrypted transmission)
+
+### Billing Model Configuration
+
+**Current Configuration**: **Instance-Based Billing**
+
+The service is configured with instance-based billing, which means:
+
+```json
+{
+  "run.googleapis.com/cpu-throttling": "false",
+  "run.googleapis.com/startup-cpu-boost": "true"
+}
+```
+
+**Instance-Based Billing Details**:
+- **Cost Model**: Charged for the entire lifecycle of each instance
+- **CPU Availability**: Full CPU (8 cores) available at all times, not throttled
+- **Concurrency**: 640 concurrent requests per instance (containerConcurrency: 640)
+- **Cost per Month** (Approximate):
+  - 8 CPU cores × $0.0000317 per CPU-second × 2,592,000 seconds/month = ~$655/month per active instance
+  - Max 2 instances = ~$1,310/month for full month operation
+  - Scales with actual instance uptime
+
+**Why Instance-Based Instead of Request-Based?**
+1. **Better for Always-On Services**: Stock alerter runs continuously checking market data
+2. **Better for High-Concurrency**: 640 concurrent requests per instance is high throughput
+3. **Better for Predictable Performance**: No CPU throttling between requests
+4. **Guaranteed CPU**: Full 8 cores always available for parallel alert processing
+
+**Comparison: Request-Based vs Instance-Based**
+
+| Feature | Request-Based | Instance-Based (Current) |
+|---------|---------------|------------------------|
+| **Billing** | Only when processing requests | Entire instance lifecycle |
+| **CPU Availability** | Limited outside requests | Full 8 cores always |
+| **Cost Model** | Pay-per-request | Pay-per-instance-second |
+| **Best For** | Sporadic, low-latency requests | Always-on, high-throughput services |
+| **Startup** | Slower (cold starts) | Faster (always warm) |
+| **Concurrency** | Lower | Higher (640 in your config) |
+
+**To Switch Billing Models** (if needed):
+
+```bash
+# Switch to REQUEST-BASED billing (CPU throttled between requests)
+# This would reduce costs but increase latency
+gcloud run deploy stock-alerter \
+  --region=europe-west1 \
+  --cpu-throttling  # Enables request-based billing (CPU throttled)
+
+# Keep INSTANCE-BASED billing (current configuration)
+gcloud run deploy stock-alerter \
+  --region=europe-west1 \
+  --no-cpu-throttling  # Disables CPU throttling (instance-based billing)
+```
+
+**Performance Implications**:
+
+With instance-based billing and 8 CPU cores:
+- ✅ Stock alerts are processed in parallel
+- ✅ Multiple data streams can be analyzed simultaneously
+- ✅ No CPU throttling delays between requests
+- ✅ Constant availability for incoming requests
+- ❌ Higher cost (~$655/month per active instance)
+
+**Cost Optimization Options**:
+
+1. **Reduce CPU Cores** (switch to request-based):
+   ```bash
+   gcloud run deploy stock-alerter \
+     --cpu=4 \
+     --cpu-throttling  # Request-based billing
+   ```
+   **Savings**: ~$330/month per instance, but slower processing
+
+2. **Reduce Max Instances**:
+   ```bash
+   gcloud run deploy stock-alerter \
+     --max-instances=1  # Only 1 instance instead of 2
+   ```
+   **Savings**: ~$655/month, but limits concurrent capacity
+
+3. **Schedule Execution** (if alerts don't need continuous availability):
+   ```bash
+   # Only run during market hours
+   gcloud scheduler jobs update http stock-alerter-scheduler \
+     --schedule="*/15 9-16 * * 1-5"  # Every 15 min, 9 AM-4 PM weekdays
+   ```
+   **Savings**: ~70% reduction in instance uptime
+
+## Additional Configuration Details (via Google Cloud Console)
+
+### Cloud Storage Volume Mount
+The service has a Cloud Storage bucket mounted at `/mnt` path:
+```json
+{
+  "volumes": [
+    {
+      "name": "gcs-1",
+      "csi": {
+        "driver": "gcsfuse.run.googleapis.com",
+        "volumeAttributes": {
+          "bucketName": "stock-trading-2"
+        }
+      }
+    }
+  ],
+  "volumeMounts": [
+    {
+      "name": "gcs-1",
+      "mountPath": "/mnt"
+    }
+  ]
+}
+```
+
+**Purpose**: Provides persistent storage access to Google Cloud Storage bucket `stock-trading-2` for reports and data files.
+
+**Access within application**:
+```python
+# Files in /mnt are stored in gs://stock-trading-2/
+# Example: /mnt/reports/alert.csv → gs://stock-trading-2/reports/alert.csv
+```
+
+### Startup Probe Configuration
+The service includes a TCP startup probe for robust health checking:
+```json
+{
+  "startupProbe": {
+    "tcpSocket": {
+      "port": 8080
+    },
+    "initialDelaySeconds": 0,
+    "periodSeconds": 240,
+    "timeoutSeconds": 240,
+    "failureThreshold": 1
+  }
+}
+```
+
+**Purpose**: Ensures the service has fully started before receiving traffic.
+
+**Parameters**:
+- `port 8080`: Checks if port 8080 is listening
+- `periodSeconds 240`: Check every 4 minutes
+- `timeoutSeconds 240`: Wait up to 4 minutes for response
+- `failureThreshold 1`: Single failure triggers restart
+
+### Startup CPU Boost
+The service has startup CPU boost enabled:
+```
+"run.googleapis.com/startup-cpu-boost": "true"
+```
+
+**Purpose**: Provides maximum CPU during container startup phase
+- Accelerates application initialization
+- Reduces time to first request handling
+- Uses full 8 CPU cores during startup (no throttling)
+- Automatically normalizes after startup completes
+
+### Container Concurrency Setting
+```
+containerConcurrency: 640
+```
+
+**Purpose**: Maximum number of concurrent requests per instance (640 requests per container).
+
+### Execution Environment
+```
+--execution-environment gen2
+```
+
+**Features**:
+- 2nd generation Cloud Run runtime
+- Faster startup times
+- Better resource efficiency
+- Supports longer timeouts (up to 3600 seconds)
+- Larger memory allocations (up to 16Gi)
 
 **Alternative Command Format** (if you need to split across lines for readability):
 
@@ -477,17 +671,26 @@ SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
 
 echo "Service URL: $SERVICE_URL"
 
-# Test the health endpoint
-curl $SERVICE_URL/health
+# Current production service URL:
+# https://stock-alerter-717776322217.europe-west1.run.app
 
-# Expected response:
+# Test the health endpoint (requires authentication since --no-allow-unauthenticated)
+# For authenticated requests, use the service account credentials or valid OAuth token
+curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  https://stock-alerter-717776322217.europe-west1.run.app/health
+
+# Expected response (when authenticated):
 # {"status": "ok"}
+
+# Note: The service requires authentication because it was deployed with --no-allow-unauthenticated
+# This is more secure for production deployments
 ```
 
 **Explanation**:
 - Retrieves the auto-generated HTTPS URL for your Cloud Run service
 - Tests the `/health` endpoint to verify the service is running
 - Health endpoint responds immediately (no background tasks)
+- Authentication is required for all requests (uses IAM permissions)
 
 ```bash
 # View recent deployment logs
