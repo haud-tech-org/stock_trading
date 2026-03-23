@@ -5,9 +5,11 @@ import json
 import uuid
 import math
 import logging
+import pytz
 from typing import List, Dict
 from datetime import datetime, timedelta
 from ..config.loader import get_price_alert_settings
+from ..utils.time_utils import TIMEZONE
 from .common.constants import Approach, Signal, Status
 from .model.models import AlertResult, AlertData
 
@@ -49,7 +51,8 @@ class PriceMovementAlerter:
         Removes all expired level entries from triggered_levels_today dictionary.
         Expired entries are those older than level_alert_cooldown.
         """
-        current_time = datetime.now()
+        # Get current time in market timezone (timezone-aware)
+        current_time = datetime.now(pytz.utc).astimezone(TIMEZONE)
         expired_levels = []
         cooldown_delta = timedelta(minutes=self.level_alert_cooldown)
         
