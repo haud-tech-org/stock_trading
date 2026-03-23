@@ -104,7 +104,7 @@ APPROACH_CONFIG = {
         "MAX_DIFFERENCE_PRICE_THRESHOLD": 5.5,
         "MAX_VOLUME_MULTIPLIER": 1.5,
         "MAGNITUDE_THRESHOLD": 6.5,
-        "COOLDOWN_WINDOW": 3
+        "COOLDOWN_WINDOW": 10
     },
     # --- VRA (Volume-Reversal-Anchor) ---
     "VRA": {
