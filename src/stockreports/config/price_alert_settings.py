@@ -4,6 +4,10 @@
 # If True, alerts are sent every time a level is crossed.
 ALLOW_REPEATED_LEVEL_ALERTS = False
 
+# Cooldown period (in minutes) after an alert triggers for a level before it can trigger again.
+# Default: 60 minutes. Prevents alert spam for volatile price levels.
+LEVEL_ALERT_COOLDOWN_MINUTES = 3
+
 PRICE_ALERTS = {
     "VN30": {
         "reference_price": 2051.62,

@@ -3,38 +3,70 @@
 import pandas as pd
 import json
 import uuid
-from typing import List
+import math
+import logging
+import pytz
+from typing import List, Dict
+from datetime import datetime, timedelta
 from ..config.loader import get_price_alert_settings
+from ..utils.time_utils import TIMEZONE
 from .common.constants import Approach, Signal, Status
 from .model.models import AlertResult, AlertData
-import logging
 
 # Get a logger for this module
 logger = logging.getLogger(__name__)
 
 class PriceMovementAlerter:
     """
-    A stateless calculator to detect price movements against predefined levels.
+    A detector for price movements against predefined levels.
+    Self-contained tracking of triggered levels with time-based expiration.
     Returns standardized AlertResult with confirmed_alerts containing AlertData objects.
     """
     
     APPROACH_NAME: str = Approach.PRICE_MOVEMENT
+    
+    # Class-level state: persists across all instances and service lifecycle
+    triggered_levels_today: Dict[float, datetime] = {}
 
-    def __init__(self, symbol: str, triggered_levels_today: set):
+    def __init__(self, symbol: str):
         """
         Initializes the PriceMovementAlerter.
 
         Args:
             symbol (str): The stock symbol to check.
-            triggered_levels_today (set): A set of price levels that have already
-                                          triggered an alert today for this symbol.
         """
         self.symbol = symbol
-        self.triggered_levels_today = triggered_levels_today
         self.settings = get_price_alert_settings()
         self.config = self.settings.PRICE_ALERTS.get(self.symbol, {})
         self.allow_repeated_alerts = self.settings.ALLOW_REPEATED_LEVEL_ALERTS
+        self.level_alert_cooldown = self.settings.LEVEL_ALERT_COOLDOWN_MINUTES
+        
+        # Clean up expired levels on initialization
+        self._remove_expired_levels()
+        
         logger.info(f"PriceMovementAlerter initialized for {self.symbol}. Config found: {bool(self.config)}")
+
+    def _remove_expired_levels(self) -> None:
+        """
+        Removes all expired level entries from triggered_levels_today dictionary.
+        Expired entries are those older than level_alert_cooldown.
+        """
+        # Get current time in market timezone (timezone-aware)
+        current_time = datetime.now(pytz.utc).astimezone(TIMEZONE)
+        expired_levels = []
+        cooldown_delta = timedelta(minutes=self.level_alert_cooldown)
+        
+        for level, triggered_time in PriceMovementAlerter.triggered_levels_today.items():
+            time_elapsed = current_time - triggered_time
+            if time_elapsed >= cooldown_delta:
+                expired_levels.append(level)
+                logger.debug(f"Level {level:.2f} expired (elapsed: {time_elapsed})")
+        
+        for level in expired_levels:
+            del PriceMovementAlerter.triggered_levels_today[level]
+        
+        if expired_levels:
+            logger.info(f"Cleaned up {len(expired_levels)} expired levels for {self.symbol}")
 
     def execute(self, master_df: pd.DataFrame) -> AlertResult:
         """
@@ -81,15 +113,23 @@ class PriceMovementAlerter:
         curr_time = last_two_ticks.iloc[-1]['time']
         prev_time = last_two_ticks.iloc[0]['time']
 
+        # Convert to datetime if string
+        if isinstance(curr_time, str):
+            curr_time = pd.to_datetime(curr_time)
+        if isinstance(prev_time, str):
+            prev_time = pd.to_datetime(prev_time)
+
         confirmed_alerts: List[AlertData] = []
-        newly_triggered_levels = set()
 
         # 1. Check for fixed level alerts
         fixed_levels = self.config.get("fixed_levels")
         if fixed_levels:
             for level in fixed_levels:
                 if self._has_straddled(prev_price, curr_price, level):
-                    if self.allow_repeated_alerts or level not in self.triggered_levels_today:
+                    # Allow alert if: repeated allowed OR level not in tracking
+                    should_trigger = self.allow_repeated_alerts or level not in PriceMovementAlerter.triggered_levels_today
+                    
+                    if should_trigger:
                         direction = "crossed above" if curr_price > prev_price else "crossed below"
                         message = (f"'{self.symbol}' {direction} fixed price level of {level:.2f}. "
                                    f"Current price: {curr_price:.2f}.")
@@ -112,7 +152,8 @@ class PriceMovementAlerter:
                             # No suggested prices for price movement alerts
                         )
                         confirmed_alerts.append(alert)
-                        newly_triggered_levels.add(level)
+                        PriceMovementAlerter.triggered_levels_today[level] = curr_time
+                        logger.info(f"Alert triggered for fixed level {level:.2f} ({direction})")
 
         # 2. Check for absolute interval alerts
         interval = self.config.get("absolute_interval")
@@ -124,9 +165,14 @@ class PriceMovementAlerter:
 
             if curr_level != prev_level:
                 # Determine the actual boundary that was crossed
-                crossed_boundary = max(prev_level, curr_level) * interval + ref_price if curr_price > prev_price else min(prev_level, curr_level) * interval + ref_price
+                # When moving UP: use curr_level boundary
+                # When moving DOWN: use prev_level boundary
+                crossed_boundary = curr_level * interval + ref_price if curr_price > prev_price else prev_level * interval + ref_price
                 
-                if self.allow_repeated_alerts or crossed_boundary not in self.triggered_levels_today:
+                # Allow alert if: repeated allowed OR level not in tracking
+                should_trigger = self.allow_repeated_alerts or crossed_boundary not in PriceMovementAlerter.triggered_levels_today
+                
+                if should_trigger:
                     direction = "crossed above" if curr_price > prev_price else "crossed below"
                     message = (f"'{self.symbol}' {direction} an interval price level. "
                                f"New level boundary: {crossed_boundary:.2f}. Current price: {curr_price:.2f}.")
@@ -150,10 +196,8 @@ class PriceMovementAlerter:
                         # No suggested prices for price movement alerts
                     )
                     confirmed_alerts.append(alert)
-                    newly_triggered_levels.add(crossed_boundary)
-
-        # Update the master set of triggered levels for the day
-        self.triggered_levels_today.update(newly_triggered_levels)
+                    PriceMovementAlerter.triggered_levels_today[crossed_boundary] = curr_time
+                    logger.info(f"Alert triggered for interval level {crossed_boundary:.2f} ({direction})")
 
         return AlertResult(
             approach_name=self.APPROACH_NAME,
@@ -170,6 +214,6 @@ class PriceMovementAlerter:
 
     def _get_interval_level(self, price: float, ref_price: float, interval: float) -> int:
         """
-        Calculates which interval band a price belongs to.
+        Calculates which interval band a price belongs to using truncation.
         """
         return int((price - ref_price) / interval)
