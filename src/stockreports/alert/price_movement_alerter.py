@@ -37,7 +37,7 @@ class PriceMovementAlerter:
         self.settings = get_price_alert_settings()
         self.config = self.settings.PRICE_ALERTS.get(self.symbol, {})
         self.allow_repeated_alerts = self.settings.ALLOW_REPEATED_LEVEL_ALERTS
-        self.level_alert_cooldown = self.settings.get("LEVEL_ALERT_COOLDOWN_MINUTES", 60)
+        self.level_alert_cooldown = self.settings.LEVEL_ALERT_COOLDOWN_MINUTES
         
         # Clean up expired levels on initialization
         self._remove_expired_levels()
