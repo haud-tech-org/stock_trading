@@ -255,7 +255,6 @@ class SymbolAlerter:
         self.logger.info(f"Starting new monitoring session for {self.symbol} on {time_simulator.processing_date}")
         
         master_df = pd.DataFrame()
-        triggered_levels_today = set()
 
         # This is the main operational loop for fetching and analyzing data.
         # Main monitoring loop
@@ -319,7 +318,7 @@ class SymbolAlerter:
                 continue
 
             # --- Price Movement Alerter ---
-            price_alerter = PriceMovementAlerter(self.symbol, triggered_levels_today)
+            price_alerter = PriceMovementAlerter(self.symbol)
             price_alert_result: AlertResult = price_alerter.execute(master_df)
             
             if price_alert_result.has_alerts:
