@@ -43,7 +43,7 @@ sys.path.insert(0, project_root)
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
+from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds, get_reports_directory_name
 
 
 def _run_update_price_alert_settings(performance_data: dict, settings_file_path: str):
@@ -185,7 +185,8 @@ def consolidate_reports(
 
     # Correctly define project_root by navigating up from the current file's location
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    base_reports_dir = os.path.join(project_root, "reports")
+    reports_dir_name = get_reports_directory_name()
+    base_reports_dir = os.path.join(project_root, reports_dir_name)
     
     # --- Updated: Use the new utility to get the correct directory for reading reports ---
     reports_dir = get_report_directory(

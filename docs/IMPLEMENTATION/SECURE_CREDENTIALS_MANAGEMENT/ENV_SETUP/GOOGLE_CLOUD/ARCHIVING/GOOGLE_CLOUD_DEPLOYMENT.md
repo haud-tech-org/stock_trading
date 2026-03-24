@@ -341,23 +341,32 @@ export SERVICE_NAME="stock-alerter"
 export SERVICE_ACCOUNT_EMAIL="stock-alerter-sa@stock-trading-489001.iam.gserviceaccount.com"
 
 # Deploy to Cloud Run with all environment variables and secrets on a single line
-# NOTE: Updated with actual production configuration:
-# - Memory: 8Gi (from 512Mi) for better performance
-# - CPU: 8 cores (from 1) for parallel processing
-# - Max Instances: 2 (from 10) for cost control
+# NOTE: Production configuration with complete feature set:
+# - Memory: 16Gi (maximum) for optimal performance
+# - CPU: 8 cores (maximum) for parallel processing
+# - Billing: Instance-based with --no-cpu-throttling (always pay for CPU, not just when handling requests)
+# - CPU Boost: Enabled for faster startup
+# - Min Instances: 1 (always keep 1 instance warm for instant responses)
+# - Max Instances: 2 for cost control with high-resource allocation
 # - Authentication: --no-allow-unauthenticated for secure production
-# - Cloud Storage: Bucket mounted at /mnt via gcsfuse
+# - Cloud Storage: GCS bucket mounted at /mnt via GCSFUSE
+# - Environment: Gen2 with 5-minute timeout
 gcloud run deploy $SERVICE_NAME \
   --image gcr.io/$PROJECT_ID/stock-alerter:latest \
   --platform managed \
   --region $REGION \
   --service-account $SERVICE_ACCOUNT_EMAIL \
   --no-allow-unauthenticated \
-  --memory 8Gi \
+  --memory 16Gi \
   --cpu 8 \
+  --no-cpu-throttling \
+  --cpu-boost \
   --timeout 300 \
+  --min-instances 1 \
   --max-instances 2 \
   --execution-environment gen2 \
+  --add-volume=name=gcs-1,type=cloud-storage,bucket=stock-trading-2 \
+  --add-volume-mount=volume=gcs-1,mount-path=/mnt \
   --set-env-vars EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
   --set-secrets EMAIL_SENDER=email-sender:latest,EMAIL_APP_PASSWORD=email-app-password:latest,EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest
 ```
@@ -375,17 +384,29 @@ gcloud run deploy $SERVICE_NAME \
   - More secure for production deployments
   - Cloud Scheduler jobs can still invoke using service account authentication
   - To allow public access, use `--allow-unauthenticated` flag instead
-- `--memory 8Gi`: Memory allocation for each instance
+- `--memory 16Gi`: Memory allocation for each instance
   - Minimum: 256Mi, Maximum: 16Gi
-  - 8Gi provides good balance for complex stock alert computations
+  - 16Gi provides optimal performance for complex stock alert computations
   - Higher memory allows faster data processing and caching
-  - Paired with 8 CPU cores for optimal performance
+  - Paired with 8 CPU cores for maximum performance
 - `--cpu 8`: CPU allocation for each instance
   - Minimum: 1, Maximum: 8 cores (maximum)
   - 8 cores (maximum) enables parallel processing and fast execution
   - Optimal for concurrent alert generation and data analysis
-  - Matched with 8Gi memory for balanced performance
+  - Matched with 16Gi memory for maximum performance
   - **Billing Model**: Instance-based (see section below)
+- `--no-cpu-throttling`: Disable CPU throttling to enable instance-based billing
+  - By default, CPU is throttled when not actively serving requests (request-based billing)
+  - Using `--no-cpu-throttling` enables instance-based billing (always pay for CPU)
+  - Ensures full CPU power is available at all times (no throttling between requests)
+  - Better for performance-critical applications like stock alert generation
+  - Cost: You pay for the instance's full CPU lifetime, not just active request time
+  - **Alternative**: Remove this flag to use request-based billing (pay only when serving requests, but CPU may be throttled)
+- `--cpu-boost`: Enable startup CPU boost for faster container initialization
+  - Allocates extra CPU during container startup
+  - Reduces startup time significantly
+  - Important for `--min-instances 1` to ensure fast cold start when traffic arrives
+  - Automatically disabled after startup completes
 - `--timeout 300`: Maximum execution time in seconds (5 minutes)
   - Must be 60-3600 seconds
   - 300 seconds provides enough time for complete alert generation cycle
@@ -394,12 +415,30 @@ gcloud run deploy $SERVICE_NAME \
 - `--max-instances 2`: Maximum number of concurrent instances
   - Controls cost and resource usage
   - Auto-scales based on request load up to this limit
-  - Limited to 2 instances for cost control with high-resource (8Gi/8CPU) configuration
+  - Limited to 2 instances for cost control with high-resource (16Gi/8CPU) configuration
   - Prevents runaway costs while maintaining availability
+- `--min-instances 1`: Minimum number of instances to keep running
+  - **Billing Model**: Instance-based (charged for full lifetime of instances)
+  - With min-instances=1, you pay for at least 1 full instance at all times
+  - Provides instant response times (no cold starts) when requests arrive
+  - Ensures service is always warm and ready to process alerts
+  - Useful for time-sensitive stock alert generation
+  - Cost: Instance-based billing charges continuously (even with 0 requests)
+  - Alternative: Use min-instances=0 for request-based billing (only pay when handling requests)
 - `--execution-environment gen2`: Use Cloud Run 2nd generation runtime
   - Better performance and flexibility compared to gen1
   - Supports longer timeouts and larger memory allocations
   - Default for new deployments, recommended for production
+- `--add-volume=name=gcs-1,type=cloud-storage,bucket=stock-trading-2`: Mount GCS bucket as volume
+  - `name=gcs-1`: Volume identifier name
+  - `type=cloud-storage`: Use Google Cloud Storage FUSE mount
+  - `bucket=stock-trading-2`: GCS bucket to mount
+  - Provides persistent access to reports and data files
+  - Mounted at `/mnt` path (see next flag)
+- `--add-volume-mount=volume=gcs-1,mount-path=/mnt`: Mount volume to container path
+  - `volume=gcs-1`: Reference to volume defined above
+  - `mount-path=/mnt`: Container path where bucket is accessible
+  - Application can read/write files at `/mnt` → stored in `gs://stock-trading-2/`
 
 **Environment Variables** (`--set-env-vars`) - All on one line with comma separation:
 - `EMAIL_ENABLED=true`: Enable email notifications

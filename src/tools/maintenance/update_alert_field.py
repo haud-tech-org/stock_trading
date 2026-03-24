@@ -2,9 +2,14 @@
 This script provides a maintenance utility to update a specific numeric field
 in historical alert notification files within a given date range.
 
-It scans the 'reports' directory for alert files (alert_notification_*.json),
+It scans the 'reports' or 'reports_replay' directory for alert files (alert_notification_*.json),
 filters them by date, and for each alert in the file, it adjusts the
 value of a specified numeric field by a pre-configured offset.
+
+The reports directory (reports or reports_replay) is determined by the DEBUG_REPLAY_START_TIME
+configuration setting:
+- LIVE MODE (DEBUG_REPLAY_START_TIME = None): Scans 'reports' directory
+- REPLAY MODE (DEBUG_REPLAY_START_TIME is set): Scans 'reports_replay' directory
 
 The offset is read from the `STRUCTURAL_PRICE_LEVEL_OFFSET` setting in
 `src.stockreports.config.price_alert_settings`.
@@ -33,13 +38,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 from src.stockreports.config import price_alert_settings
 from src.stockreports.utils.alert_utils import adjust_price_by_signal
+from src.stockreports.utils.report_utils import get_reports_directory_name
 
 def update_alert_field(field_name: str, from_date_str: str, to_date_str: str):
     """
     Scans for alert files within a date range and updates a specific numeric field
     for each alert by adding a price level from the configuration.
     """
-    reports_dir = os.path.join(project_root, "reports")
+    reports_dir_name = get_reports_directory_name()
+    reports_dir = os.path.join(project_root, reports_dir_name)
     logging.info(f"Scanning for alert files in {reports_dir} from {from_date_str} to {to_date_str}")
 
     try:

@@ -52,7 +52,7 @@ sys.path.insert(0, project_root)
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-from src.stockreports.utils.report_utils import find_all_alert_files
+from src.stockreports.utils.report_utils import find_all_alert_files, get_reports_directory_name
 from src.stockreports.config import price_alert_settings
 import importlib
 
@@ -118,7 +118,8 @@ def update_alerts_with_profit_threshold(
     if default_threshold is None:
         default_threshold = 3.15
 
-    reports_dir = os.path.join(project_root, "reports")
+    reports_dir_name = get_reports_directory_name()
+    reports_dir = os.path.join(project_root, reports_dir_name)
     logging.info(f"Scanning for alert files in {reports_dir} from {from_date_str} to {to_date_str}")
     if approach_filter:
         logging.info(f"Filtering for approach: {approach_filter}")
