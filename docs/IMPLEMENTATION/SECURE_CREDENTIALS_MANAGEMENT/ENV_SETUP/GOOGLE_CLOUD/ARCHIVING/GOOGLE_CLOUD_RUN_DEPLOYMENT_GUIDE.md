@@ -1,9 +1,20 @@
-# Stock Alerter - Cloud Run Deployment & Operations Guide
+# Stock Alerter - Cloud Run Operations & Reference Guide
 
 **Last Updated**: March 19, 2026  
 **Service**: stock-alerter  
 **Region**: europe-west1 (Belgium)  
 **Status**: ✅ ACTIVE & DEPLOYED
+
+**Purpose**: Comprehensive guide for operating, troubleshooting, optimizing, and managing a deployed Cloud Run service
+- ✅ Architecture and design explanation
+- ✅ Daily operations and management
+- ✅ Troubleshooting post-deployment issues
+- ✅ Cost optimization strategies
+- ✅ Performance monitoring and tuning
+- ✅ Security configuration and IAM roles
+- ✅ Emergency procedures and rollback
+
+**For deployment execution with actual results**, see: `DEPLOYMENT_EXECUTION_GUIDE.md`
 
 ---
 
@@ -355,7 +366,122 @@ When redeploying after code changes:
 
 ---
 
-## 🆘 Emergency Troubleshooting
+## 📊 Post-Deployment Monitoring & Alerts
+
+### Cloud Logging Setup
+```bash
+# Set up Cloud Run logs filter in Cloud Logging
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE_NAME" \
+  --limit=50 \
+  --format=json
+
+# Or use Cloud Logging in Google Cloud Console
+# Navigation: Cloud Logging > Logs Explorer
+# Filter: resource.type="cloud_run_revision" AND resource.labels.service_name="stock-alerter"
+# Add field extraction:
+#   - Extract severity level
+#   - Extract error messages
+#   - Extract response times
+```
+
+### Cloud Monitoring Alerts
+```bash
+# Set up Cloud Monitoring for service availability
+# Navigate to Cloud Console > Monitoring > Alerting Policies
+# Create alerts for:
+
+# Alert 1: High Error Rate
+#   - Metric: cloud.run/request_count
+#   - Filter: response_code >= 500
+#   - Threshold: error rate > 1%
+#   - Duration: 5 minutes
+
+# Alert 2: High Latency
+#   - Metric: cloud.run/request_latencies
+#   - Threshold: p95 latency > 60 seconds
+#   - Duration: 5 minutes
+
+# Alert 3: Service Down
+#   - Type: Health check
+#   - Threshold: No successful requests in 10 minutes
+#   - Notification: Email + Slack
+```
+
+---
+
+## 📅 Cloud Scheduler Setup
+
+### Create Scheduler Job for Market Hours
+```bash
+# Create scheduler job to trigger alerts during market hours
+gcloud scheduler jobs create http $SERVICE_NAME-scheduler \
+  --location=$REGION \
+  --schedule="*/15 9-16 * * 1-5" \
+  --uri="$SERVICE_URL/run-alerts" \
+  --http-method=POST \
+  --oidc-service-account-email=$SERVICE_ACCOUNT_EMAIL \
+  --oidc-token-audience=$SERVICE_URL
+
+# Schedule formats:
+# "*/15 9-16 * * 1-5" = Every 15 minutes, 9 AM - 4 PM, Mon-Fri
+# "0 * * * *" = Every hour, all day
+# "0 9,12,15,18 * * 1-5" = 9 AM, noon, 3 PM, 6 PM, weekdays
+# "0 */4 * * *" = Every 4 hours
+
+# View scheduler job
+gcloud scheduler jobs list
+
+# Update scheduler job
+gcloud scheduler jobs update http $SERVICE_NAME-scheduler \
+  --location=$REGION \
+  --schedule="*/15 9-16 * * 1-5"
+
+# Delete scheduler job (if needed)
+gcloud scheduler jobs delete $SERVICE_NAME-scheduler --location=$REGION
+```
+
+---
+
+## 💰 Cost Budget Management
+
+### Set Up Billing Alerts
+```bash
+# Create billing budget in Google Cloud Console
+# Navigation: Billing > Budgets and alerts
+
+# Recommended settings:
+# - Display name: "Stock Alerter Monthly Budget"
+# - Budget amount: $1,500 (covers ~$1,310 for stock-alerter + buffer)
+# - Budget period: Monthly
+# - Scope: Single project (stock-trading-489001)
+# - Services: Cloud Run
+
+# Alert thresholds:
+# - 50% of budget: Notification
+# - 90% of budget: Notification
+# - 100% of budget: Notification
+# - 110% of budget: Notification
+
+# Set email recipients:
+# - Primary engineer
+# - Team lead
+# - Finance team
+```
+
+### Monitor Current Costs
+```bash
+# Check current month's spending
+gcloud billing accounts list
+
+# Get project billing info
+gcloud compute project-info describe --project=stock-trading-489001
+
+# View Cloud Run costs in console
+# Navigation: Billing > Reports > Select "Cloud Run"
+# Group by: Service, Region, Month
+```
+
+---
 
 ### Service Not Responding
 ```bash

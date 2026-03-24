@@ -1,0 +1,376 @@
+# 🔧 Cloud Deployment Setup Guide
+
+**Purpose**: Pre-deployment prerequisite configuration (Steps 1-6)  
+**Audience**: First-time deployers preparing for deployment  
+**Time**: ~15-20 minutes  
+**Status**: ✅ Ready to Begin Deployment  
+**Date**: March 24, 2026
+
+---
+
+## Overview
+
+This guide covers all prerequisite setup required **before** building and deploying to Cloud Run:
+1. Project variables configuration
+2. API enablement
+3. Secret Manager setup
+4. Service account creation
+5. IAM permission configuration
+
+**After completing this guide**, proceed to `02_DEPLOYMENT_EXECUTION_&_VERIFICATION.md` to build and deploy.
+
+---
+
+## Step 1: Set Up Project Variables
+
+Initialize deployment by setting up project-level variables used throughout all steps.
+
+```bash
+# Set your Google Cloud project ID - Replace with your actual project ID
+PROJECT_ID="stock-trading-489001"
+
+# Set the region where resources will be deployed
+# europe-west1 = Belgium (used for compliance/data residency)
+# us-central1 = Iowa (default, cheapest)
+# Other options: europe-north1, us-west1, asia-southeast1
+REGION="europe-west1"
+
+# Name of the Cloud Run service - This will be part of your service URL
+SERVICE_NAME="stock-alerter"
+
+# Set the active project for all subsequent gcloud commands
+gcloud config set project $PROJECT_ID
+```
+
+**Explanation**:
+- `PROJECT_ID`: The GCP project identifier where all resources will be created
+- `REGION`: Geographic location for resource deployment (affects latency and compliance)
+- `SERVICE_NAME`: Identifier for your Cloud Run service (must be unique within the project)
+- `gcloud config set`: Configures gcloud to use your project by default
+
+---
+
+## Step 2: Enable Required APIs
+
+Enable the Google Cloud APIs needed for running the Stock Alerter service.
+
+```bash
+# Enable necessary APIs for Cloud Run and related services
+gcloud services enable \
+  run.googleapis.com \
+  secretmanager.googleapis.com \
+  artifactregistry.googleapis.com \
+  compute.googleapis.com
+```
+
+**Argument Explanations**:
+- `run.googleapis.com`: Cloud Run API - enables serverless container deployment
+- `secretmanager.googleapis.com`: Secret Manager API - enables secure credential storage
+- `artifactregistry.googleapis.com`: Artifact Registry API - enables container image storage
+- `compute.googleapis.com`: Compute Engine API - enables VM and networking resources
+
+**Verification**:
+```bash
+# Check that all APIs are enabled
+gcloud services list --enabled | grep -E "run|secretmanager|artifactregistry|compute"
+```
+
+---
+
+## Step 3: Create Secrets in Google Secret Manager
+
+Store sensitive credentials securely in Google Secret Manager instead of environment variables.
+
+```bash
+# Store email address used to send alerts
+echo -n "your-email@gmail.com" | gcloud secrets create email-sender \
+  --data-file=-
+
+# Store Gmail App Password (not your main Gmail password)
+# Generate at: https://myaccount.google.com/apppasswords
+echo -n "xxxx xxxx xxxx xxxx" | gcloud secrets create email-app-password \
+  --data-file=-
+
+# Store the display name for email sender
+echo -n "Stock Alerter (No-Reply)" | gcloud secrets create email-sender-display-name \
+  --data-file=-
+
+# Store Twilio Account SID (if using SMS alerts)
+echo -n "ACxxxxxxxxxxxxxxxxxx" | gcloud secrets create twilio-account-sid \
+  --data-file=-
+
+# Store Twilio Auth Token (if using SMS alerts)
+echo -n "your_auth_token_here" | gcloud secrets create twilio-auth-token \
+  --data-file=-
+```
+
+**Argument Explanations**:
+- `echo -n`: Outputs text without newline (secrets should not have trailing newlines)
+- `--data-file=-`: Reads secret data from stdin (the pipe `|`)
+- Secret names must be lowercase alphanumeric with hyphens (no underscores)
+- Each secret is versioned; you can create new versions without deleting
+
+**Why use Secret Manager?**
+- Secrets are encrypted at rest in Google's vaults
+- Access is logged and auditable
+- Fine-grained IAM permissions
+- No secrets in environment variables or code
+
+**Verification**:
+```bash
+# List all created secrets
+gcloud secrets list
+
+# Verify each secret was created
+for secret in email-sender email-app-password email-sender-display-name \
+              twilio-account-sid twilio-auth-token; do
+  echo "Checking $secret..."
+  gcloud secrets describe $secret
+done
+```
+
+---
+
+## Step 4: Create Service Account
+
+Create a dedicated service account for the Cloud Run service with limited permissions.
+
+```bash
+# Create a service account specifically for the Stock Alerter
+gcloud iam service-accounts create stock-alerter-sa \
+  --display-name="Stock Alerter Service Account" \
+  --description="Service account for stock alert generation and notification"
+
+# Store the service account email for later use
+SERVICE_ACCOUNT_EMAIL=$(gcloud iam service-accounts list \
+  --filter="displayName:Stock Alerter Service Account" \
+  --format='value(email)')
+
+# Print the service account email for reference
+echo "Service Account Email: $SERVICE_ACCOUNT_EMAIL"
+
+# Save to environment for use in Step 5 and 6
+export SERVICE_ACCOUNT_EMAIL
+```
+
+**Argument Explanations**:
+- `gcloud iam service-accounts create`: Creates a new service account
+- `--display-name`: Human-readable name (visible in Cloud Console)
+- `--description`: Purpose of the service account (best practice)
+- `--filter`: Finds services matching criteria
+- `--format='value(email)'`: Outputs only the email address
+
+**Why use Service Accounts?**
+- Provides identity for the Cloud Run service
+- Enables fine-grained permissions (least privilege principle)
+- Audit trail of actions performed by the service
+- Prevents accidental exposure of your personal credentials
+
+**Verification**:
+```bash
+# Verify service account was created
+gcloud iam service-accounts describe $SERVICE_ACCOUNT_EMAIL
+
+# List all service accounts
+gcloud iam service-accounts list
+```
+
+---
+
+## Step 5: Grant Secret Access Permissions
+
+Grant the service account permission to access the secrets created in Step 3.
+
+```bash
+# For each secret, grant the service account read-only access
+for secret in email-sender email-app-password email-sender-display-name \
+              twilio-account-sid twilio-auth-token; do
+  gcloud secrets add-iam-policy-binding $secret \
+    --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+    --role=roles/secretmanager.secretAccessor
+done
+```
+
+**Argument Explanations**:
+- `gcloud secrets add-iam-policy-binding`: Adds an IAM binding to a secret
+- `$secret`: The name of the secret to grant access to
+- `--member=serviceAccount:$SERVICE_ACCOUNT_EMAIL`: The service account getting access
+- `--role=roles/secretmanager.secretAccessor`: Pre-defined role for reading secrets (no create/delete)
+
+**Why this permission?**
+- `secretAccessor` allows reading secret values but not modifying them
+- Service account can only access secrets you explicitly grant
+- Follows the principle of least privilege
+
+**Verification**:
+```bash
+# Verify service account has access to each secret
+for secret in email-sender email-app-password email-sender-display-name \
+              twilio-account-sid twilio-auth-token; do
+  echo "Permissions for $secret:"
+  gcloud secrets get-iam-policy $secret
+done
+```
+
+---
+
+## Step 6: Grant Additional Permissions
+
+Grant the service account all necessary roles for deployment, execution, and Cloud Run management.
+
+```bash
+# Set variables for clarity
+PROJECT_ID="stock-trading-489001"
+SERVICE_ACCOUNT_EMAIL="stock-alerter-sa@stock-trading-489001.iam.gserviceaccount.com"
+
+# Grant Cloud Run Admin role (full Cloud Run management and deployment)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/run.admin \
+  --condition=None
+
+# Grant Service Account User role (allows using service accounts)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/iam.serviceAccountUser \
+  --condition=None
+
+# Grant Storage Object Admin role (for Cloud Storage access)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/storage.objectAdmin \
+  --condition=None
+
+# Grant Cloud Run Invoker role (allows service invocation and scheduling)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/run.invoker \
+  --condition=None
+
+# Grant Artifact Registry Reader role (pull Docker images for deployment)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/artifactregistry.reader \
+  --condition=None
+
+# Grant Compute Admin role (manage compute resources)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/compute.admin \
+  --condition=None
+
+# Grant Logging Log Writer role (write application logs)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/logging.logWriter \
+  --condition=None
+
+# Grant Monitoring Metric Writer role (write metrics)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
+  --role=roles/monitoring.metricWriter \
+  --condition=None
+```
+
+**Argument Explanations**:
+- `gcloud projects add-iam-policy-binding`: Grants a role at the project level
+- `--member=serviceAccount:...`: The service account being granted the role
+- `--condition=None`: No conditions on this binding (applies in all contexts)
+
+**Roles Granted and Their Purpose**:
+
+| Role | Purpose |
+|------|---------|
+| `roles/run.admin` | Full Cloud Run service management and deployment |
+| `roles/iam.serviceAccountUser` | Allows using this service account for operations |
+| `roles/storage.objectAdmin` | Full read/write access to Cloud Storage buckets |
+| `roles/run.invoker` | Invoke Cloud Run services and trigger Cloud Scheduler jobs |
+| `roles/artifactregistry.reader` | Pull Docker images from Container Registry for deployment |
+| `roles/compute.admin` | Manage compute resources and instances |
+| `roles/logging.logWriter` | Write application logs to Cloud Logging |
+| `roles/monitoring.metricWriter` | Write metrics to Cloud Monitoring |
+
+**Verify Assigned Roles**:
+
+```bash
+# Check all roles assigned to the service account
+gcloud projects get-iam-policy $PROJECT_ID --format=json | \
+  jq ".bindings[] | select(.members[] | contains(\"$SERVICE_ACCOUNT_EMAIL\")) | .role" | sort
+```
+
+**Expected Output**:
+```
+"roles/artifactregistry.reader"
+"roles/compute.admin"
+"roles/iam.serviceAccountUser"
+"roles/logging.logWriter"
+"roles/monitoring.metricWriter"
+"roles/run.admin"
+"roles/run.invoker"
+"roles/secretmanager.secretAccessor"
+"roles/storage.objectAdmin"
+```
+
+---
+
+## ✅ Setup Checklist
+
+- [ ] Project variables set (`PROJECT_ID`, `REGION`, `SERVICE_NAME`)
+- [ ] APIs enabled (Cloud Run, Secret Manager, Artifact Registry, Compute)
+- [ ] All 5 secrets created in Secret Manager
+  - [ ] email-sender
+  - [ ] email-app-password
+  - [ ] email-sender-display-name
+  - [ ] twilio-account-sid
+  - [ ] twilio-auth-token
+- [ ] Service account created (stock-alerter-sa)
+- [ ] Service account email captured and exported
+- [ ] Service account has `secretmanager.secretAccessor` role for all 5 secrets
+- [ ] Service account has 8 additional roles assigned
+- [ ] All roles verified with `gcloud projects get-iam-policy`
+
+---
+
+## 🚀 Next Steps
+
+After completing all setup steps above:
+
+1. **Build & Deploy**: Proceed to `02_DEPLOYMENT_EXECUTION_&_VERIFICATION.md`
+2. **After Deployment**: Proceed to `03_OPERATIONS_&_REFERENCE.md`
+
+---
+
+## 🔗 Related Guides
+
+- **Deployment Execution**: `02_DEPLOYMENT_EXECUTION_&_VERIFICATION.md`
+- **Operations & Reference**: `03_OPERATIONS_&_REFERENCE.md`
+- **Execution Log (Reference)**: `DEPLOYMENT_EXECUTION_LOG_20260320.md`
+- **Optimization Analysis**: `GOOGLE_CLOUD_DEPLOYMENT_OPTIMIZATION_ANALYSIS.md`
+
+---
+
+## ⚠️ Troubleshooting
+
+### Error: "API not enabled"
+```bash
+# Re-enable APIs
+gcloud services enable run.googleapis.com secretmanager.googleapis.com \
+  artifactregistry.googleapis.com compute.googleapis.com
+```
+
+### Error: "Service account creation failed"
+```bash
+# Verify you have iam.serviceAccountAdmin role
+gcloud projects get-iam-policy $PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.role:roles/iam.serviceAccountAdmin"
+```
+
+### Error: "Cannot add IAM binding"
+```bash
+# Verify service account exists
+gcloud iam service-accounts describe $SERVICE_ACCOUNT_EMAIL
+
+# Verify you have roles.resourcemanager.organizationAdmin or roles/owner
+gcloud projects get-iam-policy $PROJECT_ID
+```
