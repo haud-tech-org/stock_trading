@@ -28,6 +28,7 @@ from src.stockreports.alert.common.profitability_simulator import simulate_profi
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
 from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD
+from src.stockreports.utils.report_utils import get_reports_directory_name
 import pytz
 
 def run_consolidated_simulation(execution_symbol: str, alert_sources: list, date_str: str):
@@ -36,7 +37,8 @@ def run_consolidated_simulation(execution_symbol: str, alert_sources: list, date
     to execute trades on a single target symbol.
     """
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    reports_dir = os.path.join(project_root, "reports")
+    reports_dir_name = get_reports_directory_name()
+    reports_dir = os.path.join(project_root, reports_dir_name)
     
     # --- 1. Load and Combine Alerts ---
     all_alerts = []

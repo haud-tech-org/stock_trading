@@ -55,6 +55,7 @@ from src.stockreports.config.validation_settings import VALIDATION_PRICE_THRESHO
 # from src.stockreports.utils.file_utils import clear_files_in_directory
 # from src.stockreports.utils.report_utils import get_consolidated_scenario_directory
 from src.stockreports.utils.time_utils import get_market_timezone
+from src.stockreports.utils.report_utils import get_reports_directory_name
 from src.tools.centralized_report_generator.consolidate_reports import consolidate_reports
 from src.tools.centralized_report_generator.individual_trade_simulator import run_individual_trade_simulation
 from src.tools.centralized_report_generator.support_resistance_detector import run_sr_detection_for_symbols
@@ -176,7 +177,8 @@ def generate_reports_for_period(
         logging.info("--- Starting performance analysis. ---")
         try:
             # The analysis script will find the reports based on the mode
-            base_reports_dir = os.path.join(project_root, "reports")
+            reports_dir_name = get_reports_directory_name()
+            base_reports_dir = os.path.join(project_root, reports_dir_name)
             run_analysis(mode=mode, base_reports_dir=base_reports_dir)
             logging.info("--- Successfully ran performance analysis. ---")
         except Exception as e:

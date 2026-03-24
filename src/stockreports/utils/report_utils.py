@@ -23,6 +23,42 @@ TIMEZONE = pytz.timezone(get_market_timezone_str())
 logger = logging.getLogger(__name__)
 
 
+def get_reports_directory_name() -> str:
+    """
+    Returns the appropriate reports directory name based on the operational mode.
+    
+    This method determines whether to use the standard 'reports' directory for LIVE mode
+    or 'reports_replay' directory for REPLAY mode, allowing separate tracking of alerts
+    generated during live monitoring vs historical replay simulation.
+    
+    Returns:
+        str: Either 'reports' for LIVE mode or 'reports_replay' for REPLAY mode.
+        
+    Logic:
+        - LIVE MODE: DEBUG_REPLAY_START_TIME is None
+          → Uses 'reports' directory
+          → Real-time monitoring with incremental alert appending
+        
+        - REPLAY MODE: DEBUG_REPLAY_START_TIME is set to a timestamp string
+          → Uses 'reports_replay' directory
+          → Historical simulation with separate storage
+    
+    Example:
+        >>> from src.stockreports.utils.report_utils import get_reports_directory_name
+        >>> # If DEBUG_REPLAY_START_TIME = None (LIVE mode)
+        >>> get_reports_directory_name()  # Returns 'reports'
+        >>>
+        >>> # If DEBUG_REPLAY_START_TIME = "2026-01-08 09:05:00" (REPLAY mode)
+        >>> get_reports_directory_name()  # Returns 'reports_replay'
+    """
+    if settings.DEBUG_REPLAY_START_TIME is None:
+        # LIVE MODE: Use standard reports directory
+        return "reports"
+    else:
+        # REPLAY MODE: Use separate replay reports directory
+        return "reports_replay"
+
+
 def get_report_directory(
     base_dir: str,
     report_type: str,
@@ -157,9 +193,12 @@ def get_consolidated_scenario_directory(
 ) -> str:
     """
     Constructs the directory path for a specific consolidated report scenario.
+    Uses get_reports_directory_name() to determine the correct base directory
+    based on the operational mode (LIVE vs REPLAY).
     """
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    base_reports_dir = os.path.join(project_root, "reports")
+    reports_dir_name = get_reports_directory_name()
+    base_reports_dir = os.path.join(project_root, reports_dir_name)
     
     return get_report_directory(
         base_dir=base_reports_dir,
@@ -175,12 +214,17 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
     Saves the detailed alerts from an analysis result to a JSON file.
     In 'deployment' mode, it appends new alerts to the existing file for the day.
     In 'development' mode, it overwrites the file.
+    
+    The report directory is determined by get_reports_directory_name():
+    - LIVE MODE (DEBUG_REPLAY_START_TIME = None): Uses 'reports' directory
+    - REPLAY MODE (DEBUG_REPLAY_START_TIME is set): Uses 'reports_replay' directory
     """
     if not result.has_alerts:
         return
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    reports_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), result.approach_name.lower())
+    reports_dir_name = get_reports_directory_name()
+    reports_dir = os.path.join(project_root, reports_dir_name, symbol, settings.MODE.lower(), result.approach_name.lower())
     filepath = os.path.join(reports_dir, f"alert_notification_{date_str.replace('-', '')}.json")
 
     new_alerts_df = result.to_dataframe()
@@ -243,12 +287,17 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
 def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
     """
     Updates a running summary JSON file with the latest alert statistics.
+    
+    The report directory is determined by get_reports_directory_name():
+    - LIVE MODE (DEBUG_REPLAY_START_TIME = None): Uses 'reports' directory
+    - REPLAY MODE (DEBUG_REPLAY_START_TIME is set): Uses 'reports_replay' directory
     """
     if not result.has_alerts:
         return
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    reports_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), result.approach_name.lower())
+    reports_dir_name = get_reports_directory_name()
+    reports_dir = os.path.join(project_root, reports_dir_name, symbol, settings.MODE.lower(), result.approach_name.lower())
     filepath = os.path.join(reports_dir, "alert_summary.json")
 
     total_alerts = len(result.confirmed_alerts)
@@ -301,9 +350,14 @@ def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
 def save_profitability_report(summary_data: ProfitabilityReport, symbol: str, date_str: str, logger_instance: logging.Logger):
     """
     Saves the profitability simulation summary to a JSON file.
+    
+    The report directory is determined by get_reports_directory_name():
+    - LIVE MODE (DEBUG_REPLAY_START_TIME = None): Uses 'reports' directory
+    - REPLAY MODE (DEBUG_REPLAY_START_TIME is set): Uses 'reports_replay' directory
     """
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    report_dir = os.path.join(project_root, "reports", symbol, settings.MODE.lower(), "profitability")
+    reports_dir_name = get_reports_directory_name()
+    report_dir = os.path.join(project_root, reports_dir_name, symbol, settings.MODE.lower(), "profitability")
     
     filename = f"profitability_summary_{date_str.replace('-', '')}.json"
     filepath = os.path.join(report_dir, filename)

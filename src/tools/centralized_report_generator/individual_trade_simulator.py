@@ -24,7 +24,7 @@ from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
 from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES, VALIDATION_MIN_PROFIT_FOR_SUCCESS
 from src.stockreports.config.price_alert_settings import USE_PERFORMANCE_BY_APPROACH, PERFORMANCE_BY_APPROACH
-from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds
+from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds, get_reports_directory_name
 from src.stockreports.alert.model.models import ProfitabilityReport, Trade
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, get_primary_suggested_price
 
@@ -438,7 +438,8 @@ def run_individual_trade_simulation(
 
     # Correctly define project_root by navigating up from the current file's location
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    base_reports_dir = os.path.join(project_root, "reports")
+    reports_dir_name = get_reports_directory_name()
+    base_reports_dir = os.path.join(project_root, reports_dir_name)
     
     # --- 1. Load and Combine Alerts ---
     all_alerts = []

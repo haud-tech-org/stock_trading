@@ -63,12 +63,6 @@ MONITORING_INTERVAL_SECONDS = 7
 # Example: `HIGH_CONFIDENCE_THRESHOLD_PERCENT = 10.0`
 HIGH_CONFIDENCE_THRESHOLD_PERCENT = 10.0
 
-# Report Directory
-# Meaning: The name of the top-level folder where all generated reports and alert summaries will be saved.
-# Guidance: You can change this to organize your output differently. The path is relative to the project root.
-# Example: `REPORTS_DIR = "reports"`
-REPORTS_DIR = "reports"
-
 # Latest Report Pattern
 # Meaning: A file glob pattern used to find the most recent combined analysis report. The asterisk (*) is a wildcard.
 # Guidance: Only change this if you alter the naming convention of the main analysis reports.
