@@ -34,12 +34,12 @@ Usage Examples:
 import argparse
 import json
 import os
-import glob
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import logging
 import sys
 from typing import Optional
+import importlib
 
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -50,11 +50,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, _apply_price_offset
 from src.stockreports.utils.time_utils import get_market_timezone
-from src.stockreports.utils.report_utils import find_all_alert_files
-from dateutil import parser as date_parser
+from src.stockreports.utils.report_utils import find_all_alert_files, get_reports_directory_name
 # Import settings for fallback calculation
 from src.stockreports.config import price_alert_settings
-import importlib
 
 
 def _calculate_performance_fallback(signal: str, approach: str, alert_price: float) -> Optional[float]:
@@ -111,7 +109,8 @@ def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, su
         logging.info("No --suggestion-type provided. Exiting without updating any prices.")
         return
 
-    reports_dir = os.path.join(project_root, "reports")
+    reports_dir_name = get_reports_directory_name()
+    reports_dir = os.path.join(project_root, reports_dir_name)
     logging.info(f"Scanning for alert files in {reports_dir} from {from_date_str} to {to_date_str}")
 
     try:

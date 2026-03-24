@@ -15,7 +15,7 @@ import gc
 from .symbol_alerter import SymbolAlerter
 from ..config import loader
 from ..utils.data_utils import load_data_for_development
-from ..utils.report_utils import save_profitability_report
+from ..utils.report_utils import save_profitability_report, get_reports_directory_name
 from ..alert.common.profitability_simulator import simulate_profitability
 
 
@@ -184,8 +184,11 @@ class SymbolAlertManager:
             # Gather signals from all source symbols' profitability reports
             for symbol in source_symbols:
                 report_filename = f"profitability_summary_{date_str.replace('-', '')}.json"
+                reports_dir_name = get_reports_directory_name()
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
                 report_path = os.path.join(
-                    self.settings.REPORTS_DIR,
+                    project_root,
+                    reports_dir_name,
                     symbol,
                     mode_str,
                     "profitability",

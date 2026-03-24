@@ -20,6 +20,7 @@ def temp_workspace():
         (workspace / "har_files").mkdir()
         (workspace / "responses").mkdir()
         (workspace / "reports").mkdir()
+        (workspace / "reports_replay").mkdir()  # For REPLAY mode tests
         
         yield workspace
 

@@ -11,7 +11,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 import sys
 sys.path.insert(0, project_root)
 
-from src.stockreports.utils.report_utils import find_overall_performance_files, get_report_directory
+from src.stockreports.utils.report_utils import find_overall_performance_files, get_report_directory, get_reports_directory_name
 from src.stockreports.alert.model.reports_models import ScenarioPerformance, ScenarioRanking, RankedMetric
 from src.stockreports.config.validation_settings import DISPLAY_PROFIT_THRESHOLD_AS_DASH
 
@@ -228,8 +228,8 @@ def main():
     parser.add_argument(
         "--base-reports-dir",
         type=str,
-        default=os.path.join(project_root, "reports"),
-        help="The root directory for all reports."
+        default=None,
+        help="The root directory for all reports. If not provided, will use the appropriate directory based on DEBUG_REPLAY_START_TIME."
     )
     parser.add_argument(
         "--mode",
@@ -240,6 +240,11 @@ def main():
     )
 
     args = parser.parse_args()
+    
+    # If base_reports_dir is not provided, determine it based on the configuration
+    if args.base_reports_dir is None:
+        reports_dir_name = get_reports_directory_name()
+        args.base_reports_dir = os.path.join(project_root, reports_dir_name)
     
     run_analysis(mode=args.mode, base_reports_dir=args.base_reports_dir)
 
