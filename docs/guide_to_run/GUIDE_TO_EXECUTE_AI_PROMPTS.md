@@ -24,7 +24,7 @@ Please review the documentation and code for the [APPROACH_NAME] approach. Doubl
 ### Summary of changes in Staged
 
 ```txt
-git diff in staged and provide a short description of changes into a new markdown for a new commit.
+git diff in staged and provide a short description of changes into a new markdown for a new commit. The purpose for development teams in the life cycle, not supporting for the business or marketing teams. So populate compatible summary.
 
 Reference
 docs/references/COMMIT_SUMMARY_CVA.md
