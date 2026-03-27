@@ -7,7 +7,29 @@
 
 ---
 
-## 📋 Quick Navigation
+## � Table of Contents
+
+1. [Quick Navigation](#-quick-navigation) - Find your path
+2. [File Overview](#-file-overview) - What's in each guide
+3. [Decision Matrix](#-decision-matrix) - Choose your guide
+4. [Learning Path](#-learning-path) - New member onboarding
+5. [Key Improvements](#-key-improvements-from-optimization) - What changed
+6. [File Organization](#-file-organization) - Directory structure
+7. [Content Distribution](#-content-distribution) - What's covered
+8. [Quick Start](#-quick-start) - Deploy in 5 minutes
+9. [Key Concepts](#-key-concepts) - Important terms
+10. [Additional Resources](#-additional-resources) - External links
+11. [Need Help?](#-need-help) - Support guide
+12. [Guide Features](#-guide-features) - What you get
+13. [AI-Assisted Deployment Prompts](#-ai-assisted-deployment-prompts) - Using AI for deployment
+14. [Quick Decision Guide](#-quick-decision-guide) - Choose deployment option
+15. [Usage Example](#-usage-example) - Real scenario
+16. [Benefits](#-benefits-of-using-these-prompts) - Why use prompts
+17. [Template Format](#-template-format) - Prompt structure
+
+---
+
+## �📋 Quick Navigation
 
 ### I'm deploying for the **first time**
 
@@ -321,6 +343,160 @@ curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
 ✅ **Cost Optimization**: Multiple cost-saving strategies  
 ✅ **Security Focused**: IAM permissions explained  
 ✅ **Easy Maintenance**: Changes in one place, not five  
+
+---
+
+## 🤖 AI-Assisted Deployment Prompts
+
+Use these reusable prompts to request AI assistance for deployments. Choose the option that matches your situation.
+
+### 📋 Option A: FULL REBUILD, PUSH & DEPLOY
+**Use when**: Code changes require complete rebuild
+
+**Prompt to use**:
+```
+Execute full Google Cloud deployment following:
+docs/IMPLEMENTATION/SECURE_CREDENTIALS_MANAGEMENT/ENV_SETUP/GOOGLE_CLOUD/02_DEPLOYMENT_EXECUTION_&_VERIFICATION.md
+
+Option A: FULL REBUILD, PUSH & DEPLOY (Steps 7-10)
+- Step 7: Build Docker Image
+- Step 8: Tag and Push to Container Registry
+- Step 9: Deploy to Cloud Run
+- Step 10: Verify Deployment
+
+Follow the guidance document exactly, step-by-step from top to bottom.
+Include actual execution results and outputs for each step.
+```
+
+**When to use**:
+- Code changes in alert service
+- Configuration file updates
+- Dependencies changed
+- Want fresh build from source
+
+**Expected time**: ~15-20 minutes
+
+---
+
+### 📦 Option B: PUSH & DEPLOY (Skip Build)
+**Use when**: Only minor code changes, recent Docker image exists
+
+**Prompt to use**:
+```
+Execute Google Cloud push and deploy following:
+docs/IMPLEMENTATION/SECURE_CREDENTIALS_MANAGEMENT/ENV_SETUP/GOOGLE_CLOUD/02_DEPLOYMENT_EXECUTION_&_VERIFICATION.md
+
+Option B: PUSH & DEPLOY (Steps 8-10)
+- Step 8: Tag and Push to Container Registry
+- Step 9: Deploy to Cloud Run
+- Step 10: Verify Deployment
+
+Docker image already built. Only push updated code and redeploy.
+Follow the guidance document exactly, step-by-step from top to bottom.
+Include actual execution results and outputs for each step.
+```
+
+**When to use**:
+- Minor code changes only
+- Docker image built within last few hours
+- Avoid rebuilding when not necessary
+
+**Expected time**: ~10-15 minutes
+
+---
+
+### 🚀 Option C: DEPLOY ONLY (Skip Build & Push)
+**Use when**: Only configuration/secrets changed, image already current
+
+**Prompt to use**:
+```
+Execute Google Cloud deployment only following:
+docs/IMPLEMENTATION/SECURE_CREDENTIALS_MANAGEMENT/ENV_SETUP/GOOGLE_CLOUD/02_DEPLOYMENT_EXECUTION_&_VERIFICATION.md
+
+Option C: DEPLOY ONLY (Steps 9-10)
+- Step 9: Deploy to Cloud Run
+- Step 10: Verify Deployment
+
+Docker image in Container Registry is current. Only redeploy with configuration updates.
+Follow the guidance document exactly, step-by-step from top to bottom.
+Include actual execution results and outputs for each step.
+```
+
+**When to use**:
+- Configuration/secrets changes only
+- No code changes
+- Docker image is current (built today or recently)
+- Fast redeployment needed
+
+**Expected time**: ~5-10 minutes
+
+---
+
+## 📊 Quick Decision Guide
+
+| Situation | Use Option | Time |
+|-----------|-----------|------|
+| Code changes in service | **A** (Full) | 15-20 min |
+| Dependencies updated | **A** (Full) | 15-20 min |
+| Minor code changes | **B** (Push & Deploy) | 10-15 min |
+| Config/secrets only | **C** (Deploy) | 5-10 min |
+| Image built today | **B** or **C** | 5-15 min |
+| Major refactoring | **A** (Full) | 15-20 min |
+
+---
+
+## 🎯 Usage Example
+
+**Scenario**: You've updated the alert notification logic and want to deploy
+
+**Your request to AI**:
+```
+Execute full Google Cloud deployment following:
+docs/IMPLEMENTATION/SECURE_CREDENTIALS_MANAGEMENT/ENV_SETUP/GOOGLE_CLOUD/02_DEPLOYMENT_EXECUTION_&_VERIFICATION.md
+
+Option A: FULL REBUILD, PUSH & DEPLOY (Steps 7-10)
+- Step 7: Build Docker Image
+- Step 8: Tag and Push to Container Registry
+- Step 9: Deploy to Cloud Run
+- Step 10: Verify Deployment
+
+Follow the guidance document exactly, step-by-step from top to bottom.
+Include actual execution results and outputs for each step.
+```
+
+**AI will**:
+1. ✅ Follow the deployment guide step-by-step
+2. ✅ Build Docker image with your latest code
+3. ✅ Tag and push to Container Registry
+4. ✅ Deploy to Cloud Run
+5. ✅ Verify deployment success
+6. ✅ Show all actual outputs and results
+
+---
+
+## ✨ Benefits of Using These Prompts
+
+✅ **Consistent execution** - Same steps every time  
+✅ **Clear intent** - AI knows exactly what to do  
+✅ **Complete documentation** - Actual results captured  
+✅ **Reproducible** - Can run again with same prompt  
+✅ **Traceable** - Clear audit trail of deployments  
+✅ **Flexible** - Choose option based on your changes  
+✅ **Time-saving** - Only do necessary steps  
+
+---
+
+## 📝 Template Format
+
+All prompts follow this structure:
+1. **Document reference** - Which guide to follow
+2. **Option choice** - Which steps to execute
+3. **Step list** - Exactly which steps (7, 8, 9, or 10)
+4. **Context** - Why skipping certain steps
+5. **Execution mode** - "Follow exactly, step-by-step from top to bottom"
+6. **Output requirement** - "Include actual execution results"
+
+This ensures consistent, reliable deployments every time.
 
 ---
 
