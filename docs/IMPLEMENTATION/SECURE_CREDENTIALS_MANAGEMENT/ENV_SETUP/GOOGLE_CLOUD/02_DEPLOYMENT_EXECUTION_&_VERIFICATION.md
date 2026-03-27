@@ -222,6 +222,8 @@ gcloud run deploy $SERVICE_NAME \
   --min-instances 1 \
   --max-instances 2 \
   --execution-environment gen2 \
+  --add-volume=name=gcs-1,type=cloud-storage,bucket=stock-trading-2 \
+  --add-volume-mount=volume=gcs-1,mount-path=/mnt \
   --set-env-vars EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
   --set-secrets EMAIL_SENDER=email-sender:latest,EMAIL_APP_PASSWORD=email-app-password:latest,EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest
 ```
@@ -238,8 +240,47 @@ gcloud run deploy $SERVICE_NAME \
 | `--max-instances` | 2 | Cost control with high-resource config |
 | `--no-allow-unauthenticated` | Set | Secure production (requires IAM) |
 | `--execution-environment` | gen2 | 2nd generation runtime (better performance) |
+| `--add-volume` | cloud-storage, bucket=stock-trading-2 | Mount GCS bucket for report storage |
+| `--add-volume-mount` | /mnt | Mount path for accessing bucket files |
 
-### Actual Execution Result (March 20, 2026)
+### Cloud Storage Configuration
+
+The deployment includes Google Cloud Storage (GCS) bucket integration for storing reports and outputs:
+
+**Volume Mount Details**:
+- **Volume Name**: `gcs-1`
+- **Type**: `cloud-storage`
+- **Bucket**: `stock-trading-2`
+- **Mount Path**: `/mnt`
+
+**Purpose**: 
+- Store generated reports and alert outputs
+- Persist data across service restarts
+- Enable easy access to historical data via GCS console
+- Integrate with other GCP services for analysis
+
+**Access in Application**:
+```python
+# Files written to /mnt will be automatically synced to GCS
+# Example: Save report to bucket
+report_path = "/mnt/alerts_report_20260325.csv"
+with open(report_path, 'w') as f:
+    f.write(report_content)
+
+# The file will appear in: gs://stock-trading-2/alerts_report_20260325.csv
+```
+
+**Service Account Requirements**:
+The service account (`stock-alerter-sa`) must have these permissions:
+- `storage.buckets.get` - Read bucket metadata
+- `storage.objects.create` - Create files in bucket
+- `storage.objects.delete` - Delete files from bucket
+- `storage.objects.get` - Read files from bucket
+- `storage.objects.list` - List bucket contents
+
+These are included in the `roles/storage.objectAdmin` role assigned during setup.
+
+---
 
 ```
 Deploying service [stock-alerter] in region [europe-west1]
