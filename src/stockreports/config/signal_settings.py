@@ -109,8 +109,8 @@ APPROACH_CONFIG = {
     # --- VRA (Volume-Reversal-Anchor) ---
     "VRA": {
         "LOOKBACK_WINDOW": 15,
-        "VOLUME_MULTIPLIER": 4.5,
-        "MIN_TREND_MAGNITUDE": 6.5,
+        "VOLUME_MULTIPLIER": 6.0,
+        "MIN_TREND_MAGNITUDE": 9.5,
 
         # --- VRA Trend Window Edge Slice ---
         "TREND_WINDOW_EDGE_SLICE": 3,  # Number of candles from the edge for open price extremes validation in VRA
