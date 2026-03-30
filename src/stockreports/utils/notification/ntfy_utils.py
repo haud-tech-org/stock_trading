@@ -17,7 +17,12 @@ def send_ntfy_notification(notification: AlertNotification):
     profit_thresh = ""
     if notification.suggested_profit_threshold is not None:
         profit_thresh = f" | Profit Threshold: {notification.suggested_profit_threshold:.2f}"
-    title = f"{notification.signal} - {notification.symbol} - Suggest: {notification.suggested_price:.2f}{profit_thresh} - at signal price {notification.alert_price:.2f} ({notification.approach})"
+    
+    # Handle None values for suggested_price and alert_price
+    suggested_price_str = f"{notification.suggested_price:.2f}" if notification.suggested_price is not None else "N/A"
+    alert_price_str = f"{notification.alert_price:.2f}" if notification.alert_price is not None else "N/A"
+    
+    title = f"{notification.signal} - {notification.symbol} - Suggest: {suggested_price_str}{profit_thresh} - at signal price {alert_price_str} ({notification.approach})"
     message = f"Time: {notification.alert_time.strftime('%H:%M:%S')}"
 
     for topic in notification_settings.NTFY_TOPICS:
