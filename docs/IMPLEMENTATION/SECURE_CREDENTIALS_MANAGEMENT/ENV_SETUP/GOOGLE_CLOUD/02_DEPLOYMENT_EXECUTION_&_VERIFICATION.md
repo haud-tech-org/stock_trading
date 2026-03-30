@@ -224,9 +224,21 @@ gcloud run deploy $SERVICE_NAME \
   --execution-environment gen2 \
   --add-volume=name=gcs-1,type=cloud-storage,bucket=stock-trading-2 \
   --add-volume-mount=volume=gcs-1,mount-path=/mnt \
-  --set-env-vars EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=$PROJECT_ID,EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
   --set-secrets EMAIL_SENDER=email-sender:latest,EMAIL_APP_PASSWORD=email-app-password:latest,EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest
 ```
+
+### Important Note: Cloud Run Environment Variables
+
+**⚠️ Cloud Run does NOT automatically set `GOOGLE_CLOUD_PROJECT`**
+
+Cloud Run automatically sets these variables:
+- `PORT` (default: 8080)
+- `K_SERVICE` (service name)
+- `K_REVISION` (revision name)  
+- `K_CONFIGURATION` (configuration name)
+
+**We manually add `GOOGLE_CLOUD_PROJECT`** in the `--set-env-vars` parameter so the application can detect the GCP environment and access Google Secret Manager.
 
 ### Key Deployment Parameters
 
