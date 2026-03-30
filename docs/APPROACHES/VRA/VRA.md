@@ -12,10 +12,10 @@ The behavior of the VRA executor is controlled by the following parameters, conf
 | --------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `LOOKBACK_WINDOW`                       | 15            | The number of candles to include in the analysis window.                                                                                                                            |
 | `VOLUME_MULTIPLIER`                     | 4.5           | The ratio threshold for volume spike validation: max_volume must be >= min_volume × this multiplier.                                                                               |
-| `MIN_TREND_MAGNITUDE`                   | 6.5           | The minimum price change required for a trend to be considered significant within the trend window.                                                                                 |
-| `TREND_WINDOW_EDGE_SLICE`               | 3             | Number of candles from window edges for validating open price extremes (highest/lowest open positions).                                                                             |
+| `MIN_TREND_MAGNITUDE`                   | 6.5           | The minimum price change required for a trend to be considered significant within the entire lookback window.                                                                       |
+| `TREND_WINDOW_EDGE_SLICE`               | 3             | Number of candles from window edges for validating open price extremes (highest/lowest open positions within the trend window).                                                    |
 | `MIN_CONFIRMATION_WINDOW_CANDLES`       | 3             | Minimum number of candles required in the confirmation window (from max volume candle to end) for valid reversal pattern.                                                          |
-| `VOLUME_MULTIPLIER_BY_REVERSAL_TREND`   | 2.0           | The ratio threshold validating max volume candle: max_volume must be >= alert_volume × this multiplier.                                                                            |
+| `VOLUME_MULTIPLIER_BY_REVERSAL_TREND`   | 2.0           | The ratio threshold validating max volume candle: max_volume must be >= alert_candle_volume × this multiplier.                                                                    |
 | `MIN_PEAK_TROUGH_PROMINENCE`            | 1.5           | Minimum prominence value required for peak (uptrend) or trough (downtrend) candles in the confirmation window.                                                                     |
 | `MAX_PEAK_TROUGH_PROMINENCE`            | 3.0           | Maximum prominence value allowed for peak (uptrend) or trough (downtrend) candles in the confirmation window.                                                                     |
 | `COOLDOWN_WINDOW`                       | 3             | Number of candles after an alert during which no new alert for the same symbol and signal can be issued.                                                                           |
@@ -35,9 +35,9 @@ The VRA executor analyzes data in a reverse loop, starting from the most recent 
 2.  **Step 2: Trend & Magnitude Validation**
     *   Extracts a trend window from the min volume candle to the alert candle.
     *   Validates the trend window has at least 3 candles.
-    *   Calculates the price magnitude and trend direction of this window.
+    *   Calculates the price magnitude and trend direction of the entire trend window.
     *   **Validation 1 (Magnitude)**: The magnitude must be >= `MIN_TREND_MAGNITUDE`.
-    *   **Validation 2 (Open Price Extremes)**: For uptrends, the lowest open must be near the start (within `TREND_WINDOW_EDGE_SLICE` candles) and highest open near the end. For downtrends, the pattern is reversed.
+    *   **Validation 2 (Open Price Extremes)**: For uptrends, the lowest open must be within `TREND_WINDOW_EDGE_SLICE` candles from the start and highest open within `TREND_WINDOW_EDGE_SLICE` candles from the end. For downtrends, the pattern is reversed (highest open near start, lowest open near end).
     *   If magnitude or open price position validations fail, the window is discarded.
     *   Determines `window_trend` (UPTREND or DOWNTREND) and calculates `window_size_val` as the magnitude.
 
