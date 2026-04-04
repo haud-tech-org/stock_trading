@@ -31,12 +31,15 @@ validation_settings = loader.get_validation_settings()
 
 # --- Project Imports ---
 from src.stockreports.notification.notification_manager import NotificationManager
+from src.stockreports.utils.historical_data_manager import (
+    get_historical_data,
+    update_historical_data,
+)
 from src.stockreports.utils.data_utils import (
     fetch_intraday_data, 
-    load_data_for_development, load_live_data
+    load_data_for_development,
 )
 from src.stockreports.utils.time_utils import is_trading_hours, SESSIONS, TimeSimulator, TIMEZONE
-from src.stockreports.utils.historical_data_manager import update_historical_data
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
@@ -294,11 +297,13 @@ class SymbolAlerter:
             from_timestamp = int(from_dt.timestamp())
             to_timestamp = int(to_dt.timestamp())
 
-            # Fetch the latest data slice
-            latest_df = load_live_data(self.symbol, from_timestamp, to_timestamp)
+            # ✅ USE CENTRALIZED HISTORICAL DATA MANAGER
+            # Fetch the latest data slice (handles caching internally)
+            latest_df = get_historical_data(self.symbol, from_dt, to_dt)
 
-            if latest_df.empty and not time_simulator.is_replay_mode():
-                self.logger.warning("The latest DataFrame is still empty in live mode. Waiting for data.")
+            # ✅ Handle None or empty DataFrame (fetch failed or no data available)
+            if (latest_df is None or latest_df.empty) and not time_simulator.is_replay_mode():
+                self.logger.warning(f"Failed to fetch data for {self.symbol} or data is empty. Retrying...")
                 time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                 continue
             
@@ -307,10 +312,6 @@ class SymbolAlerter:
                 new_candle_count = len(latest_df)
                 # Append new data and remove duplicates, keeping the last entry
                 master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
-                
-                # --- Update Central Cache ---
-                # Save the updated master_df to the central historical data manager
-                update_historical_data(self.symbol, master_df)
 
             if master_df.empty:
                 self.logger.warning("Master DataFrame is empty. Advancing to next interval.")

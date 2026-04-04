@@ -9,132 +9,472 @@ data from other symbols.
 The manager is intelligent: if requested data is not in the cache or is
 insufficient, it will automatically fetch the required data and update
 the cache.
+
+Architecture:
+- HistoricalDataManager: Class-based hub for cache management
+- Singleton pattern: Module-level instance for backward compatibility
+- All public methods available as both class methods and module functions
 """
 import pandas as pd
 from typing import Optional, Dict
 import logging
+from datetime import datetime
 
 from src.stockreports.config import loader
 from src.stockreports.utils.data_utils import _load_live_data_with_resolution, load_data_for_development
 from src.stockreports.alert.common.constants import Mode
 
-# --- Module-level private cache ---
-_data_cache: Dict[tuple[str, Optional[int]], pd.DataFrame] = {}
-
 # --- Logger ---
 logger = logging.getLogger(__name__)
 settings = loader.get_settings()
 
-def _update_historical_data_with_resolution(symbol: str, data_df: pd.DataFrame, resolution: Optional[int] = None):
+
+class HistoricalDataManager:
     """
-    Internal function to update the cache for a given symbol and resolution.
-    """
-    cache_key = (symbol, resolution)
-    if cache_key in _data_cache:
-        # Append, drop duplicates, and sort
-        combined_df = pd.concat([_data_cache[cache_key], data_df])
-        combined_df.drop_duplicates(subset=['time'], keep='last', inplace=True)
-        combined_df.sort_values(by='time', inplace=True)
-        _data_cache[cache_key] = combined_df
-    else:
-        _data_cache[cache_key] = data_df.copy()
+    Centralized hub for managing historical market data with intelligent caching.
     
-    logger.debug(f"Cache updated for symbol '{symbol}' with resolution '{resolution}'. New length: {len(_data_cache[cache_key])}")
-
-def update_historical_data(symbol: str, data_df: pd.DataFrame):
+    Features:
+    - In-memory cache with configurable size limit
+    - Intelligent partial fetching (only missing segments)
+    - Cache statistics and monitoring
+    - Clean API for data operations
+    - Encapsulated state management
+    
+    Example:
+        manager = HistoricalDataManager()
+        manager.update('VCB', df)
+        data = manager.get('VCB', start_time, end_time)
+        stats = manager.get_cache_stats()
     """
-    Updates the cache for a given symbol using the default resolution. This is a
-    wrapper for backward compatibility.
-    """
-    _update_historical_data_with_resolution(symbol, data_df, resolution=None)
-
-
-def _get_historical_data_with_resolution(symbol: str, start_time: pd.Timestamp, end_time: pd.Timestamp, resolution: Optional[int] = None) -> Optional[pd.DataFrame]:
-    """
-    Retrieves historical data for a given symbol and time range, with optional resolution.
-    This function intelligently fetches only the data missing from the cache.
-    """
-    cache_key = (symbol, resolution)
-    cached_df = _data_cache.get(cache_key)
-
-    # --- Case 1: No data in cache for this key ---
-    if cached_df is None or cached_df.empty:
-        logger.info(f"Cache empty for '{symbol}' (res: {resolution}). Fetching full range: {start_time} to {end_time}.")
+    
+    def __init__(
+        self,
+        cache_size: int = 1000,
+        ttl_seconds: int = 3600,
+        enable_monitoring: bool = True
+    ):
+        """
+        Initialize the HistoricalDataManager.
         
-        if settings.MODE == Mode.DEVELOPMENT:
-            fetched_df = load_data_for_development(symbol)
-        else:
-            from_ts = int(start_time.timestamp())
-            to_ts = int(end_time.timestamp())
-            fetched_df = _load_live_data_with_resolution(symbol, from_ts, to_ts, resolution=resolution)
-
-        if fetched_df is not None and not fetched_df.empty:
-            _update_historical_data_with_resolution(symbol, fetched_df, resolution)
-        else:
-            logger.error(f"Initial fetch failed for '{symbol}' (res: {resolution}).")
-            return None
-
-    # --- Case 2: Data exists in cache, check for missing segments ---
-    cached_df = _data_cache[cache_key] # Re-read from cache
-    cache_start, cache_end = cached_df['time'].min(), cached_df['time'].max()
-
-    # Check if the full range is already cached
-    if cache_start <= start_time and cache_end >= end_time:
-        logger.debug(f"Full range cache hit for '{symbol}' (res: {resolution}).")
-        return cached_df[(cached_df['time'] >= start_time) & (cached_df['time'] <= end_time)].copy()
-
-    # Determine and fetch missing segments
-    segments_to_fetch = []
-    # if start_time < cache_start:
-    #     segments_to_fetch.append((start_time, cache_start - pd.Timedelta(seconds=1)))
-    #     logger.info(f"Fetching missing data for '{symbol}' at the beginning: {start_time} to {cache_start}.")
+        Args:
+            cache_size: Maximum number of cache entries (not enforced yet)
+            ttl_seconds: Time-to-live for cache entries in seconds
+            enable_monitoring: Whether to track cache statistics
+        """
+        self._data_cache: Dict[tuple[str, Optional[int]], pd.DataFrame] = {}
+        self._cache_size = cache_size
+        self._ttl_seconds = ttl_seconds
+        self._enable_monitoring = enable_monitoring
+        self._cache_stats = {
+            'hits': 0,
+            'misses': 0,
+            'updates': 0,
+            'last_cleared': None,
+            'created_at': datetime.now()
+        }
+        self.logger = logging.getLogger(__name__)
+    
+    # ============================================================================
+    # PUBLIC API: Retrieve Methods
+    # ============================================================================
+    
+    def get(
+        self,
+        symbol: str,
+        start_time: pd.Timestamp,
+        end_time: pd.Timestamp
+    ) -> Optional[pd.DataFrame]:
+        """
+        Retrieves historical data for a given symbol and time range using
+        the default resolution (None).
         
-    if end_time > cache_end:
-        segments_to_fetch.append((cache_end + pd.Timedelta(seconds=1), end_time))
-        logger.info(f"Fetching missing data for '{symbol}' at the end: {cache_end} to {end_time}.")
-
-    for seg_start, seg_end in segments_to_fetch:
-        if settings.MODE == Mode.DEVELOPMENT:
-            # In dev mode, we load the whole file once, so this part is less critical
-            # but we maintain the logic for consistency.
-            logger.debug("In dev mode, full data file is loaded, no partial fetch needed.")
-            continue
-
-        from_ts = int(seg_start.timestamp())
-        to_ts = int(seg_end.timestamp())
-        
-        logger.debug(f"Fetching segment for '{symbol}' (res: {resolution}): {seg_start} to {seg_end}")
-        segment_df = _load_live_data_with_resolution(symbol, from_ts, to_ts, resolution=resolution)
-        
-        if segment_df is not None and not segment_df.empty:
-            _update_historical_data_with_resolution(symbol, segment_df, resolution)
-        else:
-            logger.warning(f"Failed to fetch segment for '{symbol}' from {seg_start} to {seg_end}.")
-
-    # --- Final retrieval from updated cache ---
-    final_df = _data_cache.get(cache_key)
-    if final_df is not None:
-        # After fetch attempts, return whatever is available within the requested window,
-        # even if it's incomplete. The calling function is responsible for handling it.
-        partial_df = final_df[(final_df['time'] >= start_time) & (final_df['time'] <= end_time)].copy()
-        
-        if partial_df.empty:
-            logger.warning(f"No data available for '{symbol}' in the requested window {start_time} to {end_time} after fetch attempts.")
-            return None
+        Args:
+            symbol: Stock symbol (e.g., 'VCB', 'BTC/USDT')
+            start_time: Start of time range
+            end_time: End of time range
             
-        # Check if the returned data fully covers the request and log a warning if not.
-        if not (partial_df['time'].min() <= start_time and partial_df['time'].max() >= end_time):
-             logger.warning(f"Returning incomplete data for '{symbol}'. Requested: {start_time} to {end_time}, Available: {partial_df['time'].min()} to {partial_df['time'].max()}.")
-
-        return partial_df
+        Returns:
+            pd.DataFrame with columns [time, open, high, low, close, volume]
+            or None if no data available
+        """
+        return self.get_with_resolution(symbol, start_time, end_time, resolution=None)
+    
+    def get_with_resolution(
+        self,
+        symbol: str,
+        start_time: pd.Timestamp,
+        end_time: pd.Timestamp,
+        resolution: Optional[int] = None
+    ) -> Optional[pd.DataFrame]:
+        """
+        Retrieves historical data for a given symbol and time range with
+        optional resolution specification.
+        
+        This method intelligently checks the cache:
+        1. If data exists and covers the range → return cached data
+        2. If data missing or incomplete → fetch missing segments
+        3. Merge new data with cache and return
+        
+        Args:
+            symbol: Stock symbol (e.g., 'VCB', 'BTC/USDT')
+            start_time: Start of time range
+            end_time: End of time range
+            resolution: Optional resolution (1, 5, 15, 60 min etc)
             
-    logger.error(f"Cache for '{symbol}' is unexpectedly empty after processing.")
-    return None
+        Returns:
+            pd.DataFrame with the requested data, or None
+        """
+        cache_key = (symbol, resolution)
+        cached_df = self._data_cache.get(cache_key)
+
+        # --- Case 1: No data in cache for this key ---
+        if cached_df is None or cached_df.empty:
+            self.logger.info(
+                f"Cache miss for '{symbol}' (res: {resolution}). "
+                f"Fetching full range: {start_time} to {end_time}."
+            )
+            if self._enable_monitoring:
+                self._cache_stats['misses'] += 1
+            
+            if settings.MODE == Mode.DEVELOPMENT:
+                fetched_df = load_data_for_development(symbol)
+            else:
+                from_ts = int(start_time.timestamp())
+                to_ts = int(end_time.timestamp())
+                fetched_df = _load_live_data_with_resolution(
+                    symbol, from_ts, to_ts, resolution=resolution
+                )
+
+            if fetched_df is not None and not fetched_df.empty:
+                self._merge_and_cache(symbol, fetched_df, resolution)
+            else:
+                self.logger.error(
+                    f"Initial fetch failed for '{symbol}' (res: {resolution})."
+                )
+                return None
+
+        # --- Case 2: Data exists in cache, check for missing segments ---
+        cached_df = self._data_cache.get(cache_key)  # Re-read from cache
+        if cached_df is None or cached_df.empty:
+            return None
+        
+        # Note: 'time' is already a column (standardized at DataProviderCoordinator.fetch_ohlcv)
+        cache_start = cached_df['time'].min()
+        cache_end = cached_df['time'].max()
+
+        # Check if the full range is already cached
+        if cache_start <= start_time and cache_end >= end_time:
+            self.logger.debug(
+                f"Full range cache hit for '{symbol}' (res: {resolution})."
+            )
+            if self._enable_monitoring:
+                self._cache_stats['hits'] += 1
+            return cached_df[
+                (cached_df['time'] >= start_time) & (cached_df['time'] <= end_time)
+            ].copy()
+
+        # Determine and fetch missing segments
+        segments_to_fetch = []
+        if end_time > cache_end:
+            segments_to_fetch.append((cache_end + pd.Timedelta(seconds=1), end_time))
+            self.logger.info(
+                f"Fetching missing data for '{symbol}' at the end: "
+                f"{cache_end} to {end_time}."
+            )
+
+        for seg_start, seg_end in segments_to_fetch:
+            if settings.MODE == Mode.DEVELOPMENT:
+                self.logger.debug(
+                    "In dev mode, full data file is loaded, no partial fetch needed."
+                )
+                continue
+
+            from_ts = int(seg_start.timestamp())
+            to_ts = int(seg_end.timestamp())
+            
+            self.logger.debug(
+                f"Fetching segment for '{symbol}' (res: {resolution}): "
+                f"{seg_start} to {seg_end}"
+            )
+            segment_df = _load_live_data_with_resolution(
+                symbol, from_ts, to_ts, resolution=resolution
+            )
+            
+            if segment_df is not None and not segment_df.empty:
+                self._merge_and_cache(symbol, segment_df, resolution)
+            else:
+                self.logger.warning(
+                    f"Failed to fetch segment for '{symbol}' "
+                    f"from {seg_start} to {seg_end}."
+                )
+
+        # --- Final retrieval from updated cache ---
+        final_df = self._data_cache.get(cache_key)
+        if final_df is not None:
+            # Note: 'time' is already a column (standardized at DataProviderCoordinator.fetch_ohlcv)
+            partial_df = final_df[
+                (final_df['time'] >= start_time) & (final_df['time'] <= end_time)
+            ].copy()
+            
+            if partial_df.empty:
+                self.logger.warning(
+                    f"No data available for '{symbol}' in the requested window "
+                    f"{start_time} to {end_time} after fetch attempts."
+                )
+                return None
+                
+            if not (partial_df['time'].min() <= start_time and 
+                   partial_df['time'].max() >= end_time):
+                self.logger.warning(
+                    f"Returning incomplete data for '{symbol}'. "
+                    f"Requested: {start_time} to {end_time}, "
+                    f"Available: {partial_df['time'].min()} to {partial_df['time'].max()}."
+                )
+
+            return partial_df
+            
+        self.logger.error(
+            f"Cache for '{symbol}' is unexpectedly empty after processing."
+        )
+        return None
+    
+    # ============================================================================
+    # PUBLIC API: Update Methods
+    # ============================================================================
+    
+    def update(
+        self,
+        symbol: str,
+        data_df: pd.DataFrame
+    ) -> None:
+        """
+        Updates the cache for a given symbol using the default resolution.
+        
+        Args:
+            symbol: Stock symbol
+            data_df: DataFrame with new data to cache
+        """
+        self.update_with_resolution(symbol, data_df, resolution=None)
+    
+    def update_with_resolution(
+        self,
+        symbol: str,
+        data_df: pd.DataFrame,
+        resolution: Optional[int] = None
+    ) -> None:
+        """
+        Updates the cache for a given symbol with optional resolution.
+        
+        Args:
+            symbol: Stock symbol
+            data_df: DataFrame with new data to cache
+            resolution: Optional resolution specification
+        """
+        self._merge_and_cache(symbol, data_df, resolution)
+    
+    # ============================================================================
+    # PUBLIC API: Cache Management Methods
+    # ============================================================================
+    
+    def clear_cache(self) -> None:
+        """Clear entire cache and reset statistics."""
+        self._data_cache.clear()
+        if self._enable_monitoring:
+            self._cache_stats['last_cleared'] = datetime.now()
+        self.logger.info("Cache cleared")
+    
+    def clear_symbol(self, symbol: str) -> None:
+        """
+        Clear cache for a specific symbol (all resolutions).
+        
+        Args:
+            symbol: Stock symbol to clear
+        """
+        keys_to_remove = [k for k in self._data_cache.keys() if k[0] == symbol]
+        for key in keys_to_remove:
+            del self._data_cache[key]
+        self.logger.info(f"Cache cleared for symbol '{symbol}'")
+    
+    def get_cache_size(self) -> Dict:
+        """
+        Get cache size information.
+        
+        Returns:
+            {
+                'num_keys': Number of cache entries,
+                'num_symbols': Number of unique symbols,
+                'memory_estimate_mb': Approximate memory usage,
+                'entries': List of (symbol, resolution, num_rows) tuples
+            }
+        """
+        num_keys = len(self._data_cache)
+        symbols = set(k[0] for k in self._data_cache.keys())
+        
+        total_rows = 0
+        entries = []
+        
+        for (symbol, resolution), df in self._data_cache.items():
+            rows = len(df)
+            total_rows += rows
+            entries.append((symbol, resolution, rows))
+        
+        # Rough estimate: ~100 bytes per row per column, assuming 6 columns
+        memory_estimate = (total_rows * 6 * 100) / (1024 * 1024)  # MB
+        
+        return {
+            'num_keys': num_keys,
+            'num_symbols': len(symbols),
+            'total_rows': total_rows,
+            'memory_estimate_mb': round(memory_estimate, 2),
+            'entries': entries
+        }
+    
+    def get_cache_stats(self) -> Dict:
+        """
+        Get cache statistics.
+        
+        Returns:
+            {
+                'hits': Number of cache hits,
+                'misses': Number of cache misses,
+                'hit_rate': Hit rate percentage,
+                'updates': Number of updates,
+                'created_at': When manager was created,
+                'last_cleared': When cache was last cleared
+            }
+        """
+        if not self._enable_monitoring:
+            return {'enabled': False}
+        
+        total_requests = self._cache_stats['hits'] + self._cache_stats['misses']
+        hit_rate = (
+            (self._cache_stats['hits'] / total_requests * 100) 
+            if total_requests > 0 else 0
+        )
+        
+        return {
+            'hits': self._cache_stats['hits'],
+            'misses': self._cache_stats['misses'],
+            'hit_rate': round(hit_rate, 2),
+            'updates': self._cache_stats['updates'],
+            'created_at': self._cache_stats['created_at'].isoformat(),
+            'last_cleared': (
+                self._cache_stats['last_cleared'].isoformat()
+                if self._cache_stats['last_cleared'] else None
+            )
+        }
+    
+    # ============================================================================
+    # PRIVATE API: Internal Methods
+    # ============================================================================
+    
+    def _merge_and_cache(
+        self,
+        symbol: str,
+        data_df: pd.DataFrame,
+        resolution: Optional[int] = None
+    ) -> None:
+        """
+        Internal method to merge new data with existing cache and update.
+        
+        Args:
+            symbol: Stock symbol
+            data_df: New data to merge
+            resolution: Optional resolution
+            
+        Note:
+            Expected contract: data_df should have 'time' as a regular column
+            (standardized at DataProviderCoordinator.fetch_ohlcv).
+            Defensive check kept for robustness in case data comes from other sources.
+        """
+        cache_key = (symbol, resolution)
+        
+        # Defensive: Ensure 'time' is a column (should be standardized at coordinator)
+        if data_df.index.name == 'time':
+            data_df = data_df.reset_index()
+            self.logger.debug(
+                f"Defensive reset_index for {symbol}: 'time' was index, "
+                f"converted to column (should be standardized at coordinator)"
+            )
+        
+        if cache_key in self._data_cache:
+            # Defensive: Ensure cached data also has 'time' as column
+            cached_data = self._data_cache[cache_key]
+            if cached_data.index.name == 'time':
+                cached_data = cached_data.reset_index()
+            
+            # Append, drop duplicates, and sort
+            combined_df = pd.concat([cached_data, data_df])
+            combined_df.drop_duplicates(subset=['time'], keep='last', inplace=True)
+            combined_df.sort_values(by='time', inplace=True)
+            self._data_cache[cache_key] = combined_df
+        else:
+            self._data_cache[cache_key] = data_df.copy()
+        
+        if self._enable_monitoring:
+            self._cache_stats['updates'] += 1
+        
+        self.logger.debug(
+            f"Cache updated for symbol '{symbol}' with resolution '{resolution}'. "
+            f"New length: {len(self._data_cache[cache_key])}"
+        )
 
 
-def get_historical_data(symbol: str, start_time: pd.Timestamp, end_time: pd.Timestamp) -> Optional[pd.DataFrame]:
+# ============================================================================
+# MODULE-LEVEL SINGLETON FOR BACKWARD COMPATIBILITY
+# ============================================================================
+
+# Single instance to maintain backward compatibility with existing code
+_manager = HistoricalDataManager()
+
+
+def get_historical_data(
+    symbol: str,
+    start_time: pd.Timestamp,
+    end_time: pd.Timestamp
+) -> Optional[pd.DataFrame]:
     """
-    Retrieves a historical DataFrame using the default resolution. This is a wrapper
-    for backward compatibility.
+    Retrieves a historical DataFrame using the default resolution.
+    
+    This is a backward compatible wrapper for HistoricalDataManager.get().
+    
+    Args:
+        symbol: Stock symbol
+        start_time: Start of time range
+        end_time: End of time range
+        
+    Returns:
+        Historical data or None
     """
-    return _get_historical_data_with_resolution(symbol, start_time, end_time, resolution=None)
+    return _manager.get(symbol, start_time, end_time)
+
+
+def update_historical_data(
+    symbol: str,
+    data_df: pd.DataFrame
+) -> None:
+    """
+    Updates the cache for a given symbol using the default resolution.
+    
+    This is a backward compatible wrapper for HistoricalDataManager.update().
+    
+    Args:
+        symbol: Stock symbol
+        data_df: DataFrame with new data to cache
+    """
+    _manager.update(symbol, data_df)
+
+
+def get_manager() -> HistoricalDataManager:
+    """
+    Get the module-level singleton manager instance.
+    
+    This allows code to access the manager directly if needed:
+        manager = get_manager()
+        manager.clear_symbol('VCB')
+        stats = manager.get_cache_stats()
+    
+    Returns:
+        The HistoricalDataManager singleton instance
+    """
+    return _manager

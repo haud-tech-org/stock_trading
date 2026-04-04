@@ -18,7 +18,7 @@ import json
 from src.stockreports.config import loader
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
 from src.stockreports.utils.time_utils import TIMEZONE_STR, SESSIONS
-from src.stockreports.utils.api_request_utils import execute_api_request
+from src.stockreports.data_provider.coordinator import DataProviderCoordinator
 
 # Standard column mapping for financial data
 STANDARD_COLUMN_MAP = {
@@ -162,28 +162,58 @@ def get_column_statistics_map() -> Dict[str, List[str]]:
     }
 
 
-def _fetch_intraday_data_with_resolution(symbol: str, from_timestamp: int, to_timestamp: int, resolution: Optional[int] = None) -> Optional[Dict[str, Any]]:
+def _fetch_intraday_data_with_resolution(
+    symbol: str, 
+    from_timestamp: int, 
+    to_timestamp: int, 
+    resolution: Optional[int] = None
+) -> Optional[pd.DataFrame]:
     """
-    Internal function to fetch intraday data with an optional resolution override.
+    Fetch intraday data. Provider is auto-detected by Coordinator from symbol.
+    
+    Args:
+        symbol: Stock/crypto symbol
+        from_timestamp: Start Unix timestamp
+        to_timestamp: End Unix timestamp
+        resolution: Optional resolution in minutes (1, 5, 15, 30, 60, 240, 1440)
+                   Each provider converts this to its own format
+    
+    Returns:
+        pd.DataFrame: Normalized OHLCV data, or None if fetch failed
     """
     try:
         market_tz = pytz.timezone(TIMEZONE_STR)
         from_dt = datetime.fromtimestamp(from_timestamp, tz=market_tz)
         to_dt = datetime.fromtimestamp(to_timestamp, tz=market_tz)
 
-        logging.info(f"Requesting data for {symbol} from {from_dt} to {to_dt} with resolution '{resolution or 'default'}'.")
+        logging.info(
+            f"Requesting {symbol} from {from_dt} to {to_dt} "
+            f"(resolution: {resolution or 'default'})"
+        )
         
-        api_params = settings.API_PARAMS.copy()
-
-        if resolution is not None:
-            api_params["resolution"] = str(resolution)
-
-        response = execute_api_request(symbol, from_timestamp, to_timestamp, custom_params=api_params)
+        # ✅ Coordinator auto-detects provider based on symbol
+        coordinator = DataProviderCoordinator()
         
-        return response
+        # Pass resolution in minutes directly to coordinator
+        # If resolution is None, use default 1 minute
+        resolution_minutes = resolution if resolution is not None else 1
+        
+        df = coordinator.fetch_ohlcv(
+            symbol=symbol,
+            from_timestamp=from_timestamp,
+            to_timestamp=to_timestamp,
+            resolution=resolution_minutes
+        )
+        
+        if df is None or df.empty:
+            logging.warning(f"No data returned for {symbol}")
+            return None
+        
+        logging.info(f"Successfully fetched {len(df)} candles for {symbol}")
+        return df
 
-    except ValueError as e:
-        logging.error(f"Error preparing request for {symbol}: {e}")
+    except Exception as e:
+        logging.error(f"Failed to fetch data for {symbol}: {e}", exc_info=True)
         return None
 
 
@@ -195,46 +225,51 @@ def fetch_intraday_data(symbol: str, from_timestamp: int, to_timestamp: int) -> 
     return _fetch_intraday_data_with_resolution(symbol, from_timestamp, to_timestamp, resolution=None)
 
 
-def _load_live_data_with_resolution(symbol: str, from_timestamp: int, to_timestamp: int, resolution: Optional[int] = None) -> pd.DataFrame:
+def _load_live_data_with_resolution(
+    symbol: str, 
+    from_timestamp: int, 
+    to_timestamp: int, 
+    resolution: Optional[int] = None
+) -> pd.DataFrame:
     """
-    Internal function to fetch and process live data with an optional resolution.
+    Load live market data via Coordinator (auto-detects provider).
+    
+    Returns:
+        pd.DataFrame: OHLCV data (empty if fetch failed)
     """
     logger = logging.getLogger(__name__)
-    raw_data = _fetch_intraday_data_with_resolution(symbol, from_timestamp, to_timestamp, resolution=resolution)
-
-    if not raw_data or raw_data.get('s') != 'ok':
-        logger.error("Failed to fetch or process live data.")
-        return pd.DataFrame()
-
-    keys = ["t", "o", "h", "l", "c", "v"]
-    try:
-        min_len = min(len(raw_data.get(k, [])) for k in keys)
-    except TypeError:
-        logger.warning("Response format is not as expected (e.g., not a list).")
-        return pd.DataFrame()
-        
-    if min_len == 0:
-        logger.warning("No data points in the live response.")
-        return pd.DataFrame()
-
-    df = pd.DataFrame({
-        "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
-        "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
-        "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
-        "volume": raw_data["v"][:min_len],
-    })
-
-    # Adjust timezone and prices
-    df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(pytz.timezone(TIMEZONE_STR))
-    df = adjust_prices_by_symbol(df, symbol)
-
+    
+    # ✅ Coordinator now handles provider selection automatically
+    df = _fetch_intraday_data_with_resolution(
+        symbol, from_timestamp, to_timestamp, resolution=resolution
+    )
+    
+    # Handle both None and empty DataFrame
+    if df is None or df.empty:
+        logger.warning(f"No data returned for {symbol}")
+        return None  # Return None explicitly so caller knows fetch failed
+    
+    logger.debug(f"Loaded {len(df)} records for {symbol}")
     return df
 
 
 def load_live_data(symbol: str, from_timestamp: int, to_timestamp: int) -> pd.DataFrame:
     """
-    Fetches live data for a symbol using the default resolution. This is a wrapper
-    for backward compatibility.
+    Loads live market data for a given symbol and time range using default resolution.
+    
+    Provider is automatically detected based on the symbol from PROVIDER_SYMBOLS_CONFIG.
+    
+    Args:
+        symbol: Stock/crypto symbol (e.g., 'VCB', 'BTC/USDT')
+        from_timestamp: Start time (Unix timestamp in seconds)
+        to_timestamp: End time (Unix timestamp in seconds)
+        
+    Returns:
+        pd.DataFrame: OHLCV data with columns [time, open, high, low, close, volume]
+        Empty DataFrame if fetch failed
+        
+    Raises:
+        ValueError: If symbol is not supported by any enabled provider
     """
     return _load_live_data_with_resolution(symbol, from_timestamp, to_timestamp, resolution=None)
 
