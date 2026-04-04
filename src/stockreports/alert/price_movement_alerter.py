@@ -140,8 +140,8 @@ class PriceMovementAlerter:
         last_two_ticks = master_df.iloc[-2:]
         prev_price = last_two_ticks.iloc[0]['close']
         curr_price = last_two_ticks.iloc[-1]['close']
-        curr_time = last_two_ticks.iloc[-1]['time']
-        prev_time = last_two_ticks.iloc[0]['time']
+        curr_time = last_two_ticks.index[-1]
+        prev_time = last_two_ticks.index[0]
 
         # Convert to datetime if string
         if isinstance(curr_time, str):

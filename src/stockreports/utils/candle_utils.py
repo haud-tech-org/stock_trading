@@ -270,16 +270,15 @@ def create_consolidated_candle(candles: pd.DataFrame) -> Optional[pd.Series]:
     consolidated_volume = candles['volume'].sum()
 
     # The timestamp of the last candle is used for context
-    last_time = candles.iloc[-1]['time']
+    last_time = candles.index[-1]
 
     return pd.Series({
-        'time': last_time,
         'open': consolidated_open,
         'high': consolidated_high,
         'low': consolidated_low,
         'close': consolidated_close,
         'volume': consolidated_volume
-    })
+    }, name=last_time)
 
 def is_first_candle_in_window(candle: pd.Series, window_data: pd.DataFrame) -> bool:
     """

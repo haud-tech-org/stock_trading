@@ -158,9 +158,8 @@ class HistoricalDataManager:
         if cached_df is None or cached_df.empty:
             return None
         
-        # Note: 'time' is already a column (standardized at DataProviderCoordinator.fetch_ohlcv)
-        cache_start = cached_df['time'].min()
-        cache_end = cached_df['time'].max()
+        cache_start = cached_df.index.min()
+        cache_end = cached_df.index.max()
 
         # Check if the full range is already cached
         if cache_start <= start_time and cache_end >= end_time:
@@ -170,7 +169,7 @@ class HistoricalDataManager:
             if self._enable_monitoring:
                 self._cache_stats['hits'] += 1
             return cached_df[
-                (cached_df['time'] >= start_time) & (cached_df['time'] <= end_time)
+                (cached_df.index >= start_time) & (cached_df.index <= end_time)
             ].copy()
 
         # Determine and fetch missing segments
@@ -211,9 +210,8 @@ class HistoricalDataManager:
         # --- Final retrieval from updated cache ---
         final_df = self._data_cache.get(cache_key)
         if final_df is not None:
-            # Note: 'time' is already a column (standardized at DataProviderCoordinator.fetch_ohlcv)
             partial_df = final_df[
-                (final_df['time'] >= start_time) & (final_df['time'] <= end_time)
+                (final_df.index >= start_time) & (final_df.index <= end_time)
             ].copy()
             
             if partial_df.empty:
@@ -223,12 +221,12 @@ class HistoricalDataManager:
                 )
                 return None
                 
-            if not (partial_df['time'].min() <= start_time and 
-                   partial_df['time'].max() >= end_time):
+            if not (partial_df.index.min() <= start_time and 
+                   partial_df.index.max() >= end_time):
                 self.logger.warning(
                     f"Returning incomplete data for '{symbol}'. "
                     f"Requested: {start_time} to {end_time}, "
-                    f"Available: {partial_df['time'].min()} to {partial_df['time'].max()}."
+                    f"Available: {partial_df.index.min()} to {partial_df.index.max()}."
                 )
 
             return partial_df
@@ -379,45 +377,39 @@ class HistoricalDataManager:
         
         Args:
             symbol: Stock symbol
-            data_df: New data to merge
             resolution: Optional resolution
             
         Note:
-            Expected contract: data_df should have 'time' as a regular column
-            (standardized at DataProviderCoordinator.fetch_ohlcv).
-            Defensive check kept for robustness in case data comes from other sources.
+            - data_df has 'time' as the index
+            - Index is pd.DatetimeIndex with pd.Timestamp elements
         """
         cache_key = (symbol, resolution)
         
-        # Defensive: Ensure 'time' is a column (should be standardized at coordinator)
-        if data_df.index.name == 'time':
-            data_df = data_df.reset_index()
-            self.logger.debug(
-                f"Defensive reset_index for {symbol}: 'time' was index, "
-                f"converted to column (should be standardized at coordinator)"
-            )
-        
         if cache_key in self._data_cache:
-            # Defensive: Ensure cached data also has 'time' as column
+            # Merge with existing cache
             cached_data = self._data_cache[cache_key]
-            if cached_data.index.name == 'time':
-                cached_data = cached_data.reset_index()
             
-            # Append, drop duplicates, and sort
+            # Append, drop duplicates, and sort by index
             combined_df = pd.concat([cached_data, data_df])
-            combined_df.drop_duplicates(subset=['time'], keep='last', inplace=True)
-            combined_df.sort_values(by='time', inplace=True)
+            combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
+            combined_df = combined_df.sort_index()
             self._data_cache[cache_key] = combined_df
+            
+            self.logger.debug(
+                f"Merged new data for '{symbol}'. "
+                f"Cached size: {len(cached_data)} → {len(combined_df)}"
+            )
         else:
+            # First time caching this symbol/resolution
             self._data_cache[cache_key] = data_df.copy()
+            
+            self.logger.debug(
+                f"Cached new data for '{symbol}' (resolution: {resolution}). "
+                f"Size: {len(data_df)}"
+            )
         
         if self._enable_monitoring:
             self._cache_stats['updates'] += 1
-        
-        self.logger.debug(
-            f"Cache updated for symbol '{symbol}' with resolution '{resolution}'. "
-            f"New length: {len(self._data_cache[cache_key])}"
-        )
 
 
 # ============================================================================

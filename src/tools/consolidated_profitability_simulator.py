@@ -135,17 +135,16 @@ def run_consolidated_simulation(execution_symbol: str, alert_sources: list, date
         keys = ["t", "o", "h", "l", "c", "v"]
         min_len = min(len(raw_data.get(k, [])) for k in keys)
         if min_len > 0:
+            time_index = pd.to_datetime(raw_data["t"][:min_len], unit="s")
             price_data_df = pd.DataFrame({
-                "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
-                "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
-                "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
+                "open": raw_data["o"][:min_len],
+                "high": raw_data["h"][:min_len],
+                "low": raw_data["l"][:min_len],
+                "close": raw_data["c"][:min_len],
                 "volume": raw_data["v"][:min_len],
-            })
-            price_data_df['time'] = price_data_df['time'].dt.tz_localize('UTC').dt.tz_convert(market_tz)
-            # --- FIX: Set the 'time' column as the index ---
-            price_data_df = price_data_df.set_index('time')
-            # --- END FIX ---
-    # --- END FIX ---
+            }, index=time_index)
+            price_data_df.index.name = 'time'
+            price_data_df.index = price_data_df.index.tz_localize('UTC').tz_convert(market_tz)
 
     if price_data_df.empty:
         logging.error(f"Could not load price data for execution symbol '{execution_symbol}' on {date_str}. Aborting.")

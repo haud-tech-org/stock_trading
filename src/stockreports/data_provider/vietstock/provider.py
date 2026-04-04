@@ -93,8 +93,22 @@ class VietstockProvider(BaseDataProvider):
                 custom_params=api_params
             )
             
-            if not raw_data or not isinstance(raw_data, dict):
-                raise RuntimeError(f"Invalid response from Vietstock API: {raw_data}")
+            # Handle no-data response gracefully (API returned valid no_data status)
+            # This is normal behavior for data gaps in market history
+            if raw_data is None:
+                self.logger.warning(
+                    f"No data available for {symbol} from {from_timestamp} to {to_timestamp}. "
+                    f"This may indicate a gap in market data (e.g., non-trading hours)."
+                )
+                # Return empty DataFrame with correct structure and timezone
+                return pd.DataFrame(
+                    columns=['open', 'high', 'low', 'close', 'volume'],
+                    index=pd.DatetimeIndex([], name='time', tz=self.market_tz)
+                )
+            
+            # Validate response is a dict (actual API error)
+            if not isinstance(raw_data, dict):
+                raise RuntimeError(f"Invalid response format from Vietstock API: {type(raw_data)}")
             
             # Normalize raw data to standard format
             df = self.normalizer.normalize(raw_data, symbol)

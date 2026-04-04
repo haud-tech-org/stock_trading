@@ -9,6 +9,7 @@ all data retrieval operations.
 import logging
 from typing import Dict, Any, List, Union
 import pandas as pd
+import numpy as np
 
 from src.stockreports.data_provider.provider_factory import ProviderFactory
 from src.stockreports.data_provider.providers import Provider
@@ -137,7 +138,11 @@ class DataProviderCoordinator:
                              Each provider converts to its own format internally.
         
         Returns:
-            pd.DataFrame: Normalized OHLCV data (empty DataFrame if error)
+            pd.DataFrame: Normalized OHLCV data with guaranteed type compatibility:
+                - 'time' column: datetime64[ns] (converted from index if needed)
+                - 'open', 'high', 'low', 'close': float64
+                - 'volume': float64 (or int64 if original)
+                - All values are valid numeric/datetime types (no NaN in critical fields)
         
         Raises:
             ValueError: If symbol is not supported by any enabled provider (when auto-detecting)
@@ -166,14 +171,26 @@ class DataProviderCoordinator:
             df = prov.fetch_ohlcv(symbol, from_timestamp, to_timestamp, resolution)
             
             # *** STANDARDIZATION POINT ***
-            # Ensure 'time' is always a column (not index) for consistency
+            # Ensure 'time' is the index (not a column) for consistency
             # across all downstream consumers (historical manager, executors, etc.)
             # This is the single point where format is standardized.
-            if df.index.name == 'time':
-                df = df.reset_index()
+            # Migration requirement: time MUST be index for datetime operations.
+            if 'time' in df.columns and df.index.name != 'time':
+                # Convert 'time' column to index
+                df = df.set_index('time')
                 self.logger.debug(
-                    f"Standardized DataFrame for {symbol}: converted 'time' from index to column"
+                    f"Standardized DataFrame for {symbol}: converted 'time' from column to index"
                 )
+            elif df.index.name != 'time':
+                # If index is neither named 'time' nor 'time' column exists, something is wrong
+                self.logger.warning(
+                    f"DataFrame for {symbol} has unexpected index: {df.index.name}. "
+                    f"Columns: {df.columns.tolist()}"
+                )
+            
+            # *** TYPE COMPATIBILITY VALIDATION ***
+            # Ensure downstream processes receive compatible data types
+            df = self._ensure_type_compatibility(df, symbol)
             
             self.logger.info(
                 f"Successfully fetched {len(df)} candles for {symbol} via {provider_name}"
@@ -186,6 +203,126 @@ class DataProviderCoordinator:
                 f"Failed to fetch {symbol} via {provider_name}: {e}"
             )
             raise
+    
+    def _ensure_type_compatibility(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+        """
+        VALIDATOR: Verify the returned DataFrame has correct types for all downstream processes.
+        
+        This method validates (does NOT convert) that:
+        1. 'time' is the index (not a column)
+        2. Index is pd.DatetimeIndex with pd.Timestamp elements
+        3. OHLCV columns exist and are numeric
+        4. No NaN values in critical fields ('time' index, 'close' column)
+        5. No infinity values in any numeric column
+        
+        **IMPORTANT:** This is a VALIDATOR, not a converter. If types are incorrect,
+        it raises ValueError. The provider is responsible for returning correct types.
+        
+        Args:
+            df (pd.DataFrame): DataFrame from provider with 'time' as index
+            symbol (str): Symbol for logging context
+        
+        Returns:
+            pd.DataFrame: Same DataFrame (unchanged) after validation
+        
+        Raises:
+            ValueError: If any type validation fails
+        """
+        if df.empty:
+            return df
+        
+        try:
+            # *** VALIDATION #1: 'time' must be the index (not a column) ***
+            if df.index.name != 'time':
+                raise ValueError(
+                    f"Provider error for {symbol}: 'time' must be the index. "
+                    f"Current index name: {df.index.name}. "
+                    f"Available columns: {df.columns.tolist()}"
+                )
+            
+            # *** VALIDATION #2: Index must be DatetimeIndex with pd.Timestamp elements ***
+            # This is required for downstream processes that call .timestamp() method
+            if not isinstance(df.index, pd.DatetimeIndex):
+                raise ValueError(
+                    f"Provider error for {symbol}: 'time' index must be pd.DatetimeIndex. "
+                    f"Current type: {type(df.index).__name__}. "
+                    f"Current dtype: {df.index.dtype}"
+                )
+            
+            # Validate that index elements are pd.Timestamp (sample check first 3)
+            # DatetimeIndex naturally contains pd.Timestamp elements
+            sample_size = min(3, len(df))
+            if sample_size > 0:
+                sample_timestamps = df.index[:sample_size]
+                if not all(isinstance(ts, pd.Timestamp) for ts in sample_timestamps):
+                    raise ValueError(
+                        f"Provider error for {symbol}: 'time' index elements are not pd.Timestamp. "
+                        f"Sample types: {[type(ts).__name__ for ts in sample_timestamps]}"
+                    )
+            
+            # *** VALIDATION #3: OHLCV columns must exist and be numeric ***
+            required_numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+            missing_cols = [col for col in required_numeric_cols if col not in df.columns]
+            
+            if missing_cols:
+                raise ValueError(
+                    f"Provider error for {symbol}: Missing required OHLCV columns: {missing_cols}. "
+                    f"Available columns: {df.columns.tolist()}"
+                )
+            
+            # Validate numeric columns are actually numeric
+            for col in required_numeric_cols:
+                if not pd.api.types.is_numeric_dtype(df[col]):
+                    raise ValueError(
+                        f"Provider error for {symbol}: Column '{col}' must be numeric. "
+                        f"Current dtype: {df[col].dtype}"
+                    )
+            
+            # *** VALIDATION #4: No NaN in critical fields ***
+            index_nan_count = df.index.isna().sum()
+            if index_nan_count > 0:
+                raise ValueError(
+                    f"Provider error for {symbol}: Found {index_nan_count} NaN values in 'time' index. "
+                    f"Provider must return complete time index."
+                )
+            
+            close_nan_count = df['close'].isna().sum()
+            if close_nan_count > 0:
+                raise ValueError(
+                    f"Provider error for {symbol}: Found {close_nan_count} NaN values in 'close' column. "
+                    f"Provider must return complete close prices."
+                )
+            
+            # *** VALIDATION #5: No infinity values ***
+            for col in required_numeric_cols:
+                col_inf = np.isinf(df[col]).sum()
+                if col_inf > 0:
+                    raise ValueError(
+                        f"Provider error for {symbol}: Found {col_inf} infinity values in '{col}'. "
+                        f"Provider must return finite values only."
+                    )
+            
+            # *** FINAL VALIDATION: Log type summary (for debugging) ***
+            self.logger.debug(
+                f"Type validation passed for {symbol}. "
+                f"Schema: time(index=DatetimeIndex[{df.index.dtype}]), "
+                f"open({df['open'].dtype}), high({df['high'].dtype}), "
+                f"low({df['low'].dtype}), close({df['close'].dtype}), "
+                f"volume({df['volume'].dtype})"
+            )
+            
+            return df
+            
+        except ValueError:
+            # Re-raise ValueError as-is (validation failure)
+            raise
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error during type validation for {symbol}: {e}"
+            )
+            raise ValueError(
+                f"Type validation failed for {symbol}: {e}"
+            )
     
     def list_available_providers(self) -> List[str]:
         """

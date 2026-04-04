@@ -65,7 +65,7 @@ class CandleColumn:
     LOW = "low"
     CLOSE = "close"
     VOLUME = "volume"
-    TIME = "time"  # Timestamp column for data indexing
+    TIME = "time"  # DEPRECATED: Time is now the DataFrame index, not a column. Use .name or .index
 
 class IchimokuColumn:
     """Ichimoku indicator column name constants."""

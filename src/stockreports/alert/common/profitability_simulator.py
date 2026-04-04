@@ -2,11 +2,13 @@ import pandas as pd
 from typing import List, Dict, Any
 import pytz
 from datetime import timedelta
+import logging
 from src.stockreports.utils.time_utils import get_market_timezone_str
 from src.stockreports.alert.model.models import Trade, ProfitabilityReport
 from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD_PROFIT
 
 TIMEZONE = pytz.timezone(get_market_timezone_str())
+logger = logging.getLogger(__name__)
 
 def calculate_trade_metrics(trade: Dict[str, Any], trade_data: pd.DataFrame) -> Dict[str, Any]:
     """
@@ -147,8 +149,12 @@ def simulate_profitability(alerts: List[Dict[str, Any]], trade_data: pd.DataFram
 
     # Prepare trade_data for efficient lookup if provided
     if trade_data is not None:
-        if not isinstance(trade_data.index, pd.DatetimeIndex):
-            trade_data = trade_data.set_index('time')
+        # Ensure 'time' is the index (defensive for external data sources)
+        if not isinstance(trade_data.index, pd.DatetimeIndex) or trade_data.index.name != 'time':
+            if 'time' in trade_data.columns:
+                trade_data = trade_data.set_index('time')
+            else:
+                logger.warning("trade_data has neither 'time' as index nor as column. Profitability calculations may be limited.")
         if not trade_data.index.is_monotonic_increasing:
             trade_data = trade_data.sort_index()
 

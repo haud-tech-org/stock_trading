@@ -209,6 +209,18 @@ def _fetch_intraday_data_with_resolution(
             logging.warning(f"No data returned for {symbol}")
             return None
         
+        # Adjust timezone and prices
+        # Note: Handle both timezone-naive and timezone-aware indices
+        # If already tz-aware, just convert; if naive, localize to UTC first
+        if df.index.tz is None:
+            # Timezone-naive: localize to UTC first, then convert
+            df.index = df.index.tz_localize('UTC').tz_convert(pytz.timezone(TIMEZONE_STR))
+        else:
+            # Already timezone-aware: just convert to target timezone
+            df.index = df.index.tz_convert(pytz.timezone(TIMEZONE_STR))
+        
+        df = adjust_prices_by_symbol(df, symbol)
+        
         logging.info(f"Successfully fetched {len(df)} candles for {symbol}")
         return df
 
@@ -346,23 +358,28 @@ def load_data_for_development(symbol: str, start_date: Optional[str] = None, end
         if min_len == 0:
             continue
             
+        time_index = pd.to_datetime(raw_data["t"][:min_len], unit="s")
         df_single = pd.DataFrame({
-            "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
-            "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
-            "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
+            "open": raw_data["o"][:min_len],
+            "high": raw_data["h"][:min_len],
+            "low": raw_data["l"][:min_len],
+            "close": raw_data["c"][:min_len],
             "volume": raw_data["v"][:min_len],
-        })
+        }, index=time_index)
+        df_single.index.name = 'time'
         all_dfs.append(df_single)
 
     if not all_dfs:
         logger.warning(f"No data loaded for {symbol} in the specified date range.")
         return pd.DataFrame()
 
-    df = pd.concat(all_dfs, ignore_index=True).drop_duplicates(subset=['time'], keep='first').sort_values(by='time').reset_index(drop=True)
+    df = pd.concat(all_dfs)
+    df = df[~df.index.duplicated(keep='first')]
+    df = df.sort_index()
     
     if not df.empty:
         market_tz = pytz.timezone(TIMEZONE_STR)
-        df['time'] = df['time'].dt.tz_localize('UTC').dt.tz_convert(market_tz)
+        df.index = df.index.tz_localize('UTC').tz_convert(market_tz)
         df = adjust_prices_by_symbol(df, symbol)
         
     return df

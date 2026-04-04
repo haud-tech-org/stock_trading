@@ -182,17 +182,20 @@ class Executor(ABC):
         lookback_window_size: int
     ) -> tuple[pd.DataFrame, int, int]:
         """
-        Common utility for executors: prepares indexed DataFrame and loop boundaries.
-        Returns (df_indexed, loop_start, loop_end).
+        Common utility for executors: prepares DataFrame and loop boundaries.
+        
+        The DataFrame maintains 'time' as its index throughout the pipeline.
+        This ensures type consistency: time remains as pd.DatetimeIndex with pd.Timestamp elements.
+        
+        Returns (df, loop_start, loop_end) where df still has 'time' as index.
         """
-        df_indexed = df.reset_index()
-        loop_end = len(df_indexed)
+        loop_end = len(df)
         min_scan_index = lookback_window_size
         if self.is_development_mode:
             loop_start = min_scan_index
         else:
-            loop_start = max(min_scan_index, len(df_indexed) - new_candle_count)
-        return df_indexed, loop_start, loop_end
+            loop_start = max(min_scan_index, len(df) - new_candle_count)
+        return df, loop_start, loop_end
     
     def set_window_context(
         self,
@@ -202,12 +205,17 @@ class Executor(ABC):
     ) -> None:
         """
         Sets object-level variables for the lookback window and boundary candles for a given scan index.
+        
+        The index is pd.DatetimeIndex with pd.Timestamp elements (validated by Coordinator).
         """
         if df_indexed is None or df_indexed.empty:
             return None
         self.lookback_window_df = df_indexed.iloc[scan_index - lookback_window_size : scan_index]
-        self.current_window_start_time = self.lookback_window_df.iloc[0]['time']
-        self.current_window_end_time = self.lookback_window_df.iloc[-1]['time']
+        
+        # Extract time values directly from the index (which is pd.DatetimeIndex with Timestamp elements)
+        self.current_window_start_time = self.lookback_window_df.index[0]
+        self.current_window_end_time = self.lookback_window_df.index[-1]
+        
         self.current_step = 0
         self.first_candle = candle_utils.get_first_candle(self.lookback_window_df)
         self.last_candle = candle_utils.get_last_candle(self.lookback_window_df)
@@ -250,7 +258,7 @@ class Executor(ABC):
             success, shifted_candle = self.update_window_end_time_with_shift(i, df_indexed, shift_offset)
             if success and shifted_candle is not None:
                 # Parse return values and process further steps
-                self.current_window_end_time = shifted_candle['time']
+                self.current_window_end_time = shifted_candle.name
                 alert = self._step_create_alert(shifted_candle, signal)
                 # ... continue with validation and other processing
             else:
@@ -268,7 +276,7 @@ class Executor(ABC):
         # Parse return values and update state if calculation was successful
         if success and shifted_candle is not None:
             # Update orchestration state with shifted candle's timestamp
-            self.current_window_end_time = shifted_candle['time']
+            self.current_window_end_time = shifted_candle.name
             return True, shifted_candle
         else:
             # Failed to retrieve shifted candle - caller should skip processing
@@ -285,7 +293,8 @@ class Executor(ABC):
     ) -> AlertData:
         """
         Common alert creation method: appends validations to details and creates AlertData.
-        If any error occurs, logs the exception and re-raises it.
+        Assumes upstream data (alert_time, start_time) are already validated as pd.Timestamp objects
+        by the Coordinator via _ensure_type_compatibility().
         """
         try:
             # Always append validations to details
@@ -293,7 +302,13 @@ class Executor(ABC):
             details["validations"] = [v.to_json() for v in self.validations]
             details = make_json_safe(details)
 
-            alert_id = str(int(self.current_window_end_time.timestamp()))
+            # Assume coordinator has validated these are pd.Timestamp objects
+            alert_time_ts = self.current_window_end_time
+            start_time_ts = self.current_window_start_time
+            
+            # Generate alert_id from alert_time timestamp
+            alert_id = str(int(alert_time_ts.timestamp()))
+            
             alert = AlertData(
                 id=alert_id,
                 symbol=self.symbol,
@@ -301,9 +316,9 @@ class Executor(ABC):
                 signal=final_signal,
                 trend=final_trend,
                 alert_price=final_alert_candle['close'] if final_alert_candle is not None else None,
-                alert_time=self.current_window_end_time,
+                alert_time=alert_time_ts,
                 start_price=self.first_candle['open'],
-                start_time=self.current_window_start_time,
+                start_time=start_time_ts,
                 magnitude=final_magnitude,
                 details=json.dumps(details)
             )
