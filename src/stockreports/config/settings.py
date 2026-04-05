@@ -43,6 +43,27 @@ API_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3.1 Safari/605.1.15",
 }
 
+# --- Data Processing Configuration ---
+
+# Data Processing Transformations
+# Meaning: Configuration for enabling/disabling specific data transformations in the DataProcessor layer.
+#          This allows fine-grained control over which business logic transformations are applied to raw provider data.
+# Guidance:
+#   - Each transformation can be independently toggled
+#   - All are enabled by default (True) to ensure consistent data quality
+#   - Disable transformations only for debugging or special use cases
+#   - New transformations can be added here as they are implemented
+# Example:
+#   DATA_PROCESSING = {
+#       "timezone_conversion": True,
+#       "price_adjustment": True,
+#       "volume_normalization": False,  # Future feature
+#   }
+DATA_PROCESSING = {
+    "timezone_conversion": True,      # Convert index to market timezone
+    "price_adjustment": True,         # Apply symbol-specific price adjustments
+}
+
 
 # --- Real-time Monitoring Configuration ---
 

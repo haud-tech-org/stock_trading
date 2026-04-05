@@ -14,6 +14,11 @@ Architecture:
 - HistoricalDataManager: Class-based hub for cache management
 - Singleton pattern: Module-level instance for backward compatibility
 - All public methods available as both class methods and module functions
+
+Data Flow:
+1. Fetch raw data: HistoricalDataManager → Coordinator → Provider
+2. Process data: HistoricalDataManager → DataProcessor (timezone + price adjustment)
+3. Cache & return: HistoricalDataManager stores processed data
 """
 import pandas as pd
 from typing import Optional, Dict
@@ -21,7 +26,9 @@ import logging
 from datetime import datetime
 
 from src.stockreports.config import loader
-from src.stockreports.utils.data_utils import _load_live_data_with_resolution, load_data_for_development
+from src.stockreports.utils.data_utils import load_data_for_development
+from src.stockreports.data_provider.coordinator import DataProviderCoordinator
+from src.stockreports.data_processor import DataProcessor
 from src.stockreports.alert.common.constants import Mode
 
 # --- Logger ---
@@ -141,7 +148,7 @@ class HistoricalDataManager:
             else:
                 from_ts = int(start_time.timestamp())
                 to_ts = int(end_time.timestamp())
-                fetched_df = _load_live_data_with_resolution(
+                fetched_df = self._fetch_and_process_data(
                     symbol, from_ts, to_ts, resolution=resolution
                 )
 
@@ -195,7 +202,7 @@ class HistoricalDataManager:
                 f"Fetching segment for '{symbol}' (res: {resolution}): "
                 f"{seg_start} to {seg_end}"
             )
-            segment_df = _load_live_data_with_resolution(
+            segment_df = self._fetch_and_process_data(
                 symbol, from_ts, to_ts, resolution=resolution
             )
             
@@ -366,6 +373,72 @@ class HistoricalDataManager:
     # PRIVATE API: Internal Methods
     # ============================================================================
     
+    def _fetch_and_process_data(
+        self,
+        symbol: str,
+        from_timestamp: int,
+        to_timestamp: int,
+        resolution: Optional[int] = None
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch raw data from Coordinator and process through DataProcessor.
+        
+        This method implements the core data flow:
+        1. Fetch raw OHLCV data from Coordinator (which routes to appropriate Provider)
+        2. Process data through DataProcessor (timezone conversion, price adjustment, etc.)
+        3. Return processed DataFrame ready for caching
+        
+        Args:
+            symbol: Stock/crypto symbol
+            from_timestamp: Start Unix timestamp
+            to_timestamp: End Unix timestamp
+            resolution: Optional resolution in minutes
+            
+        Returns:
+            pd.DataFrame: Processed OHLCV data, or None if fetch/processing failed
+        """
+        try:
+            # Step 1: Fetch raw data from provider via Coordinator
+            coordinator = DataProviderCoordinator()
+            resolution_minutes = resolution if resolution is not None else 1
+            
+            self.logger.debug(
+                f"Fetching raw data for '{symbol}' from {from_timestamp} to {to_timestamp} "
+                f"(resolution: {resolution_minutes} min)"
+            )
+            
+            raw_df = coordinator.fetch_ohlcv(
+                symbol=symbol,
+                from_timestamp=from_timestamp,
+                to_timestamp=to_timestamp,
+                resolution=resolution_minutes
+            )
+            
+            if raw_df is None or raw_df.empty:
+                self.logger.warning(f"No raw data returned for '{symbol}' from Coordinator")
+                return None
+            
+            # Step 2: Process data through DataProcessor
+            processor = DataProcessor(symbol)
+            processed_df = processor.process(raw_df)
+            
+            if processed_df is None or processed_df.empty:
+                self.logger.warning(f"Data processing failed for '{symbol}'")
+                return None
+            
+            self.logger.debug(
+                f"Successfully fetched and processed {len(processed_df)} rows for '{symbol}'"
+            )
+            return processed_df
+            
+        except Exception as e:
+            self.logger.error(
+                f"Failed to fetch and process data for '{symbol}': {str(e)}",
+                exc_info=True
+            )
+            return None
+    
+    # ============================================================================
     def _merge_and_cache(
         self,
         symbol: str,

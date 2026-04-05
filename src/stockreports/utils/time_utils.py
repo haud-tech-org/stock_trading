@@ -208,3 +208,39 @@ def to_iso8601_with_tz(ts):
             ts = ts.tz_convert(TIMEZONE)
         return ts.isoformat()
     return str(ts)
+
+
+def convert_dataframe_to_market_timezone(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert DataFrame index to market timezone.
+    
+    Handles both naive and timezone-aware indices:
+    - If index is timezone-aware: converts to market timezone
+    - If index is naive: localizes to UTC, then converts to market timezone
+    
+    Args:
+        df: DataFrame with datetime index (naive or timezone-aware)
+        
+    Returns:
+        DataFrame with index converted to market timezone
+        
+    Raises:
+        Exception: If timezone conversion fails
+    """
+    try:
+        market_tz = get_market_timezone()
+        
+        # Check if index is already timezone-aware
+        if hasattr(df.index, 'tz') and df.index.tz is not None:
+            # Convert from current timezone to market timezone
+            df.index = df.index.tz_convert(market_tz)
+        else:
+            # Localize naive index to UTC, then convert to market timezone
+            df.index = df.index.tz_localize('UTC')
+            df.index = df.index.tz_convert(market_tz)
+        
+        return df
+        
+    except Exception as e:
+        logging.error(f"Failed to convert DataFrame index to market timezone: {str(e)}", exc_info=True)
+        raise
