@@ -7,11 +7,12 @@ import importlib
 
 from src.stockreports.config.validation_settings import VALIDATION_MIN_PROFIT_FOR_SUCCESS, VALIDATION_MAGNITUDE_PROFIT_FACTOR
 from src.stockreports.alert.common.constants import Trend, Signal
-from src.stockreports.config import price_alert_settings, settings
-from src.stockreports.utils.historical_data_manager import get_historical_data
+from src.stockreports.config import price_alert_settings, settings, loader
+from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.alert.model.models import AlertData
 
 logger = logging.getLogger(__name__)
+data_provider_settings = loader.get_data_provider_settings()
 
 def get_reversal_trend(trend: Trend) -> Trend:
     """
@@ -123,7 +124,14 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
     # Fetch a single, wider window that covers both performance (T) and structural (T, T-1) needs.
     start_fetch_time = alert_time - pd.Timedelta(minutes=5)
     end_fetch_time = alert_time + pd.Timedelta(minutes=2)
-    market_data = get_historical_data(execution_symbol, start_fetch_time, end_fetch_time)
+    
+    orchestrator = DataServiceOrchestrator()
+    market_data = orchestrator.fetch_and_process(
+        symbol=execution_symbol,
+        start_time=start_fetch_time,
+        end_time=end_fetch_time,
+        resolution=data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
+    )
 
     # If no data is fetched, we can't proceed with either calculation.
     if market_data is None or market_data.empty:

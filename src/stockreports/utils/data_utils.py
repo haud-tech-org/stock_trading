@@ -18,7 +18,7 @@ import json
 from src.stockreports.config import loader
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
 from src.stockreports.utils.time_utils import TIMEZONE_STR, SESSIONS
-from src.stockreports.data_provider.coordinator import DataProviderCoordinator
+from src.stockreports.data_services._internal.providing._coordinator import DataProviderCoordinator
 
 # Standard column mapping for financial data
 STANDARD_COLUMN_MAP = {

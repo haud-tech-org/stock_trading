@@ -43,9 +43,10 @@ sys.path.insert(0, project_root)
 from src.stockreports.utils.data_utils import TIMEZONE_STR
 from src.stockreports.config import loader
 from src.stockreports.config import price_alert_settings
-from src.stockreports.utils.historical_data_manager import _get_historical_data_with_resolution
+from src.stockreports.data_services import DataServiceOrchestrator
 import importlib
 import pprint
+import pandas as pd
 
 # Load settings
 settings = loader.get_settings()
@@ -138,11 +139,20 @@ def run_sr_detection_for_symbols(
         logging.info(f"Starting support/resistance analysis with resolution '{resolution or 'default'}'.")
         logging.info(f"Fetching data from {start_time} to {end_time}...")
         
-        df = _get_historical_data_with_resolution(
+        # Use DataServiceOrchestrator to fetch processed data
+        orchestrator = DataServiceOrchestrator()
+        
+        # If resolution is not provided, use the configured monitoring resolution
+        effective_resolution = resolution
+        if not effective_resolution:
+            data_provider_config = loader.get_data_provider_settings()
+            effective_resolution = data_provider_config.MONITORING_DATA_RESOLUTION_MINUTES
+        
+        df = orchestrator.fetch_and_process(
             symbol=symbol,
             start_time=start_dt,
             end_time=end_dt,
-            resolution=resolution
+            resolution=effective_resolution
         )
 
         if df is None or df.empty:

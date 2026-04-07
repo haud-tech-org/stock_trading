@@ -1,7 +1,9 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional
 import pandas as pd
-from src.stockreports.alert.common.constants import ValidationStatus, Approach, Signal, Status, Trend
+import logging
+from datetime import datetime
+from src.stockreports.alert.common.constants import ValidationStatus, Approach, Signal, Status, Trend, TREND_MAPPING, STATUS_MAPPING
 
 @dataclass
 class AlertData:
@@ -16,7 +18,6 @@ class AlertData:
     alert_time: pd.Timestamp
     start_price: float
     start_time: pd.Timestamp
-    magnitude: float
     details: Optional[str] = None  # The original, approach-specific dictionary as a JSON string
     trend: Optional[Trend] = None
     profit_loss: Optional[float] = None
@@ -42,6 +43,99 @@ class AlertData:
         if d.get("validation_price_time") and isinstance(d["validation_price_time"], pd.Timestamp):
             d["validation_price_time"] = d["validation_price_time"].isoformat()
         return d
+
+    @staticmethod
+    def from_dict(alert_dict: dict) -> Optional['AlertData']:
+        """
+        Create an AlertData instance from a dictionary (typically from JSON).
+        
+        Handles type conversion for enum-like constants:
+        - approach: Converts to Approach constant (e.g., Approach.ICHIMOKU)
+        - signal: Converts to Signal constant (e.g., Signal.BUY)
+        - trend: Converts to Trend constant (e.g., Trend.UPTREND)
+        - status: Converts to Status constant (e.g., Status.SUCCESS)
+        
+        Also handles timestamp parsing for multiple formats:
+        - ISO 8601 strings
+        - datetime objects
+        - pd.Timestamp objects
+        
+        Args:
+            alert_dict: Dictionary containing alert data from JSON file
+            
+        Returns:
+            AlertData object or None if conversion fails
+        """
+        try:
+            # Parse alert_time - handle both string and datetime objects
+            alert_time = alert_dict.get('alert_time')
+            if isinstance(alert_time, str):
+                from dateutil import parser as date_parser
+                alert_time = date_parser.isoparse(alert_time)
+            elif isinstance(alert_time, datetime):
+                alert_time = pd.Timestamp(alert_time)
+            elif not isinstance(alert_time, pd.Timestamp):
+                logging.warning(f"Invalid alert_time format: {type(alert_time)}")
+                return None
+            
+            # Parse start_time - handle both string and datetime objects
+            start_time = alert_dict.get('start_time')
+            if isinstance(start_time, str):
+                from dateutil import parser as date_parser
+                start_time = date_parser.isoparse(start_time)
+            elif isinstance(start_time, datetime):
+                start_time = pd.Timestamp(start_time)
+            elif not isinstance(start_time, pd.Timestamp):
+                start_time = alert_time  # Use alert_time as fallback
+            
+            # Convert approach string to Approach constant
+            approach_str = alert_dict.get('approach', 'UNKNOWN')
+            approach_value = getattr(Approach, approach_str, approach_str)  # Falls back to string if constant not found
+            
+            # Convert signal string to Signal constant
+            signal_str = alert_dict.get('signal', 'NEUTRAL')
+            signal_value = getattr(Signal, signal_str, signal_str)  # Falls back to string if constant not found
+            
+            # Convert trend string to Trend constant if present
+            trend_str = alert_dict.get('trend')
+            trend_value = None
+            if trend_str:
+                trend_value = TREND_MAPPING.get(trend_str, trend_str)
+            
+            # Convert status string to Status constant if present
+            status_str = alert_dict.get('status')
+            status_value = None
+            if status_str:
+                status_value = STATUS_MAPPING.get(status_str, status_str)
+            
+            # Create AlertData with converted constant values
+            alert_data = AlertData(
+                approach=approach_value,
+                signal=signal_value,
+                alert_price=float(alert_dict.get('alert_price', 0)),
+                alert_time=alert_time,
+                start_price=float(alert_dict.get('start_price', 0)),
+                start_time=start_time,
+                id=alert_dict.get('id', ''),
+                details=alert_dict.get('details'),
+                trend=trend_value,
+                status=status_value,
+                symbol=alert_dict.get('symbol'),
+                magnitude=float(alert_dict.get('magnitude', 0)) if alert_dict.get('magnitude') else None,
+                suggested_profit_threshold=alert_dict.get('suggested_profit_threshold'),
+                structural_suggested_price=alert_dict.get('structural_suggested_price'),
+                performance_suggested_price=alert_dict.get('performance_suggested_price'),
+                profit_loss=alert_dict.get('profit_loss'),
+                period_time=alert_dict.get('period_time'),
+                validation_price_time=alert_dict.get('validation_price_time'),
+                time_to_best_price=alert_dict.get('time_to_best_price'),
+                min_expected_profit_loss=alert_dict.get('min_expected_profit_loss'),
+            )
+            
+            return alert_data
+        except Exception as e:
+            logging.error(f"Failed to convert alert dictionary to AlertData: {e}", exc_info=True)
+            return None
 
 @dataclass
 class AlertResult:

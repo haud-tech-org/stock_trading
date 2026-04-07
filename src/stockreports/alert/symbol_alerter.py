@@ -28,13 +28,11 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 notification_settings = loader.get_notification_settings()
 validation_settings = loader.get_validation_settings()
+data_provider_settings = loader.get_data_provider_settings()
 
 # --- Project Imports ---
 from src.stockreports.notification.notification_manager import NotificationManager
-from src.stockreports.utils.historical_data_manager import (
-    get_historical_data,
-    update_historical_data,
-)
+from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.utils.data_utils import (
     fetch_intraday_data, 
     load_data_for_development,
@@ -282,24 +280,30 @@ class SymbolAlerter:
             self.logger.info(f"\n--- New Interval for {self.symbol}: Analyzing at {current_time.strftime('%Y-%m-%d %H:%M:%S')} ---")
 
             # Define the time window for the data fetch
-            to_dt = current_time
+            to_dt: pd.Timestamp = current_time
             if master_df.empty:
                 # First run: fetch all data from the start of the day
                 all_starts = [times['start'] for times in SESSIONS.values()]
                 start_time_str = min(all_starts)
                 start_h, start_m = map(int, start_time_str.split(':'))
-                from_dt = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+                from_dt: pd.Timestamp = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
             else:
                 # Subsequent runs: fetch data from the last known point in time
                 last_known_time = master_df.index.max()
-                from_dt = last_known_time
+                from_dt: pd.Timestamp = last_known_time
 
             from_timestamp = int(from_dt.timestamp())
             to_timestamp = int(to_dt.timestamp())
 
-            # ✅ USE CENTRALIZED HISTORICAL DATA MANAGER
+            # ✅ USE CENTRALIZED DATA SERVICES ORCHESTRATOR
             # Fetch the latest data slice (handles caching internally)
-            latest_df = get_historical_data(self.symbol, from_dt, to_dt)
+            orchestrator = DataServiceOrchestrator()
+            latest_df = orchestrator.fetch_and_process(
+                symbol=self.symbol,
+                start_time=from_dt,
+                end_time=to_dt,
+                resolution=data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
+            )
 
             # ✅ Handle None or empty DataFrame (fetch failed or no data available)
             if latest_df is None or latest_df.empty:

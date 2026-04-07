@@ -41,28 +41,33 @@ DATA_PROVIDER_CONFIG = {
         "timeout": 15,
         "retries": 3,
         "cache_ttl": 300,  # Cache results for 5 minutes
-        "description": "Vietnamese stock market data provider (HoSE, HNX)",
-        "supported_resolutions": [1, 5, 15, 30, 60, 240, 1440],  # Minutes: 1m, 5m, 15m, 30m, 1h, 4h, 1d
+        "description": "Vietnamese stock market data provider"
     },
     "binance": {
         "enabled": "binance" in ENABLED_DATA_PROVIDERS,  # Auto-sync with ENABLED_DATA_PROVIDERS
         "timeout": 10,
         "retries": 3,
         "cache_ttl": 60,
-        "description": "Binance REST API provider (crypto trading pairs)",
-        "supported_resolutions": [1, 5, 15, 30, 60, 240, 1440],  # Minutes: 1m, 5m, 15m, 30m, 1h, 4h, 1d
+        "description": "Binance REST API provider"
     },
     "binance_ccxt": {
         "enabled": "binance_ccxt" in ENABLED_DATA_PROVIDERS,  # Auto-sync with ENABLED_DATA_PROVIDERS
         "timeout": 10,
         "retries": 3,
         "cache_ttl": 60,
-        "description": "Binance CCXT unified library provider (crypto, multiple exchanges)",
-        "supported_resolutions": [1, 5, 15, 30, 60, 240, 1440],  # Minutes: 1m, 5m, 15m, 30m, 1h, 4h, 1d
+        "description": "Binance CCXT unified library provider"
     }
 }
 
 DATA_PROVIDER_CACHE_TTL = 300
+
+# --- Data Fetching Resolution Configuration ---
+# Resolution for fetching OHLCV data in monitoring mode
+# This determines the candle interval size when fetching market data
+# Value: Minutes (int)
+# Default: 1 minute candles
+# Range: 1-1440 (1 minute to 1 day)
+MONITORING_DATA_RESOLUTION_MINUTES = 1
 
 
 # --- Provider Symbol Configurations ---
