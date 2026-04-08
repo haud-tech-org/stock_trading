@@ -573,111 +573,136 @@ PHASE 2 CHANGES (Upcoming):
 
 ```
 ⚠️  NOTE: Report generation layer added in Phase 2
+    Based on actual codebase: VALIDATION_SETTINGS.PY configuration
 
 REPORT GENERATION ARCHITECTURE:
 
 CentralizedReportGenerator
-├─ Purpose: Orchestrate backtesting and trade simulation
+├─ Purpose: Orchestrate backtesting and trade simulation with multiple scenarios
 ├─ Input: Historical data + trading alerts
-├─ Process: Run traders for each day → Consolidate results
-└─ Output: Performance metrics and scenario analysis
+├─ Process: For each profit/loss scenario → Run daily simulations → Consolidate results
+└─ Output: Scenario-based performance metrics and profitability analysis
 
-WORKFLOW (2 Base + 3 Optional Steps):
+CORE WORKFLOW (2 Required Steps):
 
-Base Steps:
-├─ Step 1: IndividualTradeSimulator
-│          ├─ Simulates trades for each day
-│          ├─ Applies profit/loss thresholds (validation_settings)
-│          ├─ Generates daily reports
-│          └─ Tracks scenario metrics (5 profit × 4 loss = 20 scenarios)
-│
-└─ Step 2: ConsolidateReports
-           ├─ Aggregates daily results
-           ├─ Summarizes across entire backtest period
-           └─ Creates consolidated performance report
+Step 1: IndividualTradeSimulator (for each scenario, each day)
+│       ├─ Loads alerts for the day
+│       ├─ Simulates entry/exit for each alert
+│       ├─ Applies profit_threshold and loss_threshold
+│       ├─ Records outcomes: profitable, loss, breakeven
+│       ├─ Dynamic profit logic: max(magnitude × 0.7, 2.0) points
+│       └─ Output: Daily report for this scenario
 
-Optional Steps (Enhancement):
-├─ Step 3: SupportResistanceDetector
-│          ├─ Detects support/resistance levels
-│          ├─ Correlates with alerts
-│          └─ Improves analysis accuracy (optional)
-│
-├─ Step 4: PerformanceAnalyzer
-│          ├─ Analyzes overall metrics
-│          ├─ Calculates statistical measures
-│          └─ Provides deep performance insights (optional)
-│
-└─ Step 5: [Custom Extensions]
-           └─ Framework allows additional analysis modules
+Step 2: ConsolidateReports (once per scenario, after all days)
+        ├─ Aggregates all daily reports for scenario
+        ├─ Calculates metrics: win rate, avg profit/loss, max drawdown
+        ├─ Summarizes across entire backtest period
+        └─ Output: Consolidated scenario summary
 
-SCENARIO SYSTEM:
+SCENARIO SYSTEM (Based on validation_settings.py):
 
-Profit Thresholds (5 options):
-├─ 1%
-├─ 2%
-├─ 3%
-├─ 5%
-└─ 10%
+Profit Thresholds Configuration:
+├─ VALIDATION_PRICE_THRESHOLD_PROFIT = [2.0]  (Currently: 1 value)
+│  └─ Note: Actual profits use dynamic logic (magnitude × VALIDATION_MAGNITUDE_PROFIT_FACTOR)
+│          Default factor: 0.7 (70% of alert magnitude)
+│          Minimum profit: VALIDATION_MIN_PROFIT_FOR_SUCCESS = 1.5 points
 
-Loss Thresholds (4 options):
-├─ -1%
-├─ -2%
-├─ -3%
-└─ -5%
+Loss Thresholds Configuration:
+├─ VALIDATION_PRICE_THRESHOLD_LOSS = [2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+│  └─ 9 different stop-loss levels (in points, not %)
 
-Total Scenarios: 5 × 4 = 20 combinations
-Each scenario generates separate performance metrics
+Total Scenarios: 1 × 9 = 9 combinations
+Each scenario iterates through ALL days with SAME profit/loss threshold pair
+
+OPTIONAL FEATURES (Independent, not sequential):
+
+Optional: Support/Resistance Detection
+├─ Flag: run_sr = True/False (CLI: --run-sr-detector)
+├─ File: support_resistance_detector.py
+├─ Function: Detect S/R levels from historical data
+├─ Parameters: start_time, end_time, resolution, min_touches
+└─ Output: Updates S/R level database for future simulations
+
+Optional: Suggested Price Updates
+├─ Flag: suggestion_type = None/"structural"/"performance"/"all" (CLI: --suggestion-type)
+├─ File: update_alert_files_with_suggestion.py
+├─ Function: Recalculate suggested entry/exit prices
+├─ Types:
+│  ├─ "structural": Based on support/resistance levels
+│  ├─ "performance": Based on historical profitability
+│  └─ "all": Both methods
+└─ Output: Updated alert files with new suggested_price fields
+
+Optional: Performance Analysis
+├─ Flag: run_analysis_flag = True/False (CLI: --run-analysis)
+├─ File: analyze_overall_performance.py (src/tools/analysis/)
+├─ Function: Compare scenarios, identify best/worst configurations
+├─ Process: Load all consolidated reports, generate comparisons
+└─ Output: Analysis report with optimization recommendations
 
 REPORT STRUCTURE:
 
-reports_replay/
-├─ [symbol]/
-│  ├─ deployment/
-│  │  ├─ daily_alerts/    → Individual trading alerts
-│  │  ├─ daily_reports/   → Daily performance by scenario
-│  │  └─ consolidated/    → Aggregated results
-│  │
-│  ├─ scenarios/          → 20 separate scenario folders
-│  │  ├─ profit_1_loss_1/
-│  │  ├─ profit_1_loss_2/
-│  │  └─ ... [18 more combinations]
-│  │
-│  └─ analysis/           → Overall performance analysis
-│     ├─ metrics_summary.json
-│     └─ visualization_data.json
+reports_replay/[symbol]/
+├─ deployment/
+│  ├─ daily_alerts/        → Individual trading alerts
+│  ├─ daily_reports/       → Daily performance (one file per scenario-day)
+│  └─ consolidated/        → Aggregated results per scenario
 │
-└─ [symbol 2]/
-   └─ [same structure]
+├─ scenarios/              → Separate results for each profit/loss combo
+│  ├─ profit_2.0_loss_2.5/  → Scenario 1: profit=2.0, loss=2.5
+│  ├─ profit_2.0_loss_3.0/  → Scenario 2: profit=2.0, loss=3.0
+│  ├─ profit_2.0_loss_3.5/  → Scenario 3: profit=2.0, loss=3.5
+│  ├─ ... (9 total scenarios)
+│  └─ profit_2.0_loss_9.0/  → Scenario 9: profit=2.0, loss=9.0
+│
+└─ analysis/ (if --run-analysis)
+   ├─ scenario_comparison.json
+   ├─ best_worst_config.json
+   └─ optimization_recommendations.json
 
-CONFIGURATION FOR REPORT GENERATION:
+CONFIGURATION PARAMETERS (validation_settings.py):
 
-notification_settings.py
-├─ Report generation channel selection
-├─ Email recipients for consolidated reports
-└─ Notification frequency and triggers
+Key Trade Simulation Parameters:
+├─ VALIDATION_TIME_WINDOW_MINUTES = 15
+│  └─ Minutes to check if profit/loss target was met
+├─ MAX_TIME_TO_TRIGGER_MINUTES = 5
+│  └─ Max time from alert generation to trade entry
+├─ VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.7
+│  └─ Multiplier for dynamic profit calculation (70% of magnitude)
+├─ VALIDATION_MIN_PROFIT_FOR_SUCCESS = 1.5
+│  └─ Minimum profit (in points) to be "Success" if neither target hit
+└─ VALIDATION_DATE_FILTER = None
+   └─ Single date filter (None = all dates in dataset)
 
-validation_settings.py
-├─ Profit thresholds (%, values)
-├─ Loss thresholds (%, values)
-└─ Validation rules for scenario acceptance
+WORKFLOW EXECUTION PATTERN:
 
-DATA FLOW:
+for profit_threshold in VALIDATION_PRICE_THRESHOLD_PROFIT:
+    for loss_threshold in VALIDATION_PRICE_THRESHOLD_LOSS:
+        # This is ONE SCENARIO
+        
+        # Step 1: For each day in date range
+        for day in date_range:
+            individual_trade_simulator(
+                profit_threshold=profit_threshold,
+                loss_threshold=loss_threshold,
+                day=day
+            )
+        
+        # Step 2: After all days for this scenario
+        consolidate_reports(
+            profit_threshold=profit_threshold,
+            loss_threshold=loss_threshold
+        )
 
-Raw Alerts → IndividualTradeSimulator
-               ↓
-           (Run for each day)
-               ↓
-           Daily Reports (per scenario)
-               ↓
-         ConsolidateReports
-               ↓
-       Consolidated Report (per scenario)
-               ↓
-     (Optional) SupportResistanceDetector
-               ↓
-     (Optional) PerformanceAnalyzer
-               ↓
-    Final Performance Analysis
+# After ALL scenarios:
+if run_sr:
+    support_resistance_detector(...)
+    
+if suggestion_type:
+    update_alert_files_with_suggestion(...)
+    
+if run_analysis_flag:
+    analyze_overall_performance(...)
 ```
 
 ---

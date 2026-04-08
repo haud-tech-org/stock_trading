@@ -35,6 +35,19 @@
 - Custom metrics implementation
 - For: Developers extending analytics
 
+👉 **[METRIC_TRADE_CALCULATION_REPORTS/REAL_WORLD_CASE_STUDY.md](./METRIC_TRADE_CALCULATION_REPORTS/REAL_WORLD_CASE_STUDY.md)** (30-40 min)
+- Real-world trade examples with actual data
+- Alert generation to profit/loss calculation
+- Complete business logic flow
+- 3 real trades analyzed with real prices
+- For: Understanding system behavior in production
+
+👉 **[METRIC_TRADE_CALCULATION_REPORTS/PROFIT_LOSS_QUICK_REFERENCE.md](./METRIC_TRADE_CALCULATION_REPORTS/PROFIT_LOSS_QUICK_REFERENCE.md)** (10-15 min)
+- Quick reference for P/L calculations
+- Scenario breakdown (9 scenarios)
+- Configuration parameters
+- For: Quick lookup during development
+
 ### 🚀 DevOps/Operations - Want to Deploy and Operate?
 👉 **[OPERATIONS_DEPLOYMENT_GUIDE.md](./OPERATIONS_DEPLOYMENT_GUIDE.md)** (35-45 min)
 - Complete deployment procedures
@@ -110,6 +123,8 @@
 | **DATA_PROVIDER_EXTENSION_GUIDE** | Overview, architecture, step-by-step, examples, testing | 1,000+ | 35 min |
 | **NOTIFICATION_CHANNEL_EXTENSION_GUIDE** | Overview, architecture, step-by-step, examples, integration | 900+ | 30 min |
 | **PERFORMANCE_METRICS_EXTENSION_GUIDE** | Overview, architecture, extension points, examples, ML | 1,100+ | 35 min |
+| **METRIC_TRADE_CALCULATION_REPORTS/REAL_WORLD_CASE_STUDY** | Real trades, alert generation, P/L calculation, business logic | 2,500+ | 40 min |
+| **METRIC_TRADE_CALCULATION_REPORTS/PROFIT_LOSS_QUICK_REFERENCE** | P/L formulas, scenarios, configuration, quick lookup | 300+ | 15 min |
 | **OPERATIONS_DEPLOYMENT_GUIDE** | Deployment, LIVE/REPLAY setup, monitoring, scaling | 1,400+ | 45 min |
 | **TROUBLESHOOTING_GUIDE** | Matrix, issues, debugging, performance, mode-specific | 1,300+ | 40 min |
 | **API_DOCUMENTATION** | Component APIs, data structures, configs, error codes | 1,200+ | 50 min |
@@ -169,6 +184,12 @@
 
 ### "How do I extend performance metrics?"
 → PERFORMANCE_METRICS_EXTENSION_GUIDE.md
+
+### "Show me real trade examples?"
+→ METRIC_TRADE_CALCULATION_REPORTS/REAL_WORLD_CASE_STUDY.md
+
+### "How are P/L calculations done?"
+→ METRIC_TRADE_CALCULATION_REPORTS/PROFIT_LOSS_QUICK_REFERENCE.md
 
 ### "How do I deploy to production?"
 → OPERATIONS_DEPLOYMENT_GUIDE.md
@@ -246,12 +267,13 @@ Guides explain:
 
 | Metric | Value |
 |--------|-------|
-| Total files | 11 |
-| Total lines | 8,500+ |
+| Total files | 13 |
+| Total lines | 10,000+ |
 | Code examples | 50+ |
 | Integration guides | 4 |
 | Operations guides | 2 |
-| Quick references | 4 |
+| Quick references | 6 |
+| Real-world case studies | 1 (3 complete trades) |
 | API endpoints documented | 40+ |
 | Configuration options | 50+ |
 | Error codes | 30+ |
@@ -372,6 +394,8 @@ All Phase 2 guides have been verified for:
 | Want to add data provider | DATA_PROVIDER_EXTENSION_GUIDE.md |
 | Want to add notification | NOTIFICATION_CHANNEL_EXTENSION_GUIDE.md |
 | Want to extend metrics | PERFORMANCE_METRICS_EXTENSION_GUIDE.md |
+| Want real examples | METRIC_TRADE_CALCULATION_REPORTS/REAL_WORLD_CASE_STUDY.md |
+| Want P/L reference | METRIC_TRADE_CALCULATION_REPORTS/PROFIT_LOSS_QUICK_REFERENCE.md |
 | Want to deploy | OPERATIONS_DEPLOYMENT_GUIDE.md |
 | Something's broken | TROUBLESHOOTING_GUIDE.md |
 | Need API details | API_DOCUMENTATION.md |

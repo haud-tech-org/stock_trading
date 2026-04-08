@@ -445,38 +445,39 @@ def generate_report(
     start_date: datetime,
     end_date: datetime,
     executors: List[BaseExecutor],
+    # Backtesting parameters
+    profit_target: float = 2.0,  # Fixed points
+    stop_loss_thresholds: List[float] = None,  
+    # [2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] - creates 9 scenarios
     # Optional parameters
     detect_support_resistance: bool = False,
-    analyze_profit_scenarios: bool = False,
-    profit_thresholds: List[float] = None,  # [1.0, 2.0, 3.0, 5.0]
-    loss_thresholds: List[float] = None,    # [0.5, 1.0, 1.5]
     optimize_parameters: bool = False,
     optimization_bounds: Dict = None,
 ) -> BacktestReport:
     pass
 ```
 
-**Report Contents:**
+**Report Contents (9 Scenario Analysis):**
 ```
-{
-  "metadata": {
-    "symbol": "VN30",
-    "date_range": ["2025-01-01", "2026-03-31"],
-    "executors_tested": 6,
-    "total_alerts": 127
-  },
-  "base_metrics": {
-    "alert_count": 127,
-    "win_rate": 0.68,
-    "profit_factor": 2.1,
-    "total_return": 12.5
-  },
-  "optional_metrics": {
-    "support_resistance": {...},      # If enabled
-    "profit_scenarios": [...],        # If enabled
-    "optimization_results": {...}     # If enabled
-  }
-}
+Symbol: VN30, Date: 2026-04-01 to 2026-04-08
+
+Approach: Strong Candle Detection
+─────────────────────────────────────────
+Total Alerts: 24
+
+Profit Target: 2.0 points (fixed)
+Stop Loss Scenarios:
+├─ 2.5 points: 16 wins, 8 losses → 67% win rate
+├─ 3.0 points: 18 wins, 6 losses → 75% win rate
+├─ 3.5 points: 19 wins, 5 losses → 79% win rate
+├─ 4.0 points: 20 wins, 4 losses → 83% win rate
+├─ 5.0 points: 21 wins, 3 losses → 88% win rate
+├─ 6.0 points: 22 wins, 2 losses → 92% win rate
+├─ 7.0 points: 22 wins, 2 losses → 92% win rate
+├─ 8.0 points: 23 wins, 1 loss  → 96% win rate
+└─ 9.0 points: 23 wins, 1 loss  → 96% win rate
+
+Optimal: 3.0-3.5 points (best risk/reward balance)
 ```
 
 ---
@@ -561,21 +562,35 @@ class NotificationSettings:
 #### 5. `price_alert_settings.py` - Alert Thresholds
 ```python
 class PriceAlertSettings:
-    # Profit/Loss targets for simulation
-    PROFIT_TARGETS = [1.0, 2.0, 3.0, 5.0]  # percentages
-    STOP_LOSSES = [0.5, 1.0, 1.5]          # percentages
-    
     # Alert validation
     MIN_ALERT_CONFIDENCE = 50  # 0-100
     MAX_ALERTS_PER_HOUR = 100
+    
+    # Note: Profit/loss targets are configured in validation_settings.py
 ```
 
-#### 6. `validation_settings.py` - Data Quality
+#### 6. `validation_settings.py` - Backtesting Configuration
 ```python
-class ValidationSettings:
-    MIN_CANDLE_COUNT = 100
-    MAX_PRICE_JUMP_PERCENT = 20  # Detect data errors
-    REQUIRED_VOLUME = 1000
+# Profit/Loss targets for simulation (in points, not percentages)
+VALIDATION_PRICE_GAIN_THRESHOLD = 3.0  # Min profit points for success
+VALIDATION_PRICE_DROP_THRESHOLD = 3.0  # Min loss points for success
+VALIDATION_TIME_WINDOW_MINUTES = 15    # Time to check if targets met
+
+# Per-trade take-profit configuration
+VALIDATION_PRICE_THRESHOLD_PROFIT = [2.0]      # Fixed profit target (points)
+VALIDATION_MAGNITUDE_PROFIT_FACTOR = 0.7       # Dynamic factor (70% of magnitude)
+VALIDATION_MIN_PROFIT_FOR_SUCCESS = 1.5        # Min profit if timeout
+
+# Stop-loss thresholds (tested against each alert)
+VALIDATION_PRICE_THRESHOLD_LOSS = [2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+# Creates 9 scenarios: 1 profit target × 9 stop-loss levels
+
+# Data source
+VALIDATION_DATA_SOURCE = 1  # 1 = local JSON, 0 = live API
+VALIDATION_DATE_FILTER = None  # None = all dates, "YYYY-MM-DD" = specific date
+
+# Price adjustment
+PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30", "VN30F1M", "BTC/USDT"]
 ```
 
 ---

@@ -169,43 +169,51 @@ Tests how your alert strategy would have performed on historical data.
 2. **System simulates all alerts for that period**
    - Generates all alerts that would have triggered
    - Records when each alert occurred
-   - Tracks what would have happened
+   - Tracks what would have happened after each alert
 
 3. **System tests profit/loss scenarios**
-   - Tests multiple profit targets (1%, 2%, 3%, etc.)
-   - Tests multiple stop losses (0.5%, 1%, 2%, etc.)
-   - Creates combination scenarios (20-30 different combinations)
+   - Profit Target: Fixed at 2.0 points (per alert magnitude)
+   - Stop Loss Levels: Tests 9 different stop-loss thresholds:
+     - 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0 points
+   - Creates 9 separate scenarios (1 profit target × 9 stop-loss levels)
+   - Each scenario shows different profitability metrics
 
 4. **System generates performance reports**
    - Shows which approach works best
    - Shows best time periods
-   - Shows optimal profit/loss thresholds
-   - Provides specific recommendations
+   - Shows optimal stop-loss thresholds
+   - Provides specific recommendations for risk management
 
 ### Example Report Output
 
 ```
-BACKTESTING RESULTS: VN30F1M (Jan 1-31, 2026)
+BACKTESTING RESULTS: VN30F1M (April 1-8, 2026)
 
 Approach: Strong Candle Detection
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Alerts Generated: 24
-Winning Trades: 18 (75%)
-Losing Trades: 6 (25%)
-Profit Factor: 2.1x
-Best Profit Target: 2.0%
-Best Stop Loss: 1.0%
-Recommended: Use with 2.0% profit target, 1.0% stop loss
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Profit Target: 2.0 points (fixed)
+
+Stop Loss Analysis:
+- 2.5 points: 16 profitable, 8 stopped out → Win Rate: 67%
+- 3.0 points: 18 profitable, 6 stopped out → Win Rate: 75%
+- 3.5 points: 19 profitable, 5 stopped out → Win Rate: 79%
+- 5.0 points: 21 profitable, 3 stopped out → Win Rate: 88%
+- 9.0 points: 23 profitable, 1 stopped out → Win Rate: 96%
+
+Best Performance: Stop Loss 3.0-3.5 points (optimal risk/reward)
 
 Approach: Consistent Momentum
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Alerts Generated: 31
-Winning Trades: 20 (65%)
-Losing Trades: 11 (35%)
-Profit Factor: 1.8x
-Best Profit Target: 1.5%
-Best Stop Loss: 0.8%
-Recommended: Good for consistent income, slightly higher risk
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Profit Target: 2.0 points (fixed)
+
+Stop Loss Analysis:
+- 2.5 points: 12 profitable, 10 stopped out → Win Rate: 55%
+- 3.0 points: 14 profitable, 8 stopped out → Win Rate: 64%
+- 3.5 points: 15 profitable, 7 stopped out → Win Rate: 68%
+- 5.0 points: 18 profitable, 4 stopped out → Win Rate: 82%
+- 9.0 points: 20 profitable, 2 stopped out → Win Rate: 91%
+
+Best Performance: Stop Loss 5.0 points (more conservative approach)
 ```
 
 ### Advanced Features (Optional)
@@ -251,41 +259,43 @@ Monitor ETH → via Binance
 ```
 Symbols: VN30 (Vietnam's main index)
 Approach: Strong Candle + Consistent Momentum
-Profit Target: 2.0% (wait for solid gains)
-Stop Loss: 1.5% (tight stops for safety)
+Profit Target: 2.0 points (automatic, fixed)
+Stop Loss: 3.0-3.5 points (testing multiple levels)
 Alerts: Email only
 Time Frame: Only during Vietnam trading hours (9:15-15:30)
+Backtesting: Aim for 75%+ win rate
 ```
 
 ### Example 2: Active Day Trader
 ```
 Symbols: VN30F1M (Vietnam futures, 1-minute data)
 Approach: Volume Spike + Strong Candle
-Profit Target: 0.5% (many small wins)
-Stop Loss: 0.3% (quick exit on loss)
+Profit Target: 2.0 points (automatic, fixed)
+Stop Loss: 2.5-4.0 points (tighter stops for quick scalps)
 Alerts: SMS + Email (real-time)
 Time Frame: Full trading day
+Backtesting: Aim for 60%+ win rate
 ```
 
 ### Example 3: Crypto Trader
 ```
 Symbols: BTC, ETH (Bitcoin, Ethereum)
 Approach: Ichimoku + Volume Reversal
-Profit Target: 3.0% (larger moves)
-Stop Loss: 2.0% (allow room for volatility)
+Profit Target: 2.0 points (automatic, fixed)
+Stop Loss: 4.0-6.0 points (volatile asset, wider stops)
 Alerts: Email + Web notifications
-Time Frame: 24/7 (crypto markets never sleep)
+Time Frame: 24/7
+Backtesting: Test multiple stop-loss levels
 ```
 
 ### Example 4: Multi-Strategy Portfolio
 ```
-Symbols: VN30, BTC, ETH, AAPL
-Approach 1: Consistent Momentum (VN30)
-Approach 2: Ichimoku (BTC/ETH)
-Approach 3: Volume Spike (AAPL)
-Profit Targets: 1.5-2.5% depending on asset
-Stop Losses: 1.0-1.5% depending on volatility
+Symbols: VN30, BTC, ETH
+Approach: Multiple (rotate by asset)
+Profit Target: 2.0 points (consistent across all)
+Stop Loss: 3.0-5.0 points (tests 9 different levels)
 Alerts: Mix of Email and SMS
+Backtesting: Compare performance across all 9 scenarios
 ```
 
 ---

@@ -56,7 +56,8 @@ Both modes run on the same codebase with different configurations.
 
 ### ✅ Performance Analysis
 - [ ] Trade simulation and backtesting
-- [ ] Multi-scenario testing (20+ profit/loss combinations)
+- [ ] Multi-scenario testing (9 stop-loss levels tested: 2.5-9.0 points)
+- [ ] Fixed profit target (2.0 points)
 - [ ] Performance metrics generation
 - [ ] Optional S/R level detection
 - [ ] Optional parameter optimization
