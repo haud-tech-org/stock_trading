@@ -312,6 +312,7 @@ class SymbolAlerter:
                     time.sleep(settings.MONITORING_INTERVAL_SECONDS)
                 else:
                     self.logger.warning(f"No data available for {self.symbol} in replay mode. Advancing...")
+                    time_simulator.advance()  # Advance time in replay mode when no data available
                 continue
             
             new_candle_count = 0

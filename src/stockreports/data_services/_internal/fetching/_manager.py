@@ -152,9 +152,14 @@ class HistoricalDataManager:
                     symbol, from_ts, to_ts, resolution=resolution
                 )
 
-            if fetched_df is not None and not fetched_df.empty:
+            if fetched_df is not None:
+                # Cache both empty and non-empty DataFrames
+                # Empty DataFrame is a valid response indicating:
+                # - API worked, but no data available for this symbol/resolution/time
+                # - (e.g., non-trading hours, market closed, or symbol not available at this resolution)
                 self._merge_and_cache(symbol, fetched_df, resolution)
             else:
+                # None = actual fetch failure (network error, API exception, timeout)
                 self.logger.error(
                     f"Initial fetch failed for '{symbol}' (res: {resolution})."
                 )
