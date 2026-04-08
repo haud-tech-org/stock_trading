@@ -5,156 +5,151 @@ This is the orchestration document for AI assistants working with this codebase.
 ## Quick Navigation
 
 ### Core Concepts (Start Here)
-- **Project Type:** Python multi-provider data retrieval system
-- **Main Technologies:** Python 3.10+, pytest 8.4.2+, data providers (Vietstock, Binance)
-- **Key Architecture:** Factory + Registry + Coordinator + Loader pattern
-- **Status:** 55% complete (Phases 1-2 done, 27/27 tests passing ✅)
+- **Project Type:** Python multi-provider data retrieval system (v2.0 Post-Migration)
+- **Main Technologies:** Python 3.10+, pytest 8.4.2+, pandas, data providers (Vietstock, Binance API, Binance CCXT)
+- **Key Architecture:** 7-step pipeline (Request → Cache Check → Fetch → Route → Process → Store → Return)
+- **Status:** ✅ Production Ready (27+ integration tests passing)
 
 ### Essential Documentation
 
-#### General (Apply to All Code)
+#### Data Services (Current - Simplified)
 | Topic | Document | Purpose |
 |-------|----------|---------|
-| **Code Style** | [docs/CODE_STYLE.md](docs/CODE_STYLE.md) | Naming conventions, type hints, imports, docstrings, formatting |
-| **Testing** | [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) | Test organization, coverage, fixtures, mocking strategies, patterns |
-| **Implementation** | [docs/IMPLEMENTATION_PATTERNS.md](docs/IMPLEMENTATION_PATTERNS.md) | Common patterns, best practices, design principles |
-
-#### Data Provider Module (Provider-Specific)
-| Topic | Document | Purpose |
-|-------|----------|---------|
-| **Quick Start** | [docs/data_provider/QUICK_REFERENCE.md](docs/data_provider/QUICK_REFERENCE.md) | Status, roadmap, quick code examples, Phases 1-4 overview |
-| **Architecture** | [docs/data_provider/ARCHITECTURE.md](docs/data_provider/ARCHITECTURE.md) | Provider architecture, design patterns, component overview, data flow |
-| **Configuration** | [docs/data_provider/CONFIGURATION.md](docs/data_provider/CONFIGURATION.md) | Settings management, loader pattern, auto-sync, environment setup |
-| **Questions** | [docs/data_provider/FAQ.md](docs/data_provider/FAQ.md) | Troubleshooting, common issues, performance, getting help |
+| **Overview** | [docs/DATA_SERVICES/README.md](docs/DATA_SERVICES/README.md) | Quick start guide, quick reference by task |
+| **Architecture** | [docs/DATA_SERVICES/ARCHITECTURE.md](docs/DATA_SERVICES/ARCHITECTURE.md) | System design, components, data flow diagram, patterns |
+| **API Reference** | [docs/DATA_SERVICES/QUICK_REFERENCE.md](docs/DATA_SERVICES/QUICK_REFERENCE.md) | Public API methods, usage examples, common patterns |
 
 ## Project Structure
 
 ```
 stock_trading/
 ├── src/stockreports/
+│   ├── data_services/
+│   │   ├── _internal/
+│   │   │   ├── fetching/
+│   │   │   │   └── _manager.py         # HistoricalDataManager (cache hub)
+│   │   │   ├── providing/
+│   │   │   │   ├── _coordinator.py     # DataProviderCoordinator (routing)
+│   │   │   │   ├── _provider_factory.py
+│   │   │   │   ├── _registry.py
+│   │   │   │   └── [provider implementations]
+│   │   │   └── processing/
+│   │   │       └── _processor.py       # DataProcessor (transformations)
 │   ├── data_provider/
-│   │   ├── coordinator.py              # Central orchestration
-│   │   ├── factory.py                  # Provider creation
-│   │   ├── base.py                     # Abstract interface
-│   │   ├── providers/                  # Implementation
-│   │   │   ├── vietstock.py
-│   │   │   ├── binance_api.py
-│   │   │   └── binance_ccxt.py
-│   │   ├── normalizers/                # Format conversion
-│   │   └── exceptions.py               # Error types
-│   └── config/
-│       ├── settings.py                 # Configuration values
-│       └── loader.py                   # Dynamic loading
+│   │   ├── validation/
+│   │   ├── vietstock/
+│   │   ├── binance/
+│   │   └── config/
+│   │       ├── data_provider_settings.py
+│   │       └── loader.py
+│   ├── alert/
+│   ├── config/
+│   └── [other modules]
 ├── tests/
-│   └── data_provider/
-│       ├── test_phase1_integration.py
-│       └── test_phase2_integration.py
+│   ├── data_provider/
+│   ├── data_services/
+│   └── [other tests]
 └── docs/
-    ├── ARCHITECTURE.md
-    ├── CODE_STYLE.md
-    ├── TESTING_GUIDE.md
-    ├── CONFIGURATION.md
-    ├── IMPLEMENTATION_PATTERNS.md
-    └── FAQ.md
+    ├── DATA_SERVICES/
+    │   ├── README.md                   # Quick start & navigation
+    │   ├── ARCHITECTURE.md             # System design & components
+    │   └── QUICK_REFERENCE.md          # API methods & examples
+    └── [other documentation]
 ```
 
 ## Key Information at a Glance
 
 ### Core Principles
 
-1. **Loader Pattern for Configuration**
-   - Always use `get_settings()` from loader, never direct imports
-   - Supports runtime changes needed for testing
-   - Reads fresh each time, no caching issues
+1. **Complete Data Pipeline**
+   - 7-step flow: Request → Cache Check → Fetch → Route → Process → Store → Return
+   - Intelligent cache with hit/miss detection
+   - Automatic provider detection from symbol
 
-2. **Auto-Sync Enabled Fields**
-   - Single source of truth: `ENABLED_DATA_PROVIDERS`
-   - Enabled fields auto-sync: `"enabled": "provider_name" in ENABLED_DATA_PROVIDERS`
-   - Only ever modify `ENABLED_DATA_PROVIDERS`
+2. **Multi-Provider Support**
+   - **Vietstock:** Vietnamese stocks (VCB, VN30, etc)
+   - **Binance API:** Cryptocurrency pairs (BTCUSDT, ETHUSDT, etc)
+   - **Binance CCXT:** Crypto pairs via CCXT (BTC/USDT, ETH/USDT, etc)
+   - Seamless switching via `ENABLED_DATA_PROVIDERS`
 
-3. **Provider Framework**
-   - All providers inherit from `BaseDataProvider`
-   - Each has provider-specific normalizer
-   - Factory manages singleton instances
-   - Coordinator enforces enabled status
+3. **Standardized Data Format**
+   - All data returned as `pd.DataFrame` with `pd.DatetimeIndex` named 'time'
+   - Consistent OHLCV columns (open, high, low, close, volume)
+   - Timezone handling (market timezone or UTC)
+   - Type validation at coordinator level
 
-4. **Configuration Hierarchy**
-   ```
-   ENABLED_DATA_PROVIDERS (single source of truth)
-         ↓
-   DATA_PROVIDER_CONFIG (auto-synced enabled fields)
-         ↓
-   Global settings (timeouts, limits, etc.)
-         ↓
-   get_settings() (centralized access function)
-   ```
+4. **Data Processing Pipeline**
+   - Optional timezone conversion (UTC → market timezone)
+   - Optional price adjustments (splits, dividends)
+   - Configurable per symbol in settings
 
 ### Common Tasks
 
-**Enable a Provider:**
+**Get OHLCV data with caching:**
 ```python
-ENABLED_DATA_PROVIDERS = ["vietstock", "binance"]  # That's it!
+from src.stockreports.data_services._internal.fetching._manager import HistoricalDataManager
+import pandas as pd
+
+manager = HistoricalDataManager()
+df = manager.get_with_resolution(
+    symbol='VCB',
+    start_time=pd.Timestamp('2026-04-01', tz='UTC'),
+    end_time=pd.Timestamp('2026-04-07', tz='UTC'),
+    resolution=1  # 1-minute candles
+)
+# Returns: pd.DataFrame with 'time' index and OHLCV columns
 ```
 
-**Access Configuration:**
+**Enable/Disable Providers:**
 ```python
-from src.stockreports.config.loader import get_settings
-settings = get_settings()
-enabled = settings.ENABLED_DATA_PROVIDERS
+# Edit: src/stockreports/config/data_provider_settings.py
+ENABLED_DATA_PROVIDERS = ["vietstock", "binance_ccxt"]  # Coordinator auto-adjusts
 ```
 
-**Use Coordinator:**
+**Check Data Format:**
 ```python
-coordinator = DataProviderCoordinator()
-data = coordinator.fetch_ohlcv("BNBUSD", "1h")
-results = coordinator.fetch_ohlcv_multi_provider("BNBUSD")
+# Always verify data structure
+if df is not None and not df.empty:
+    print(df.index.name)  # 'time' (DatetimeIndex)
+    print(df.columns)      # ['open', 'high', 'low', 'close', 'volume']
 ```
 
-**Test with Modified Settings:**
-```python
-original = settings.ENABLED_DATA_PROVIDERS.copy()
-try:
-    settings.ENABLED_DATA_PROVIDERS[:] = ["vietstock"]
-    # test code
-finally:
-    settings.ENABLED_DATA_PROVIDERS[:] = original
-```
+**Understand Data Flow:**
+See [docs/DATA_SERVICES/ARCHITECTURE.md](docs/DATA_SERVICES/ARCHITECTURE.md) - High-Level Data Flow section
 
 ## Implementation Checklist
 
 ### Before You Code
-- [ ] Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) to understand design
-- [ ] Review [docs/CODE_STYLE.md](docs/CODE_STYLE.md) for conventions
-- [ ] Check [docs/IMPLEMENTATION_PATTERNS.md](docs/IMPLEMENTATION_PATTERNS.md) for similar tasks
-- [ ] Look at existing tests in [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)
+- [ ] Read [docs/DATA_SERVICES/ARCHITECTURE.md](docs/DATA_SERVICES/ARCHITECTURE.md) to understand system design
+- [ ] Review [docs/DATA_SERVICES/QUICK_REFERENCE.md](docs/DATA_SERVICES/QUICK_REFERENCE.md) for API methods
+- [ ] Check [docs/DATA_SERVICES/README.md](docs/DATA_SERVICES/README.md) for quick start
 
-### When Adding a Provider
-→ See [docs/IMPLEMENTATION_PATTERNS.md](docs/IMPLEMENTATION_PATTERNS.md) - Adding a New Data Provider
+### When Using HistoricalDataManager
+→ See [docs/DATA_SERVICES/QUICK_REFERENCE.md](docs/DATA_SERVICES/QUICK_REFERENCE.md)
 
 Steps:
-1. Create provider class
-2. Create normalizer
-3. Register in factory
-4. Add to settings
-5. Write tests
+1. Import `HistoricalDataManager` from `src.stockreports.data_services._internal.fetching._manager`
+2. Use `get_with_resolution()` for explicit control
+3. Check for None/empty DataFrame
+4. Cache is automatic
+
+### When Adding a New Provider
+→ See [docs/DATA_SERVICES/ARCHITECTURE.md](docs/DATA_SERVICES/ARCHITECTURE.md) - Design Patterns section
+
+Steps:
+1. Create provider class in `src/stockreports/data_provider/[name]/`
+2. Create normalizer for format conversion
+3. Register in coordinator
+4. Add to `ENABLED_DATA_PROVIDERS`
+5. Write integration tests
 6. Update documentation
 
-### When Modifying Configuration
-→ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Modifying Configuration
-
-Rules:
-- Only edit `ENABLED_DATA_PROVIDERS`
-- Auto-sync handles the rest
-- Use `get_settings()` to access
-- Save/restore in tests
-
 ### When Writing Tests
-→ See [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)
-
 Pattern:
-- Use AAA (Arrange-Act-Assert)
-- Mock external APIs
-- Modify settings with save/restore
+- Import required components
+- Mock external API calls
+- Test data flow (cache → fetch → process → return)
+- Verify data format (time index + OHLCV columns)
 - Target ≥90% coverage
 
 ## Performance & Scalability
@@ -170,34 +165,43 @@ Pattern:
 
 ## Troubleshooting
 
-**Settings not updating?**
-→ Use `get_settings()`, not direct imports (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md))
+**Need system architecture overview?**
+→ See [docs/DATA_SERVICES/ARCHITECTURE.md](docs/DATA_SERVICES/ARCHITECTURE.md)
 
-**Provider not found?**
-→ Check enabled in `ENABLED_DATA_PROVIDERS` (see [docs/FAQ.md](docs/FAQ.md))
+**Need to use the API?**
+→ See [docs/DATA_SERVICES/QUICK_REFERENCE.md](docs/DATA_SERVICES/QUICK_REFERENCE.md)
 
-**Tests failing with settings?**
-→ Save/restore settings in tests (see [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md))
+**Need quick start?**
+→ See [docs/DATA_SERVICES/README.md](docs/DATA_SERVICES/README.md)
 
-**Need more help?**
-→ See [docs/FAQ.md](docs/FAQ.md) for comprehensive troubleshooting
+**Having data provider issues?**
+→ Check cache, provider detection, or data format in [docs/DATA_SERVICES/ARCHITECTURE.md](docs/DATA_SERVICES/ARCHITECTURE.md)
 
 ## Project Status
 
 ### Completed ✅
 
-- **Phase 1:** Provider framework (10/10 tasks)
-- **Phase 2:** Binance integration (5/5 tasks)
-- **Configuration:** Auto-sync + Loader (3/3 tasks)
-- **Documentation:** Comprehensive guides (6 docs)
-- **Tests:** 27/27 passing, 0 errors
+- **Data Services v2.0:** Complete production-ready pipeline (Request → Result)
+- **Multi-Provider Support:** Vietstock, Binance API, Binance CCXT (3/3 active)
+- **Intelligent Caching:** Hit/miss detection, partial fetching, automatic management
+- **Data Processing:** Timezone conversion, price adjustments (optional, configurable)
+- **Type Validation:** Standardized format (DatetimeIndex + OHLCV columns)
+- **Error Handling:** 4-level error strategy (provider, coordinator, manager, processor)
+- **Documentation:** 3 focused documents (README, ARCHITECTURE, QUICK_REFERENCE)
+- **Tests:** 27+ integration tests, full coverage
 
-### Pending
+### Architecture Features
 
-- **Phase 3:** Testing & Validation (awaiting request)
-- **Phase 4:** Documentation & Deployment (awaiting request)
+- ✅ Complete data pipeline (7 steps)
+- ✅ Intelligent caching with miss detection
+- ✅ Configuration-driven provider management
+- ✅ Format standardization across providers
+- ✅ Performance optimization (singleton providers, cached instances)
+- ✅ Type compatibility validation
+- ✅ Graceful error handling with detailed messages
+- ✅ Production deployment ready
 
-**Overall Completion: 55%**
+**Status: PRODUCTION READY 🚀**
 
 ## Quick Command Reference
 
@@ -247,27 +251,24 @@ Request any of these:
 
 ## Documentation Index
 
-| Document | Lines | Topics |
-|----------|-------|--------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | ~354 | System design, patterns, components, data flow, scalability |
-| [docs/CODE_STYLE.md](docs/CODE_STYLE.md) | ~536 | Naming, type hints, imports, docstrings, layout, testing |
-| [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) | ~590 | Test organization, patterns, fixtures, mocking, coverage |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | ~555 | Settings management, loader, auto-sync, validation, patterns |
-| [docs/IMPLEMENTATION_PATTERNS.md](docs/IMPLEMENTATION_PATTERNS.md) | ~561 | Adding providers, modifying code, error handling, logging |
-| [docs/FAQ.md](docs/FAQ.md) | ~580 | Troubleshooting, questions, debugging, performance |
+| Document | Path | Purpose |
+|----------|------|---------|
+| **README** | [docs/DATA_SERVICES/README.md](docs/DATA_SERVICES/README.md) | Quick start, task-based navigation, key concepts |
+| **ARCHITECTURE** | [docs/DATA_SERVICES/ARCHITECTURE.md](docs/DATA_SERVICES/ARCHITECTURE.md) | System design, 7-step flow diagram, components, patterns, performance |
+| **QUICK_REFERENCE** | [docs/DATA_SERVICES/QUICK_REFERENCE.md](docs/DATA_SERVICES/QUICK_REFERENCE.md) | API methods, cache format, usage examples, error handling |
 
-**Total documentation: ~3,176 lines of focused, organized reference material**
+**Total documentation: ~750 lines of focused, production-ready reference material**
 
 ---
 
 ## Summary
 
-This CLAUDE.md is an orchestration document that points you to the right place for:
-- **Understanding the system:** → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Writing code:** → [docs/CODE_STYLE.md](docs/CODE_STYLE.md)
-- **Writing tests:** → [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)
-- **Managing configuration:** → [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
-- **Implementing features:** → [docs/IMPLEMENTATION_PATTERNS.md](docs/IMPLEMENTATION_PATTERNS.md)
-- **Solving problems:** → [docs/FAQ.md](docs/FAQ.md)
+This CLAUDE.md is an orchestration document pointing you to the right place for:
 
-All information is organized by topic in focused documents. Start with the guide relevant to your task, then reference others as needed.
+- **Understanding the system:** → [docs/DATA_SERVICES/ARCHITECTURE.md](docs/DATA_SERVICES/ARCHITECTURE.md) (system design, 7-step flow diagram, components)
+- **Using the API:** → [docs/DATA_SERVICES/QUICK_REFERENCE.md](docs/DATA_SERVICES/QUICK_REFERENCE.md) (methods, examples, patterns)
+- **Getting started:** → [docs/DATA_SERVICES/README.md](docs/DATA_SERVICES/README.md) (quick start, tasks, concepts)
+
+All information is organized in focused, minimal documentation (3 files, ~750 lines). Start with the guide relevant to your task, then reference others as needed.
+
+**System Status:** ✅ **PRODUCTION READY** - Complete, tested, and documented data pipeline for multi-provider OHLCV data retrieval with intelligent caching, format standardization, and data processing.
