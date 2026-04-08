@@ -855,6 +855,25 @@ All findings verified through code inspection with exact file locations and code
 
 ---
 
+## Phase 2 Additions (Report Generation Layer)
+
+⚠️ **NOTE:** Phase 1 documents the core alert and monitoring system. Phase 2 introduces a new report generation layer for backtesting analysis:
+
+**Phase 2 Components (Not in Phase 1 scope):**
+- **CentralizedReportGenerator** - Orchestrates backtesting and trade simulation
+- **IndividualTradeSimulator** - Simulates daily trades with profit/loss analysis
+- **ConsolidateReports** - Aggregates daily results into summary reports
+- **SupportResistanceDetector** - Detects support/resistance levels (optional enhancement)
+- **PerformanceAnalyzer** - Analyzes overall performance metrics (optional enhancement)
+
+**Phase 2 Configuration Additions:**
+- **notification_settings.py** - Notification channel configuration (Phase 2)
+- **validation_settings.py** - Profit/loss validation thresholds (Phase 2)
+
+These components extend the base architecture for performance analysis and backtesting scenarios. See `PHASE1_PHASE2_ALIGNMENT.md` and Phase 2 documentation (PERFORMANCE_METRICS_EXTENSION_GUIDE.md) for complete details.
+
+---
+
 ## Quick Reference: File Locations
 
 | Component | File | LOC |
