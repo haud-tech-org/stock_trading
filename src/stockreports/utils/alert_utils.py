@@ -7,11 +7,12 @@ import importlib
 
 from src.stockreports.config.validation_settings import VALIDATION_MIN_PROFIT_FOR_SUCCESS, VALIDATION_MAGNITUDE_PROFIT_FACTOR
 from src.stockreports.alert.common.constants import Trend, Signal
-from src.stockreports.config import price_alert_settings, settings
-from src.stockreports.utils.historical_data_manager import get_historical_data
+from src.stockreports.config import price_alert_settings, settings, loader
+from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.alert.model.models import AlertData
 
 logger = logging.getLogger(__name__)
+data_provider_settings = loader.get_data_provider_settings()
 
 def get_reversal_trend(trend: Trend) -> Trend:
     """
@@ -99,11 +100,38 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
     performance_price = None
     structural_price = None
 
+    # *** DEFENSIVE FIX: Ensure alert_time is pd.Timestamp (not int) ***
+    # alert_time needs to support arithmetic operations with pd.Timedelta
+    if isinstance(alert_time, int):
+        # Convert Unix timestamp to pd.Timestamp
+        alert_time = pd.Timestamp(alert_time, unit='s', tz='UTC')
+        logger.warning(
+            f"Converted alert_time from int Unix timestamp to Timestamp. "
+            f"This indicates upstream data type issue."
+        )
+    elif not isinstance(alert_time, pd.Timestamp):
+        # Try to convert other types
+        try:
+            alert_time = pd.Timestamp(alert_time)
+            logger.warning(
+                f"Converted alert_time from {type(alert_time).__name__} to Timestamp."
+            )
+        except Exception as e:
+            logger.error(f"Unable to convert alert_time to Timestamp: {e}. Type: {type(alert_time)}")
+            return None, None
+
     # --- Unified Data Fetch ---
     # Fetch a single, wider window that covers both performance (T) and structural (T, T-1) needs.
     start_fetch_time = alert_time - pd.Timedelta(minutes=5)
     end_fetch_time = alert_time + pd.Timedelta(minutes=2)
-    market_data = get_historical_data(execution_symbol, start_fetch_time, end_fetch_time)
+    
+    orchestrator = DataServiceOrchestrator()
+    market_data = orchestrator.fetch_and_process(
+        symbol=execution_symbol,
+        start_time=start_fetch_time,
+        end_time=end_fetch_time,
+        resolution=data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
+    )
 
     # If no data is fetched, we can't proceed with either calculation.
     if market_data is None or market_data.empty:
@@ -115,6 +143,8 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
     max_offset = getattr(price_alert_settings, 'MAX_PRICE_ADJUSTMENT_OFFSET')
     min_offset = getattr(price_alert_settings, 'MIN_PRICE_ADJUSTMENT_OFFSET')
 
+    df_indexed = market_data
+
     # --- Performance-Based Logic ---
     if approach:
         performance_config = getattr(price_alert_settings, 'PERFORMANCE_BY_APPROACH', {})
@@ -122,7 +152,7 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
 
         if approach_perf and 'avg_worst_loss_price' in approach_perf:
             try:
-                current_candle = market_data.set_index('time').loc[alert_time]
+                current_candle = df_indexed.loc[alert_time]
                 close_price = current_candle['close']
                 # Ensure adjustment is always positive, _apply_price_offset handles direction
                 adjustment = abs(approach_perf['avg_worst_loss_price'])
@@ -135,7 +165,6 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
 
     # --- Structural Logic ---
     try:
-        df_indexed = market_data.set_index('time')
         current_candle_index = df_indexed.index.get_loc(alert_time)
         
         # We need at least 3 candles for the new logic (current + 2 previous)

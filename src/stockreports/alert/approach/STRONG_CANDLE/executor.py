@@ -105,7 +105,7 @@ class StrongCandleExecutor(Executor):
             details_dict = self._add_details_for_alert(
                 body_size=body_size,
                 window_trend=window_trend if window_trend else Trend.NEUTRAL,
-                strong_candle_time=self.last_candle[CandleColumn.TIME].isoformat()
+                strong_candle_time=self.last_candle.name.isoformat()
             )
 
             alert_data = self._create_alert_with_details(

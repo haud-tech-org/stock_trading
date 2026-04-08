@@ -241,7 +241,9 @@ class SymbolAlertManager:
             # Filter the trading data for the specific day
             day_start = process_date.replace(hour=0, minute=0, second=0, tzinfo=self.timezone)
             day_end = day_start + timedelta(days=1)
-            daily_trade_df = trade_data[(trade_data['time'] >= day_start) & (trade_data['time'] < day_end)].copy()
+            daily_trade_df = trade_data.loc[day_start:day_end].copy()
+            # Remove the upper boundary (loc is inclusive on both ends)
+            daily_trade_df = daily_trade_df[daily_trade_df.index < day_end]
 
             if daily_trade_df.empty:
                 logging.warning(f"No trading data for {trade_symbol} on {date_str}. Skipping simulation.")
@@ -253,7 +255,7 @@ class SymbolAlertManager:
                 last_data_point = daily_trade_df.iloc[-1]
                 
                 end_of_day_signal = {
-                    "alert_time": pd.to_datetime(last_data_point['time']),
+                    "alert_time": pd.to_datetime(last_data_point.name),  # Get time from index
                     "signal": "SELL" if last_signal_direction == "BUY" else "BUY",
                     "approach": "END_OF_DAY",
                     "source_symbol": "SYNTHETIC"  # Identify synthetic signals

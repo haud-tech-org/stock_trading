@@ -209,7 +209,7 @@ class IchimokuExecutor(Executor):
                 current_candle_full = df_indexed.iloc[i]
                 
                 # DEBUG: Log which index we're processing
-                candle_time = current_candle_full.get(CandleColumn.TIME) if current_candle_full is not None else 'N/A'
+                candle_time = current_candle_full.name if current_candle_full is not None else 'N/A'
                 log(
                     logger=self.logger,
                     status=ValidationStatus.PASSED,

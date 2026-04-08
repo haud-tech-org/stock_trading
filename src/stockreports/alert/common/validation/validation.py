@@ -33,11 +33,7 @@ def calculate_alert_performance(alert: AlertData, historical_data: pd.DataFrame,
     # Define the validation window
     end_time = start_time + timedelta(minutes=validation_period_minutes)
     
-    # Ensure the historical data has a DatetimeIndex for efficient slicing
-    if not isinstance(historical_data.index, pd.DatetimeIndex):
-        historical_data = historical_data.set_index(CandleColumn.TIME)
-
-    # Filter the data to the validation window
+    # Filter the data to the validation window (time is already index from coordinator)
     validation_window_df = historical_data.loc[start_time:end_time]
     
     if validation_window_df.empty:

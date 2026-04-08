@@ -38,7 +38,7 @@ if project_root not in sys.path:
 
 # Import necessary components from the main application and debug utilities
 from src.stockreports.config import loader
-from src.stockreports.utils.data_utils import load_live_data
+from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.alert.common.constants import Approach
 from tests.debug.common.charts.visibility_chart import generate_alert_chart
 from tests.debug.common.utils.debug_utils import save_debug_data
@@ -82,7 +82,16 @@ def run_debug_analysis(approach, symbol, start_time_str, end_time_str, save_to_f
     try:
         from_timestamp = int(start_time.timestamp())
         to_timestamp = int(end_time.timestamp())
-        df_for_analysis = load_live_data(symbol, from_timestamp=from_timestamp, to_timestamp=to_timestamp)
+        
+        # ✅ USE CENTRALIZED DATA SERVICES ORCHESTRATOR
+        orchestrator = DataServiceOrchestrator()
+        data_provider_settings = loader.get_data_provider_settings()
+        df_for_analysis = orchestrator.fetch_and_process(
+            symbol=symbol,
+            start_time=start_time,
+            end_time=end_time,
+            resolution=data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
+        )
 
         if df_for_analysis is None or df_for_analysis.empty:
             print(f"ERROR: Could not retrieve data for '{symbol}'.")

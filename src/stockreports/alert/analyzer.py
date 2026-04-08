@@ -360,7 +360,7 @@ class Analyzer(ABC):
             success, shifted_candle = Analyzer.get_shifted_candle(i, df_indexed, senkou_shift)
             if success and shifted_candle is not None:
                 # Successfully obtained candle for shifted indicator alignment
-                alert = create_alert_at_time(shifted_candle['time'])
+                alert = create_alert_at_time(shifted_candle.name)
             else:
                 # Failed due to error or empty dataframe
                 continue

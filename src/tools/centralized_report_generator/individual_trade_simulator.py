@@ -9,7 +9,7 @@ import glob
 import pytz
 from dataclasses import asdict
 import sys
-from typing import Optional
+from typing import Optional, List
 
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -19,13 +19,14 @@ sys.path.insert(0, project_root)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Project Imports ---
-from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR, SESSIONS
+from src.stockreports.data_services import DataServiceOrchestrator
+from src.stockreports.utils.time_utils import TIMEZONE_STR, SESSIONS
 from src.stockreports.config import loader
 from src.stockreports.config.signal_settings import APPROACH_CONFIG
 from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES, VALIDATION_MIN_PROFIT_FOR_SUCCESS
 from src.stockreports.config.price_alert_settings import USE_PERFORMANCE_BY_APPROACH, PERFORMANCE_BY_APPROACH
 from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds, get_reports_directory_name
-from src.stockreports.alert.model.models import ProfitabilityReport, Trade
+from src.stockreports.alert.model.models import ProfitabilityReport, Trade, AlertData
 from src.stockreports.utils.alert_utils import calculate_suggested_prices, get_primary_suggested_price
 
 
@@ -62,7 +63,7 @@ def calculate_performance_by_approach(trades: list) -> dict:
 
 
 def simulate_individual_profitability(
-    alerts: list, 
+    alerts: List[AlertData], 
     trade_data: pd.DataFrame,
     profit_threshold: float,
     loss_threshold: float
@@ -70,6 +71,15 @@ def simulate_individual_profitability(
     """
     Simulates profitability by treating each alert as an independent trade
     and evaluating its outcome within a fixed validation window.
+    
+    Args:
+        alerts: List of AlertData objects representing trading alerts from alert files
+        trade_data: pandas DataFrame with OHLCV price data indexed by timestamp
+        profit_threshold: Take-profit threshold in price points
+        loss_threshold: Stop-loss threshold in price points
+        
+    Returns:
+        ProfitabilityReport with simulation results and trade-by-trade details
     """
     trades = []
     total_actual_profit_loss = 0
@@ -82,27 +92,24 @@ def simulate_individual_profitability(
 
     last_trade_end_time = pd.Timestamp.min.tz_localize('UTC')
 
-    alerts_df = pd.DataFrame(alerts)
-    
-    for i, alert in alerts_df.iterrows():
+    # Process each AlertNotification object directly (no DataFrame conversion needed)
+    for alert in alerts:
         # --- Dynamic Take-Profit Threshold Logic ---
         # The per-trade take-profit threshold is set dynamically:
+        #   - If the alert has a 'suggested_profit_threshold' field, use it
         #   - If the alert has a 'magnitude' field, use max(magnitude * VALIDATION_MAGNITUDE_PROFIT_FACTOR, 2.0)
-        #   - Otherwise, default to 2.0
+        #   - Otherwise, use the default profit_threshold parameter
         # This replaces the static VALIDATION_PRICE_THRESHOLD_PROFIT config for actual validation logic.
         # Use get_suggested_take_profit for consistent take-profit threshold logic
 
-        profit_threshold = 0
-        if 'suggested_profit_threshold' in alert and alert['suggested_profit_threshold'] is not None:
-            # If a suggested_profit_threshold is present, use it as magnitude for the function
-            profit_threshold = abs(alert['suggested_profit_threshold'])
-        elif 'magnitude' in alert and alert['magnitude'] is not None:
-            magnitude = abs(alert['magnitude'])
-            profit_threshold = get_suggested_take_profit(magnitude)
+        alert_profit_threshold = profit_threshold
+        if alert.suggested_profit_threshold is not None:
+            # If a suggested_profit_threshold is present, use it directly
+            alert_profit_threshold = abs(alert.suggested_profit_threshold)
 
-        profit_threshold = max(abs(profit_threshold), VALIDATION_MIN_PROFIT_FOR_SUCCESS)
-        entry_signal = alert.get('signal')
-        entry_time = alert.get('alert_time')
+        alert_profit_threshold = max(abs(alert_profit_threshold), VALIDATION_MIN_PROFIT_FOR_SUCCESS)
+        entry_signal = alert.signal
+        entry_time = alert.alert_time
 
         # Skip alerts that occur before the last trade's validation window has ended
         if entry_time < last_trade_end_time:
@@ -126,24 +133,23 @@ def simulate_individual_profitability(
         # 1. Determine the definitive entry price for the simulation.
         # This logic handles alerts from both old and new file formats.
         entry_price = None
-        if 'performance_suggested_price' in alert and 'structural_suggested_price' in alert:
+        if alert.performance_suggested_price is not None and alert.structural_suggested_price is not None:
             # New format: two price fields exist. Use the primary selection logic.
             entry_price = get_primary_suggested_price(alert)
             logging.info(f"Using primary suggested price for entry: {entry_price}")
-        elif 'suggested_price' in alert and alert['suggested_price'] is not None:
-            # Old format: only the 'suggested_price' field exists. Use it directly.
-            entry_price = alert['suggested_price']
-            logging.info(f"Using legacy 'suggested_price' for entry: {entry_price}")
+        elif alert.alert_price is not None:
+            # Old format: only the alert_price field exists. Use it directly.
+            entry_price = alert.alert_price
+            logging.info(f"Using alert_price for entry: {entry_price}")
         else:
             # Fallback: if no price info exists, calculate it dynamically.
             logging.warning(f"No suggested price found for alert at {entry_time}. Calculating dynamically.")
-            perf_price, struct_price = calculate_suggested_prices(entry_signal, entry_time, alert.get('approach'))
-            # Create a temporary series to use the selection logic
-            temp_alert_row = pd.Series({
+            approach = alert.approach
+            perf_price, struct_price = calculate_suggested_prices(entry_signal, entry_time, approach)
+            entry_price = get_primary_suggested_price({
                 'performance_suggested_price': perf_price,
                 'structural_suggested_price': struct_price
             })
-            entry_price = get_primary_suggested_price(temp_alert_row)
             logging.info(f"Using dynamically calculated primary price for entry: {entry_price}")
 
         # If no entry price could be determined, ignore the trade.
@@ -336,14 +342,14 @@ def simulate_individual_profitability(
             entry_signal=entry_signal,
             entry_price=entry_price,
             entry_timestamp=entry_time.isoformat(),
-            entry_approach=alert.get('approach'),
+            entry_approach=alert.approach,
             exit_signal=exit_signal,
             exit_price=exit_price,
             exit_timestamp=exit_time.isoformat(),
             exit_approach='VALIDATION_EXIT',
             actual_profit_loss=actual_profit_loss,
             status=status,
-            entry_source_symbol=alert.get('symbol'),
+            entry_source_symbol=alert.symbol,
             exit_source_symbol='SYNTHETIC',
             entry_signal_status=status,
             exit_signal_status='N/A',
@@ -498,27 +504,42 @@ def run_individual_trade_simulation(
         return
 
     from dateutil import parser as date_parser
-    parsed_alerts = []
-    for alert in all_alerts:
-        try:
-            alert['alert_time'] = date_parser.isoparse(alert['alert_time'])
-            parsed_alerts.append(alert)
-        except (date_parser.ParserError, TypeError):
-            logging.warning(f"Could not parse alert_time '{alert.get('alert_time')}'. Skipping this alert.")
     
-    parsed_alerts.sort(key=lambda x: x['alert_time'])
+    # --- Convert alert dictionaries to AlertData objects ---
+    alert_data_list: List[AlertData] = []
+    for alert_dict in all_alerts:
+        try:
+            # Parse alert_time if it's a string
+            if isinstance(alert_dict.get('alert_time'), str):
+                alert_dict['alert_time'] = date_parser.isoparse(alert_dict['alert_time'])
+            
+            # Convert dictionary to AlertData object using the static method
+            alert_data = AlertData.from_dict(alert_dict)
+            if alert_data:
+                alert_data_list.append(alert_data)
+            else:
+                logging.warning(f"Could not convert alert to AlertData: {alert_dict}")
+        except (date_parser.ParserError, TypeError) as e:
+            logging.warning(f"Could not parse alert_time for alert: {alert_dict.get('alert_time')}. Error: {e}")
+        except Exception as e:
+            logging.error(f"Error processing alert: {e}")
+    
+    if not alert_data_list:
+        logging.error("No valid alerts could be converted to AlertData objects. Aborting simulation.")
+        return
+    
+    # Sort by alert time
+    alert_data_list.sort(key=lambda x: x.alert_time)
     
     # --- Deduplicate alerts by timestamp, keeping the first one ---
-    final_alerts = []
+    final_alerts_data: List[AlertData] = []
     processed_timestamps = set()
-    for alert in parsed_alerts:
-        if alert['alert_time'] not in processed_timestamps:
-            final_alerts.append(alert)
-            processed_timestamps.add(alert['alert_time'])
-            
-    all_alerts = final_alerts
+    for alert_data in alert_data_list:
+        if alert_data.alert_time not in processed_timestamps:
+            final_alerts_data.append(alert_data)
+            processed_timestamps.add(alert_data.alert_time)
     
-    logging.info(f"Total of {len(all_alerts)} unique, sorted alerts from all sources will be simulated individually.")
+    logging.info(f"Total of {len(final_alerts_data)} unique, sorted alerts from all sources will be simulated individually.")
 
     # --- 2. Load Price Data for the Execution Symbol ---
     settings = loader.get_settings()
@@ -534,44 +555,25 @@ def run_individual_trade_simulation(
 
     from_dt = market_tz.localize(simulation_date.replace(hour=start_h, minute=start_m, second=0))
     to_dt = from_dt.replace(hour=end_h, minute=end_m, second=1)
-    from_timestamp = int(from_dt.timestamp())
-    to_timestamp = int(to_dt.timestamp())
 
-    raw_data = fetch_intraday_data(execution_symbol, from_timestamp, to_timestamp)
+    # --- Use DataServiceOrchestrator to fetch price data ---
+    orchestrator = DataServiceOrchestrator()
+    data_provider_config = loader.get_data_provider_settings()
+    monitoring_resolution = data_provider_config.MONITORING_DATA_RESOLUTION_MINUTES
+    price_data_df = orchestrator.fetch_and_process(
+        symbol=execution_symbol,
+        start_time=from_dt,
+        end_time=to_dt,
+        resolution=monitoring_resolution
+    )
 
-    if settings.SAVE_DEV_API_RESPONSE_TO_FILE and raw_data and raw_data.get('s') == 'ok':
-        data_path = os.path.join(project_root, settings.DATA_DIR, execution_symbol)
-        os.makedirs(data_path, exist_ok=True)
-        file_date_str = simulation_date.strftime('%y%m%d')
-        file_path = os.path.join(data_path, f"{execution_symbol.lower()}_response_{file_date_str}.json")
-        try:
-            with open(file_path, 'w') as f:
-                json.dump(raw_data, f, indent=4)
-            logging.info(f"Successfully saved simulation source data to {file_path}")
-        except IOError as e:
-            logging.error(f"Failed to save simulation source data to {file_path}: {e}")
-    
-    price_data_df = pd.DataFrame()
-    if raw_data and raw_data.get('s') == 'ok':
-        keys = ["t", "o", "h", "l", "c", "v"]
-        min_len = min(len(raw_data.get(k, [])) for k in keys)
-        if min_len > 0:
-            price_data_df = pd.DataFrame({
-                "time": pd.to_datetime(raw_data["t"][:min_len], unit="s"),
-                "open": raw_data["o"][:min_len], "high": raw_data["h"][:min_len],
-                "low": raw_data["l"][:min_len], "close": raw_data["c"][:min_len],
-                "volume": raw_data["v"][:min_len],
-            })
-            price_data_df['time'] = price_data_df['time'].dt.tz_localize('UTC').dt.tz_convert(market_tz)
-            price_data_df = price_data_df.set_index('time')
-
-    if price_data_df.empty:
+    if price_data_df is None or price_data_df.empty:
         logging.error(f"Could not load price data for execution symbol '{execution_symbol}' on {date_str}. Aborting.")
         return
 
     # --- 3. Run Simulation ---
     summary = simulate_individual_profitability(
-        alerts=all_alerts,
+        alerts=final_alerts_data,
         trade_data=price_data_df,
         profit_threshold=profit_threshold,
         loss_threshold=loss_threshold

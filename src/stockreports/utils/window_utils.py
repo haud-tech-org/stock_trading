@@ -227,15 +227,15 @@ def filter_data_by_time_range(
     Filter DataFrame by time range.
     
     Args:
-        df: The DataFrame containing the candle data with 'time' column (datetime).
+        df: The DataFrame containing the candle data with 'time' as index (datetime).
         start_time: Start time as string in 'HH:MM:SS' format (default: '09:30:00').
         end_time: End time as string in 'HH:MM:SS' format (default: last time in DataFrame).
     
     Returns:
         Filtered DataFrame containing only candles within the specified time range.
-        Returns the original DataFrame if 'time' column is not available.
+        Returns the original DataFrame if 'time' index is not available.
     """
-    if 'time' not in df.columns:
+    if not isinstance(df.index, pd.DatetimeIndex):
         return df
     
     # Set default start time to 09:30:00
@@ -244,14 +244,13 @@ def filter_data_by_time_range(
     
     # Set default end time to the last time in the DataFrame
     if end_time is None:
-        end_time = df['time'].max().strftime('%H:%M:%S') if pd.api.types.is_datetime64_any_dtype(df['time']) else str(df['time'].iloc[-1])
+        end_time = df.index.max().strftime('%H:%M:%S') if pd.api.types.is_datetime64_any_dtype(df.index) else str(df.index[-1])
     
     # Convert start_time and end_time to time objects for comparison
     start_time_obj = pd.Timestamp(start_time).time()
     end_time_obj = pd.Timestamp(end_time).time()
     
-    # Extract time component from the 'time' column and filter
-    df_time_only = df['time'].dt.time if pd.api.types.is_datetime64_any_dtype(df['time']) else df['time'].apply(lambda x: pd.Timestamp(x).time())
+    df_time_only = df.index.time if pd.api.types.is_datetime64_any_dtype(df.index) else df.index.map(lambda x: pd.Timestamp(x).time())
     mask = (df_time_only >= start_time_obj) & (df_time_only <= end_time_obj)
     
     return df[mask]

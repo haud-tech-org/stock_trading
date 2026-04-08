@@ -65,7 +65,7 @@ class CandleColumn:
     LOW = "low"
     CLOSE = "close"
     VOLUME = "volume"
-    TIME = "time"  # Timestamp column for data indexing
+    TIME = "time"  # DEPRECATED: Time is now the DataFrame index, not a column. Use .name or .index
 
 class IchimokuColumn:
     """Ichimoku indicator column name constants."""
@@ -86,3 +86,30 @@ class LogLevel():
     WARNING = "WARNING"
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
+
+
+# ============================================================================
+# Mapping Dictionaries for JSON Deserialization
+# ============================================================================
+# These dictionaries map string values (from JSON files) to constant values
+# Used by AlertData.from_dict() to convert strings to proper constants
+
+TREND_MAPPING = {
+    'uptrend': Trend.UPTREND,
+    'UPTREND': Trend.UPTREND,
+    'downtrend': Trend.DOWNTREND,
+    'DOWNTREND': Trend.DOWNTREND,
+    'neutral': Trend.NEUTRAL,
+    'NEUTRAL': Trend.NEUTRAL,
+}
+"""Maps trend string values to Trend constants."""
+
+STATUS_MAPPING = {
+    'Success': Status.PASSED,
+    'PASSED': Status.PASSED,
+    'Failed': Status.FAILED_VALIDATION,
+    'FAILED': Status.FAILED_VALIDATION,
+    'Inconclusive': Status.INCONCLUSIVE,
+    'INCONCLUSIVE': Status.INCONCLUSIVE,
+}
+"""Maps status string values to Status constants."""

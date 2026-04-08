@@ -28,15 +28,16 @@ settings = loader.get_settings()
 signal_settings = loader.get_signal_settings()
 notification_settings = loader.get_notification_settings()
 validation_settings = loader.get_validation_settings()
+data_provider_settings = loader.get_data_provider_settings()
 
 # --- Project Imports ---
 from src.stockreports.notification.notification_manager import NotificationManager
+from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.utils.data_utils import (
     fetch_intraday_data, 
-    load_data_for_development, load_live_data
+    load_data_for_development,
 )
 from src.stockreports.utils.time_utils import is_trading_hours, SESSIONS, TimeSimulator, TIMEZONE
-from src.stockreports.utils.historical_data_manager import update_historical_data
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
@@ -201,7 +202,7 @@ class SymbolAlerter:
             self.logger.error(f"No data loaded for {self.symbol} in development mode, cannot proceed.")
             return
         
-        dates_to_process = sorted(master_df['time'].dt.strftime('%Y-%m-%d').unique())
+        dates_to_process = sorted(master_df.index.strftime('%Y-%m-%d').unique())
         
         for processing_date in dates_to_process:
             self._process_date(master_df, processing_date)
@@ -279,38 +280,47 @@ class SymbolAlerter:
             self.logger.info(f"\n--- New Interval for {self.symbol}: Analyzing at {current_time.strftime('%Y-%m-%d %H:%M:%S')} ---")
 
             # Define the time window for the data fetch
-            to_dt = current_time
+            to_dt: pd.Timestamp = current_time
             if master_df.empty:
                 # First run: fetch all data from the start of the day
                 all_starts = [times['start'] for times in SESSIONS.values()]
                 start_time_str = min(all_starts)
                 start_h, start_m = map(int, start_time_str.split(':'))
-                from_dt = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+                from_dt: pd.Timestamp = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
             else:
                 # Subsequent runs: fetch data from the last known point in time
-                last_known_time = master_df['time'].max()
-                from_dt = last_known_time
+                last_known_time = master_df.index.max()
+                from_dt: pd.Timestamp = last_known_time
 
             from_timestamp = int(from_dt.timestamp())
             to_timestamp = int(to_dt.timestamp())
 
-            # Fetch the latest data slice
-            latest_df = load_live_data(self.symbol, from_timestamp, to_timestamp)
+            # ✅ USE CENTRALIZED DATA SERVICES ORCHESTRATOR
+            # Fetch the latest data slice (handles caching internally)
+            orchestrator = DataServiceOrchestrator()
+            latest_df = orchestrator.fetch_and_process(
+                symbol=self.symbol,
+                start_time=from_dt,
+                end_time=to_dt,
+                resolution=data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
+            )
 
-            if latest_df.empty and not time_simulator.is_replay_mode():
-                self.logger.warning("The latest DataFrame is still empty in live mode. Waiting for data.")
-                time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+            # ✅ Handle None or empty DataFrame (fetch failed or no data available)
+            if latest_df is None or latest_df.empty:
+                if not time_simulator.is_replay_mode():
+                    self.logger.warning(f"Failed to fetch data for {self.symbol} or data is empty. Retrying...")
+                    time.sleep(settings.MONITORING_INTERVAL_SECONDS)
+                else:
+                    self.logger.warning(f"No data available for {self.symbol} in replay mode. Advancing...")
+                    time_simulator.advance()  # Advance time in replay mode when no data available
                 continue
             
             new_candle_count = 0
             if not latest_df.empty:
                 new_candle_count = len(latest_df)
-                # Append new data and remove duplicates, keeping the last entry
-                master_df = pd.concat([master_df, latest_df]).drop_duplicates(subset=['time'], keep='last').sort_values(by='time').reset_index(drop=True)
-                
-                # --- Update Central Cache ---
-                # Save the updated master_df to the central historical data manager
-                update_historical_data(self.symbol, master_df)
+                master_df = pd.concat([master_df, latest_df])
+                master_df = master_df[~master_df.index.duplicated(keep='last')]
+                master_df = master_df.sort_index()
 
             if master_df.empty:
                 self.logger.warning("Master DataFrame is empty. Advancing to next interval.")
@@ -392,7 +402,9 @@ class SymbolAlerter:
         self.logger.info(f"\n{'='*20} Processing Date: {processing_date} for {self.symbol} {'='*20}")
         start_date = pd.Timestamp(processing_date, tz=TIMEZONE).replace(hour=0, minute=0, second=0)
         end_date = start_date + timedelta(days=1)
-        daily_df = master_df[(master_df['time'] >= start_date) & (master_df['time'] < end_date)].copy()
+        daily_df = master_df.loc[start_date:end_date].copy()
+        # Remove the end_date boundary (loc is inclusive on both ends)
+        daily_df = daily_df[daily_df.index < end_date]
 
         if daily_df.empty:
             self.logger.warning(f"No data found for {self.symbol} on {processing_date}.")
@@ -401,7 +413,7 @@ class SymbolAlerter:
                         # Filter by trading hours
         if SESSIONS:
             combined_mask = pd.Series([False] * len(daily_df), index=daily_df.index)
-            time_col = daily_df['time'].dt.time
+            time_col = daily_df.index.time
             for session_name, hours in SESSIONS.items():
                 start_time = datetime.strptime(hours['start'], '%H:%M').time()
                 end_time = datetime.strptime(hours['end'], '%H:%M').time()
