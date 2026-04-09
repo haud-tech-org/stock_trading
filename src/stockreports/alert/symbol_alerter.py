@@ -8,7 +8,7 @@ from tabulate import tabulate
 import sys
 from datetime import datetime, timedelta
 import importlib
-from typing import Optional, cast
+from typing import Optional, cast, Dict
 import time
 
 # --- Path Setup ---
@@ -32,6 +32,7 @@ data_provider_settings = loader.get_data_provider_settings()
 
 # --- Project Imports ---
 from src.stockreports.notification.notification_manager import NotificationManager
+from src.stockreports.coordination.resolution_coordinator import ResolutionCoordinator
 from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.utils.data_utils import (
     fetch_intraday_data, 
@@ -90,7 +91,108 @@ class SymbolAlerter:
         """
         self.symbol = symbol
         self.notification_manager = NotificationManager()
+        
+        # Setup logging FIRST (before any code that uses self.logger)
         self._setup_logging()
+        
+        # Now initialize resolution coordinator and dataframes
+        self.resolution_coordinator = ResolutionCoordinator()
+        self._init_resolution_dataframes()
+
+    def _init_resolution_dataframes(self) -> None:
+        """
+        Initialize resolution storage for this symbol.
+        
+        Gets all required resolutions from coordinator and creates
+        storage dict with None values for each resolution.
+        Since symbol is instance property (self.symbol), we only store by resolution (int).
+        
+        Storage structure: Dict[int, Optional[pd.DataFrame]]
+            - Key: resolution in minutes (e.g., 1, 5, 15)
+            - Value: accumulated DataFrame or None
+        """
+        try:
+            # Get required resolutions for this symbol
+            resolutions = self.resolution_coordinator.get_required_resolutions(self.symbol)
+            
+            # Initialize dict: resolution (int) → DataFrame
+            self._resolution_dataframes: Dict[int, Optional[pd.DataFrame]] = {
+                resolution: None for resolution in resolutions
+            }
+            
+            self.logger.info(
+                f"Initialized resolution storage for {len(self._resolution_dataframes)} resolutions"
+            )
+            self.logger.debug(f"Resolutions: {list(self._resolution_dataframes.keys())}")
+        
+        except Exception as e:
+            self.logger.error(f"Failed to initialize resolution dataframes: {e}")
+            self._resolution_dataframes = {}
+
+    def _update_resolution_dataframes(self, from_dt: pd.Timestamp, to_dt: pd.Timestamp) -> bool:
+        """
+        Update all resolution dataframes with new data.
+        
+        Mirrors the master_df accumulation logic but does it per resolution:
+        - Fetch new data for each resolution
+        - Concat with existing data (same dedup/sort logic as master_df)
+        
+        Symbol is already self.symbol (instance property), so we only iterate resolutions.
+        
+        Args:
+            from_dt: Start time
+            to_dt: End time
+            
+        Returns:
+            bool: True if at least one resolution has data, False if all empty
+        """
+        orchestrator = DataServiceOrchestrator()
+        has_data = False
+        
+        for resolution in self._resolution_dataframes.keys():
+            try:
+                self.logger.debug(f"Fetching {resolution}-min data for symbol {self.symbol}...")
+                
+                # Fetch data for this resolution
+                latest_df = orchestrator.fetch_and_process(
+                    symbol=self.symbol,
+                    start_time=from_dt,
+                    end_time=to_dt,
+                    resolution=resolution
+                )
+                
+                # Handle fetch failure
+                if latest_df is None or latest_df.empty:
+                    self.logger.debug(f"No new data for {self.symbol} at {resolution}-min resolution")
+                    continue
+                
+                # CRITICAL: Mirror master_df accumulation logic
+                # If first time, initialize. Otherwise, concat and deduplicate.
+                if self._resolution_dataframes[resolution] is None:
+                    # First fetch for this resolution
+                    self._resolution_dataframes[resolution] = latest_df
+                    self.logger.debug(f"Initialized {resolution}-min resolution with {len(latest_df)} rows")
+                else:
+                    # Concat new data with existing
+                    self._resolution_dataframes[resolution] = pd.concat([
+                        self._resolution_dataframes[resolution],
+                        latest_df
+                    ])
+                    # Remove duplicates (same as master_df logic line 328)
+                    self._resolution_dataframes[resolution] = self._resolution_dataframes[resolution][
+                        ~self._resolution_dataframes[resolution].index.duplicated(keep='last')
+                    ]
+                    # Sort index (same as master_df logic line 329)
+                    self._resolution_dataframes[resolution] = self._resolution_dataframes[resolution].sort_index()
+                    self.logger.debug(f"Merged into {resolution}-min resolution, now {len(self._resolution_dataframes[resolution])} rows total")
+                
+                has_data = True
+            
+            except Exception as e:
+                self.logger.error(f"Failed to fetch data for {self.symbol} at {resolution}-min resolution: {e}")
+                continue
+        
+        return has_data
 
     def _setup_logging(self):
         """Configures logging to file and console."""
@@ -294,32 +396,25 @@ class SymbolAlerter:
 
             # Define the time window for the data fetch
             to_dt: pd.Timestamp = current_time
-            if master_df.empty:
+            if self._resolution_dataframes[1] is None:  # Use resolution 1 as indicator of first run
                 # First run: fetch all data from the start of the day
                 all_starts = [times['start'] for times in SESSIONS.values()]
                 start_time_str = min(all_starts)
                 start_h, start_m = map(int, start_time_str.split(':'))
                 from_dt: pd.Timestamp = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
             else:
-                # Subsequent runs: fetch data from the last known point in time
-                last_known_time = master_df.index.max()
+                # Subsequent runs: fetch data from the last known point in time for resolution 1
+                last_known_time = self._resolution_dataframes[1].index.max()
                 from_dt: pd.Timestamp = last_known_time
 
             from_timestamp = int(from_dt.timestamp())
             to_timestamp = int(to_dt.timestamp())
 
-            # ✅ USE CENTRALIZED DATA SERVICES ORCHESTRATOR
-            # Fetch the latest data slice (handles caching internally)
-            orchestrator = DataServiceOrchestrator()
-            latest_df = orchestrator.fetch_and_process(
-                symbol=self.symbol,
-                start_time=from_dt,
-                end_time=to_dt,
-                resolution=data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
-            )
-
-            # ✅ Handle None or empty DataFrame (fetch failed or no data available)
-            if latest_df is None or latest_df.empty:
+            # ✅ UPDATE ALL RESOLUTION DATAFRAMES (instead of single master_df fetch)
+            has_data = self._update_resolution_dataframes(from_dt, to_dt)
+            
+            # ✅ Handle no data available
+            if not has_data:
                 if not time_simulator.is_replay_mode():
                     self.logger.warning(f"Failed to fetch data for {self.symbol} or data is empty. Retrying...")
                     time.sleep(settings.MONITORING_INTERVAL_SECONDS)
@@ -327,61 +422,67 @@ class SymbolAlerter:
                     self.logger.warning(f"No data available for {self.symbol} in replay mode. Advancing...")
                 continue
             
-            new_candle_count = 0
-            if not latest_df.empty:
-                new_candle_count = len(latest_df)
-                master_df = pd.concat([master_df, latest_df])
-                master_df = master_df[~master_df.index.duplicated(keep='last')]
-                master_df = master_df.sort_index()
-
-            if master_df.empty:
-                self.logger.warning("Master DataFrame is empty. Advancing to next interval.")
+            # Check if 1-min data is available (all approaches need it)
+            if self._resolution_dataframes[1] is None or self._resolution_dataframes[1].empty:
+                self.logger.warning("No 1-min resolution data available. Cannot proceed with analysis.")
                 time_simulator.advance()
                 continue
 
             # --- Price Movement Alerter ---
-            price_alerter = PriceMovementAlerter(self.symbol)
-            price_alert_result: AlertResult = price_alerter.execute(master_df)
-            
-            if price_alert_result.has_alerts:
-                self.logger.info(f"Found {len(price_alert_result.confirmed_alerts)} price movement alerts.")
+            # Price alerter always uses 1-minute resolution
+            price_df = self._resolution_dataframes.get(1)
+            if price_df is not None and not price_df.empty:
+                price_alerter = PriceMovementAlerter(self.symbol)
+                price_alert_result: AlertResult = price_alerter.execute(price_df)
                 
-                # Note: Price movement alerts typically don't have suggested entry points
-                # These remain None, which is acceptable for informational price alerts
-                for alert in price_alert_result.confirmed_alerts:
-                    # Optional: Apply suggested prices if needed for consistency
-                    # perf_price, struct_price = calculate_suggested_prices(
-                    #     signal=alert.signal,
-                    #     alert_time=alert.alert_time,
-                    #     approach=alert.approach
-                    # )
-                    # alert.performance_suggested_price = perf_price
-                    # alert.structural_suggested_price = struct_price
-                    pass
-                
-                self.notification_manager.process_and_notify(price_alert_result, self.symbol)
+                if price_alert_result.has_alerts:
+                    self.logger.info(f"Found {len(price_alert_result.confirmed_alerts)} price movement alerts.")
+                    
+                    # Note: Price movement alerts typically don't have suggested entry points
+                    # These remain None, which is acceptable for informational price alerts
+                    for alert in price_alert_result.confirmed_alerts:
+                        # Optional: Apply suggested prices if needed for consistency
+                        # perf_price, struct_price = calculate_suggested_prices(
+                        #     signal=alert.signal,
+                        #     alert_time=alert.alert_time,
+                        #     approach=alert.approach
+                        # )
+                        # alert.performance_suggested_price = perf_price
+                        # alert.structural_suggested_price = struct_price
+                        pass
+                    
+                    self.notification_manager.process_and_notify(price_alert_result, self.symbol)
 
 
             # --- Standard Approach Alerter ---
-            # The logic for slicing the dataframe is now removed.
-            # The full master_df is passed to the executors.
-            if master_df.empty:
-                self.logger.warning("Master DataFrame is empty, cannot run approaches. Waiting.")
-                time_simulator.advance()
-                if not time_simulator.is_replay_mode():
-                    time.sleep(settings.MONITORING_INTERVAL_SECONDS)
-                continue
-
+            # Each approach gets data for its configured resolution
             approaches_to_run = self._get_approaches_for_symbol()
             for approach_name in approaches_to_run:
                 self.logger.info(f"--- Running Approach: {approach_name} for {self.symbol} ---")
 
-                executor = self._get_approach_executor(approach_name)
-                if not executor: continue
+                # Get resolution for this approach
+                try:
+                    resolution = self.resolution_coordinator.get_resolutions(approach_name)
+                except KeyError:
+                    self.logger.error(f"Cannot get resolution for {approach_name}")
+                    continue
                 
-                # Pass the full master_df to the executor's run method.
+                # Get data for this resolution from storage (symbol is already self.symbol, key is resolution int)
+                approach_df = self._resolution_dataframes.get(resolution)
+                
+                if approach_df is None or approach_df.empty:
+                    self.logger.warning(f"No data for {approach_name} (resolution {resolution}-min)")
+                    continue
+                
+                # Run executor on correct resolution data
+                executor = self._get_approach_executor(approach_name)
+                if not executor:
+                    continue
+                
+                # Pass resolution-specific data to executor
+                new_candle_count = len(approach_df)
                 result: AlertResult = ensure_alert_result(
-                    executor.run(df=master_df.copy(), new_candle_count=new_candle_count)
+                    executor.run(df=approach_df.copy(), new_candle_count=new_candle_count)
                 )
                 if result.has_alerts:
                     # Step 1: Enrich alerts with suggested prices
