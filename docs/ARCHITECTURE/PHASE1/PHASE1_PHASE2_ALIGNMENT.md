@@ -272,7 +272,7 @@ Core Components (14 total):
 │  ├─ VRA (Volume Reversal Analysis)
 │  ├─ CONSISTENT_VOLUME_ANCHOR
 │  └─ ICHIMOKU
-├─ ClosePositionScheduler      (Position closing)
+├─ UnifiedScheduler            (Order reminders + Position closing)
 ├─ NotificationManager         (Multi-channel dispatch)
 │  ├─ Email Service
 │  ├─ SMS Service (Twilio)
@@ -327,7 +327,7 @@ Report Generation Layer (Phase 2 only):
 | **3 Notification Channels** | ✅ Named in DEEP_DIVE_FINDINGS.md | ✅ NOTIFICATION_CHANNEL_EXTENSION_GUIDE.md | ✅ **CONSISTENT** | Same 3 channels |
 | **TimeSimulator** | ✅ DEBUG_REPLAY_TIME_INVESTIGATION.md | ✅ OPERATIONS_DEPLOYMENT_GUIDE.md | ✅ **CONSISTENT** | Deployment focus |
 | **PriceMovementAlerter** | ✅ DEEP_DIVE_FINDINGS.md | - | ✅ Consistent | Core only |
-| **ClosePositionScheduler** | ✅ DEEP_DIVE_FINDINGS.md | - | ✅ Consistent | Core only |
+| **UnifiedScheduler** | ✅ DEEP_DIVE_FINDINGS.md | ✅ NOTIFICATION_CHANNEL_EXTENSION_GUIDE.md | ✅ **CONSISTENT** | Pattern for consolidation |
 | **CentralizedReportGenerator** | ❌ **NOT mentioned** | ✅ PERFORMANCE_METRICS_EXTENSION_GUIDE.md | ❌ **INCONSISTENT** | ⚠️ Phase 1 missing |
 | **IndividualTradeSimulator** | ❌ **NOT mentioned** | ✅ PERFORMANCE_METRICS_EXTENSION_GUIDE.md | ❌ **INCONSISTENT** | ⚠️ Phase 1 missing |
 | **ConsolidateReports** | ❌ **NOT mentioned** | ✅ PERFORMANCE_METRICS_EXTENSION_GUIDE.md | ❌ **INCONSISTENT** | ⚠️ Phase 1 missing |
@@ -336,8 +336,9 @@ Report Generation Layer (Phase 2 only):
 
 **Critical Findings:**
 1. ✅ **14 core components are CONSISTENT** between Phase 1 and Phase 2
-2. ❌ **5 Phase 2 components are MISSING from Phase 1** (CentralizedReportGenerator, IndividualTradeSimulator, ConsolidateReports, SupportResistanceDetector, PerformanceAnalyzer)
-3. ⚠️ Phase 1 VISUAL_GUIDE.md Section 9 & 14 need updates to include Report Generation layer
+2. ✅ **UnifiedScheduler now documented** (consolidation of separate schedulers pattern)
+3. ❌ **5 Phase 2 components are MISSING from Phase 1** (CentralizedReportGenerator, IndividualTradeSimulator, ConsolidateReports, SupportResistanceDetector, PerformanceAnalyzer)
+4. ⚠️ Phase 1 VISUAL_GUIDE.md Section 9 & 14 need updates to include Report Generation layer
 
 ---
 
@@ -348,7 +349,7 @@ Report Generation Layer (Phase 2 only):
 | **SymbolAlertManager** | DEEP_DIVE_FINDINGS.md | Manages alert lifecycle, coordinates alert generation | - (Core, no Phase 2 extension) |
 | **SymbolAlerter** | DEEP_DIVE_FINDINGS.md | Orchestrates 6 executors, filters/ranks alerts | - (Core, no Phase 2 extension) |
 | **PriceMovementAlerter** | DEEP_DIVE_FINDINGS.md | Detects price movement patterns | - (Core, no Phase 2 extension) |
-| **ClosePositionScheduler** | DEEP_DIVE_FINDINGS.md | Schedules position closing | - (Core, no Phase 2 extension) |
+| **UnifiedScheduler** | DEEP_DIVE_FINDINGS.md | Schedules order reminders + position closing (consolidated pattern) | ✅ NOTIFICATION_CHANNEL_EXTENSION_GUIDE.md shows pattern |
 
 #### Extensible Components (Phase 1 Core → Phase 2 Extensions)
 
@@ -392,7 +393,7 @@ Report Generation Layer (Phase 2 only):
 #### Summary by Category
 
 **Phase 1 Core Components (No Phase 2 Extension):** 4 components
-- SymbolAlertManager, SymbolAlerter, PriceMovementAlerter, ClosePositionScheduler
+- SymbolAlertManager, SymbolAlerter, PriceMovementAlerter, UnifiedScheduler
 
 **Extensible Components (Phase 1 Core → Phase 2 Extensions):** 12 components + 3 frameworks
 - 6 Executors (framework + implementations)

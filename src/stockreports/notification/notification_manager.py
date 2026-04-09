@@ -9,7 +9,7 @@ from src.stockreports.utils.notification.email_utils import send_email, format_e
 from src.stockreports.utils.notification.sms_utils import send_sms, format_sms_body
 from src.stockreports.utils.notification.ntfy_utils import send_ntfy_notification
 from src.stockreports.utils.alert_utils import get_primary_suggested_price
-from src.stockreports.notification.close_position_scheduler import update_latest_signal
+from src.stockreports.notification.unified_scheduler import update_latest_signal
 from src.stockreports.alert.common.constants import Approach
 
 class NotificationManager:

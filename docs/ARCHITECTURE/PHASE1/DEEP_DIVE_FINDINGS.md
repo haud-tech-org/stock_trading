@@ -243,33 +243,83 @@ Executor (Abstract Base)
 
 ### 1.6 Close Position Scheduler ✅
 
-**Location:** `src/stockreports/notification/close_position_scheduler.py`
+**Location:** `src/stockreports/notification/unified_scheduler.py`
 
 **Responsibility:**
-- **Separate service** tracking pending BUY/SELL signals
-- Time-based position closing logic
-- State management (module-level)
+- **Unified scheduler** handling BOTH order reminders and position closing
+- Dictionary-based state tracking pending BUY/SELL signals
+- Time-based notification scheduling with multiple delays
+- State management (module-level with structured dictionary)
 
 **Key Features:**
-- Module-level state: `_latest_signal_alert`
-- Triggered on delay expiry: `CLOSE_POSITION_DELAY_MINUTES`
+- Module-level state: `_scheduled_state` (dictionary with 'alert' and 'sent' keys)
+- Dictionary tracks what's been sent: `{'order_reminder': bool, 'close_position': bool}`
+- Triggered on delay expiry for each notification type independently
 - Only tracks BUY/SELL signals (ignores others)
-- Generates "CLOSE POSITION" notification
+- Auto-resets state when both notifications sent
+- Generates up to 2 notifications per signal: ORDER REMINDER + CLOSE POSITION
+
+**State Structure:**
+```python
+_scheduled_state = {
+    'alert': AlertNotification,  # Current BUY/SELL signal being tracked
+    'sent': {
+        'order_reminder': False,      # Has order reminder been sent?
+        'close_position': False       # Has close position been sent?
+    }
+}
+```
 
 **Public Functions:**
 ```python
-def update_latest_signal(notification: AlertNotification)
-    # Called by NotificationManager after alert sent
+def update_latest_signal(notification: AlertNotification) -> None
+    # Called by NotificationManager after new BUY/SELL alert sent
+    # Resets both 'sent' flags when new signal arrives
 
-def check_and_notify(current_time: datetime) -> Optional[AlertNotification]
-    # Called in main loop, returns close notification if delay expired
+def check_and_notify(current_time: datetime) -> List[AlertNotification]
+    # Called in main loop, returns list of notifications (0-2 items)
+    # Checks: 1) Order Reminder (5 min), 2) Close Position (10 min)
+    # Returns: Notifications due at current time
+
+def get_state() -> dict
+    # Returns copy of current state (for debugging/testing)
+
+def reset_state() -> None
+    # Manually resets state (for emergency reset/testing)
 ```
 
+**Configuration:**
+- `SCHEDULED_REMINDER_ORDER_DELAY_MINUTES = 5` (order reminder timing)
+- `SCHEDULED_REMINDER_CLOSE_DELAY_MINUTES = 10` (close position timing)
+- Can be set to `None` to disable either notification type
+
+**Check Order:**
+1. **First:** Order Reminder (e.g., 5 minutes after BUY/SELL)
+2. **Second:** Close Position (e.g., 10 minutes after BUY/SELL)
+3. **Auto-reset:** When both sent, state resets for next signal
+
 **Flow:**
-1. NotificationManager sends BUY/SELL → calls `update_latest_signal()`
+1. NotificationManager sends BUY/SELL → calls `update_latest_signal(notification)`
+   - Stores notification in state
+   - Resets both 'sent' flags to False
 2. Main loop calls `check_and_notify(current_time)` each iteration
-3. If delay exceeded → returns "CLOSE POSITION" notification
-4. SymbolAlerter sends it via NotificationManager
+   - Checks if order reminder is due
+   - Checks if close position is due
+   - Returns list of due notifications
+3. SymbolAlerter sends each notification via NotificationManager
+4. When both sent, state auto-resets for next signal
+
+**Extensibility:**
+To add new notification type (e.g., "weekly_review"):
+1. Add key to 'sent' dict: `'weekly_review': False`
+2. Add configuration: `SCHEDULED_REMINDER_REVIEW_DELAY_MINUTES = 10080` (7 days)
+3. Add check in `check_and_notify()` for new notification type
+4. Update tests and documentation
+
+**Backward Compatibility:**
+- Old file `close_position_scheduler.py` maintained as deprecated wrapper
+- Imports still work but emit deprecation warnings
+- Migration path: Update imports to point to `unified_scheduler`
 
 ---
 
@@ -446,12 +496,13 @@ Alert Generated → NotificationManager.process_and_notify()
 ## Part 5: Clarifications & Corrections
 
 ### ✅ Clarification 1: Downstream Components
-**Status:** Separate Services (CONFIRMED)
+**Status:** Separate Services (CONFIRMED) → Now Unified in v2
 
-- **Close Position Scheduler:** SEPARATE SERVICE (not just handler)
-  - Location: `src/stockreports/notification/close_position_scheduler.py`
-  - State: Module-level dict tracking pending signals
-  - Responsibility: Time-based position closing logic
+- **Unified Scheduler:** SINGLE SERVICE (consolidates order reminders + position closing)
+  - Location: `src/stockreports/notification/unified_scheduler.py`
+  - State: Module-level dict tracking pending signals + sent status
+  - Responsibility: Time-based order reminders + position closing logic
+  - Note: Old `close_position_scheduler.py` kept as deprecated wrapper
   
 - **Price Movement Alerter:** SEPARATE SERVICE (not just handler)
   - Location: `src/stockreports/alert/price_movement_alerter.py`
@@ -887,6 +938,6 @@ These components extend the base architecture for performance analysis and backt
 | 6 Approach Executors | `alert/approach/[NAME]/executor.py` | Varies |
 | PriceMovementAlerter | `alert/price_movement_alerter.py` | 252 |
 | NotificationManager | `notification/notification_manager.py` | 113 |
-| ClosePositionScheduler | `notification/close_position_scheduler.py` | ~100 |
+| UnifiedScheduler | `notification/unified_scheduler.py` | 260 |
 | Analyzer (Base) | `alert/analyzer.py` | 421 |
 | Data Models | `alert/model/models.py` | ~300 |

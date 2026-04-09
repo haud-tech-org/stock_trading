@@ -292,10 +292,12 @@ SymbolAlerter._perform_monitoring_session()
     │   │       ├─ SMS Service
     │   │       └─ Ntfy Service
     │   │
-    │   ├─ Check Scheduled Closes:
+    │   ├─ Check Scheduled Notifications:
     │   │   │
-    │   │   └─ close_position_scheduler.check_and_notify()
-    │   │       └─ "CLOSE POSITION" notification
+    │   │   └─ unified_scheduler.check_and_notify()
+    │   │       ├─ Check 1: Order Reminder (4 min)
+    │   │       ├─ Check 2: Close Position (10 min)
+    │   │       └─ Returns: List of notifications to send
     │   │
     │   └─ time_simulator.advance()
     │       ├─ LIVE:   No-op (real time advances)
@@ -375,7 +377,7 @@ NOTIFICATION LAYER:
 ├─ Email Service           → Email notifications
 ├─ SMS Service             → SMS notifications
 ├─ Ntfy Service            → Ntfy notifications
-└─ ClosePositionScheduler  → Time-based position closing
+└─ UnifiedScheduler        → Time-based order reminders + position closing
 
 TIME LAYER:
 └─ TimeSimulator           → System time vs simulated time

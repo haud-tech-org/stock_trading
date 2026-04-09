@@ -160,6 +160,32 @@ File: `CONFIGURATION_QUICK_REFERENCE.md` (if config change)
 
 ## COMPREHENSIVE UPDATES
 
+### Architectural Refactoring Pattern (Consolidating Multiple Components)
+
+When refactoring to consolidate multiple similar components into one:
+
+1. **Code Changes:**
+   - [ ] Create new unified component with dictionary/list-based state
+   - [ ] Keep old files as deprecated wrappers (for backward compatibility)
+   - [ ] Update all imports in dependent files
+   - [ ] Update configuration (remove old, add new settings)
+
+2. **Documentation Changes:**
+   - [ ] DEEP_DIVE_FINDINGS.md: Update component section with new responsibilities
+   - [ ] VISUAL_GUIDE.md: Update diagrams and ASCII art
+   - [ ] PHASE1_PHASE2_ALIGNMENT.md: Update component tables
+   - [ ] Extension guides: Add section explaining new pattern
+   - [ ] Quick references: Show state structure and usage
+   - [ ] Troubleshooting: Add known issues during/after consolidation
+
+3. **Verification:**
+   - [ ] All old imports migrated to new component
+   - [ ] Configuration settings updated (old removed, new added)
+   - [ ] Backward compatibility wrappers working (with deprecation warnings)
+   - [ ] State structure documented (dict/list keys and usage)
+   - [ ] Check order documented (if multiple checks involved)
+   - [ ] Auto-reset/state cleanup behavior documented
+
 ### README.md Files
 
 #### PHASE2/README.md:
@@ -291,7 +317,118 @@ docs/ARCHITECTURE/
 
 ---
 
-### Example 2: Adding New Data Provider (e.g., "CoinGecko")
+### Example 2: Unified Scheduler Refactoring (Consolidating Multiple Schedulers)
+
+**Real-World Example:** Unifying separate `close_position_scheduler.py` and potential `order_reminder_scheduler.py` into single `unified_scheduler.py`
+
+**Scenario:** Multiple notification schedulers have similar logic (state tracking, time-based checks, auto-reset). Rather than maintain separate files, consolidate into ONE scheduler with dictionary-based state.
+
+**Files to update: 12**
+
+1. `src/stockreports/notification/unified_scheduler.py` - Create new unified file (260+ lines)
+   - Dictionary-based state: `{'alert': AlertNotification, 'sent': {'order_reminder': bool, 'close_position': bool}}`
+   - Function: `update_latest_signal(notification)` - called when new BUY/SELL generated
+   - Function: `check_and_notify(current_time)` - returns list of notifications to send
+   - Checks in order: 1) Order Reminder (5 min), 2) Close Position (10 min)
+   - Auto-resets state when both sent
+
+2. `src/stockreports/config/signal_settings.py` - Update configuration
+   - Remove: `CLOSE_POSITION_DELAY_MINUTES = 10` (old, unused)
+   - Add: `SCHEDULED_REMINDER_ORDER_DELAY_MINUTES = 5` (new)
+   - Add: `SCHEDULED_REMINDER_CLOSE_DELAY_MINUTES = 10` (new)
+
+3. `src/stockreports/notification/close_position_scheduler.py` - Deprecate old file
+   - Keep wrapper functions for backward compatibility (deprecation warnings)
+   - Document migration path to unified_scheduler
+
+4. `src/stockreports/alert/symbol_alerter.py` - Update imports
+   - Change: `from src.stockreports.notification.close_position_scheduler import check_and_notify`
+   - To: `from src.stockreports.notification.unified_scheduler import check_and_notify`
+
+5. `src/stockreports/notification/notification_manager.py` - Update imports
+   - Change: `from src.stockreports.notification.close_position_scheduler import update_latest_signal`
+   - To: `from src.stockreports.notification.unified_scheduler import update_latest_signal`
+
+6. `PHASE1/DEEP_DIVE_FINDINGS.md` - Update component documentation
+   - Update section 1.6 from "Close Position Scheduler" to "Unified Scheduler"
+   - Add: New responsibilities (handles both order reminder + close position)
+   - Add: State structure with dictionary showing 'sent' keys
+   - Add: Both public functions with updated signatures
+   - Add: Sequence diagram showing check order (reminder first, close position second)
+
+7. `PHASE1/VISUAL_GUIDE.md` - Update diagram
+   - Update section 9 (Component Responsibility Map)
+   - Replace: `ClosePositionScheduler` with `UnifiedScheduler`
+   - Add ASCII showing dictionary state: `{'alert': ..., 'sent': {'order_reminder': bool, 'close_position': bool}}`
+
+8. `PHASE1/PHASE1_PHASE2_ALIGNMENT.md` - Update component reference
+   - Update table: Replace `ClosePositionScheduler` → `UnifiedScheduler`
+   - Note: Now handles 2 notification types (order reminder + close position)
+
+9. `PHASE2/NOTIFICATION_CHANNEL_EXTENSION_GUIDE.md` - Add new section
+   - Add section: "Understanding the Unified Scheduler Pattern"
+   - Show dictionary-based state management approach
+   - Show how to extend for new notification types (add new key to 'sent')
+   - Include complete code example of dictionary state
+
+10. `PHASE2/NOTIFICATION_QUICK_REFERENCE.md` - Add scheduler code
+    - Add code snippet showing how scheduler is called
+    - Show state structure and how to interpret it
+    - Add example of extending for new notification type
+
+11. `PHASE2/TROUBLESHOOTING_GUIDE.md` - Add known issues
+    - "Order Reminder and Close Position both sending at same time"
+    - "Scheduler state not resetting when new signal arrives"
+    - "Notification delays not working as expected"
+
+12. `PHASE2/README.md` - Update statistics
+    - Note new unified scheduler pattern
+    - Update: "Notification Scheduling: Previously 1 scheduler → Now 1 unified scheduler (2 notification types)"
+
+**Code Pattern to Document (Unified Scheduler):**
+```python
+# Module-level dictionary state
+_scheduled_state = {
+    'alert': None,
+    'sent': {
+        'order_reminder': False,
+        'close_position': False
+    }
+}
+
+# Called when new BUY/SELL signal generated
+def update_latest_signal(notification: AlertNotification) -> None:
+    global _scheduled_state
+    _scheduled_state = {
+        'alert': notification,
+        'sent': {'order_reminder': False, 'close_position': False}
+    }
+
+# Called in main loop to check what to send
+def check_and_notify(current_time: datetime) -> List[AlertNotification]:
+    # Check 1: Order Reminder (5 min delay)
+    # Check 2: Close Position (10 min delay)
+    # Auto-reset when both sent
+    return notifications_to_send
+
+# Manual reset if needed
+def reset_state() -> None:
+    global _scheduled_state
+    _scheduled_state = {'alert': None, 'sent': {...}}
+```
+
+**Time Estimate:** 2-3 hours (includes refactoring code + documenting pattern)
+
+**Key Documentation Points:**
+- ✅ Dictionary-based state advantages (extensible for new notification types)
+- ✅ Sequential checking order (reminder before close position)
+- ✅ Auto-reset behavior (when both notifications sent)
+- ✅ Configuration-driven delays (easy to adjust without code changes)
+- ✅ Backward compatibility (old imports still work with deprecation warnings)
+
+---
+
+### Example 3: Adding New Data Provider (e.g., "CoinGecko")
 
 **Files to update: 10**
 
@@ -412,6 +549,7 @@ docs/ARCHITECTURE/
 | New Executor | 3 files | 3 files | 2-2.5h | Medium |
 | New Data Provider | 3 files | 3 files | 2-2.5h | Medium |
 | New Notification | 3 files | 3 files | 2-2.5h | Medium |
+| Unify Schedulers | 5 files | 2 files | 2-3h | Medium |
 | Extend Metrics | 2 files | 3 files | 1.5-2h | Low-Medium |
 | Architectural Change | 5+ files | 4+ files | 3-4h | High |
 

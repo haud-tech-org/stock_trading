@@ -54,11 +54,16 @@ SUPPORT_BREAKDOWN_VOLUME_AVG_PERIOD = None
 # Breakdown candle volume must be at least 1.5x the average volume.
 SUPPORT_BREAKDOWN_VOLUME_SPIKE_MULTIPLIER = 1.2
 
-# --- Close Position Scheduler ---
+# --- Unified Scheduler (Order Reminder + Close Position) ---
+# The number of minutes to wait after a signal is sent before sending an "Order Reminder" notification.
+# Typically shorter than close position delay.
+# Set to None to disable order reminders.
+SCHEDULED_REMINDER_ORDER_DELAY_MINUTES = 4
+
 # The number of minutes to wait after a signal is sent before sending a "Close Position" notification.
-# This also serves as the validation period in development mode.
-# Set to None to disable the scheduler.
-CLOSE_POSITION_DELAY_MINUTES = 10
+# Typically longer than order reminder delay (default 2x longer).
+# Set to None to disable close position reminders.
+SCHEDULED_REMINDER_CLOSE_DELAY_MINUTES = 10
 
 
 # --- Approach-Specific Configurations ---
