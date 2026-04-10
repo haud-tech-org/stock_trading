@@ -1,9 +1,28 @@
-# Design Patterns Guide - Proven Approaches
+# Design Patterns Guide - Proven Approaches (Overview)
 
-**Status**: ✅ Complete Reference Document  
-**Purpose**: Understand when and how to apply design patterns  
-**Audience**: Developers and architects  
-**Last Updated**: March 12, 2026
+**Status**: ✅ Architectural Overview  
+**Purpose**: Understand the design patterns and when to apply them  
+**Audience**: Developers, architects, and code reviewers  
+**Last Updated**: April 10, 2026  
+**Layer**: System-wide (applies to all layers)
+
+---
+
+## 📚 Documentation Structure
+
+This document provides **high-level pattern overview and philosophy**.
+
+For **detailed technical implementation**, see:
+- **EXECUTOR_ANALYZER_VALIDATOR_PATTERN.md** (in TECHNICAL_REFERENCE/LAYER_4)
+  - Complete technical deep dive into EAV pattern
+  - All 19 base methods explained
+  - Real-world examples with code
+
+For **step-by-step implementation**, see:
+- **EAV_PATTERN_STEP_BY_STEP.md** (in IMPLEMENTATION_GUIDES/LAYER_4)
+  - Step-by-step walkthrough for building new approaches
+  - Complete code templates
+  - Testing strategies
 
 ---
 
@@ -20,8 +39,6 @@ Analyzer and Validator classes can:
 - ✅ Inherit base methods
 - ✅ Override base methods when needed
 - ✅ Add custom methods
-
-See: `/docs/ARCHITECTURE/EXECUTOR_ABSTRACT_METHOD_PRINCIPLE.md`
 
 ---
 
@@ -53,11 +70,11 @@ User Input
 ### Why This Pattern?
 
 **Problem It Solves**:
-- Monolithic executors (454 lines) mixing concerns
-- Duplicated validation logic across approaches
-- Difficult to test (interdependent components)
-- Hard to understand flow (too much code in one place)
-- Difficult to reuse (tightly coupled)
+- ❌ Monolithic executors (454 lines) mixing concerns
+- ❌ Duplicated validation logic across approaches
+- ❌ Difficult to test (interdependent components)
+- ❌ Hard to understand flow (too much code in one place)
+- ❌ Difficult to reuse (tightly coupled)
 
 **Solution Benefits**:
 - ✅ Single responsibility (each class has ONE job)
@@ -66,564 +83,330 @@ User Input
 - ✅ Easy to understand (clear flow)
 - ✅ Scalable (apply to all 18+ approaches)
 
+### When to Apply
+
+**Use EAV Pattern When:**
+- ✅ Adding any new trading approach
+- ✅ Refactoring existing approach code
+- ✅ Need to test individual components
+- ✅ Want reusable analyzer/validator methods
+- ✅ Following project architecture standards
+
 ---
 
-## 🏗️ Detailed Pattern Structure
+## 🏗️ Pattern Structure (Quick Overview)
 
-### Layer 1: Executor (Orchestration)
+### Layer 1: Executor (30-50 lines)
+- **Responsibility**: Orchestrate, don't implement
+- **Role**: Coordinates Analyzer and Validator
+- **Calls**: analyzer methods for calculations, validator methods for checks
+- **Returns**: Trading signal (BUY, SELL, or NEUTRAL)
 
-**Responsibility**: Coordinate, don't implement
+### Layer 2: Analyzer (20-80 lines)
+- **Responsibility**: Pure numerical calculations
+- **Methods**: All `@staticmethod` (no state)
+- **Input**: Candle dict or DataFrame
+- **Output**: Numbers, colors, or DataFrames
+- **Base Class**: 9 inherited methods available
 
-**Typical Size**: 30-50 lines
+### Layer 3: Validator (25-100 lines)
+- **Responsibility**: Verify business logic conditions
+- **Methods**: All `@staticmethod` (no state)
+- **Input**: Values and thresholds with Comparison enum
+- **Output**: Boolean (True/False)
+- **Base Class**: 10 inherited methods available
 
-**Characteristics**:
-- Has dependencies on Analyzer and Validator
-- Holds configuration/settings
-- Manages execution flow
-- Returns final trading signal
-- Handles errors and edge cases
+**See:** `TECHNICAL_REFERENCE/LAYER_4_APPROACH_EXECUTION/EXECUTOR_ANALYZER_VALIDATOR_PATTERN.md` for complete technical details
 
-**Example Pattern** (STRONG_CANDLE):
+---
+
+## 🛡️ Type Safety Principles
+
+### Principle 1: No Magic Strings
+
+**❌ WRONG: Magic strings**
 ```python
-class StrongCandleExecutor:
-    def __init__(self, settings):
-        self.settings = settings
-        self.analyzer = StrongCandleAnalyzer()
-        self.validator = StrongCandleValidator()
-    
+if color == "GREEN":
+    comparison = "greater"
+```
+
+**✅ CORRECT: Use enums**
+```python
+from src.stockreports.alert.common.constants import CandleColor, Comparison
+
+if color == CandleColor.GREEN:
+    comparison = Comparison.GREATER
+```
+
+### Principle 2: No Default Values on Required Parameters
+
+**❌ WRONG: Silent defaults**
+```python
+def validate_threshold(value, threshold, comparison="greater"):
+    # Developer might forget - uses default silently!
+```
+
+**✅ CORRECT: Required parameters**
+```python
+def validate_threshold(value: float, threshold: float, 
+                      comparison: Comparison) -> bool:
+    # Developer MUST specify - IDE catches if forgotten
+```
+
+### Principle 3: Inheritance Over Duplication
+
+**❌ WRONG: Redefine in every analyzer**
+```python
+class Analyzer1:
+    def calculate_body_ratio(self, candle):
+        return (close - open) / hl_range
+
+class Analyzer2:
+    def calculate_body_ratio(self, candle):
+        return (close - open) / hl_range  # Same code!
+```
+
+**✅ CORRECT: Inherit from base**
+```python
+class Analyzer1(Analyzer):
+    pass  # Inherits calculate_body_ratio
+
+class Analyzer2(Analyzer):
+    pass  # Inherits calculate_body_ratio
+```
+
+---
+
+## 🚀 Real-World Example: Before & After
+
+### Before Pattern (Monolithic - 454 lines)
+```python
+class StrongCandleAlert:  # 454 lines
     def run(self, dataframe):
-        latest = dataframe.iloc[-1]
-        
-        # Call analyzer for calculations
-        body_ratio = self.analyzer.calculate_body_ratio(latest)
-        candle_color = self.analyzer.get_candle_color(latest)
-        
-        # Call validator for checks
-        checks = [
-            self.validator.validate_candle_color_consistency(
-                dataframe, candle_color),
-            self.validator.validate_ratio_threshold(
-                body_ratio, self.settings.min_body_ratio)
-        ]
-        
-        # Combine results
-        if all(checks):
-            return Signal.SELL
-        return Signal.NEUTRAL
-```
-
-**Common Patterns**:
-1. Create instances of Analyzer/Validator
-2. Load and prepare data
-3. Call analyzer methods for calculations
-4. Call validator methods for checks
-5. Combine results into final signal
-
-**Anti-patterns** (What NOT to do):
-- ❌ Implement calculations in executor
-- ❌ Put business logic in executor
-- ❌ Mix data access with orchestration
-- ❌ Make it handle too many concerns
-
----
-
-### Layer 2: Analyzer (Pure Calculation)
-
-**Responsibility**: Pure numerical calculations (no business logic)
-
-**Typical Size**: 20-50 lines (inherits 9 base methods)
-
-**Characteristics**:
-- All methods are `@staticmethod` (no instance state)
-- No conditional logic based on thresholds
-- Returns calculated values (numbers, colors, DataFrames)
-- Input: candle (dict or row) or dataframe
-- Output: float, int, CandleColor, or DataFrame
-
-**Inheritance Model**:
-```python
-class Analyzer:  # Base class - 220 lines, 9 methods
-    @staticmethod
-    def calculate_body_ratio(candle): ...
-    
-    @staticmethod
-    def calculate_body_size(candle): ...
-    
-    @staticmethod
-    def get_candle_color(candle): ...
-    # ... 6 more methods
-```
-
-```python
-class StrongCandleAnalyzer(Analyzer):  # Only 29 lines
-    # Inherits all 9 methods automatically
-    # Add custom methods if needed
-    
-    @staticmethod
-    def my_custom_calculation(candle):
-        return value
-```
-
-**Examples of Analyzer Methods**:
-
-1. **calculate_body_ratio()** - How big is the candle body?
-   ```python
-   Input:  {"open": 100, "close": 105, "high": 108, "low": 98}
-   Output: 0.667  (body / hl_range)
-   ```
-
-2. **get_candle_color()** - Is it GREEN or RED?
-   ```python
-   Input:  {"open": 100, "close": 105}
-   Output: CandleColor.GREEN  (close > open)
-   ```
-
-3. **get_max_volume_in_window()** - What's max volume?
-   ```python
-   Input:  DataFrame with 50 rows
-   Output: 2500000  (highest volume in window)
-   ```
-
-4. **get_opposite_color_candles()** - Filter different color candles
-   ```python
-   Input:  DataFrame with 50 rows, filter_color=GREEN
-   Output: DataFrame with 15 RED candles (opposite)
-   ```
-
-**Pure Function Guarantees**:
-- Same input → Same output always ✅
-- No side effects ✅
-- Deterministic ✅
-- Trivial to test ✅
-
----
-
-### Layer 3: Validator (Pure Verification)
-
-**Responsibility**: Verify business logic conditions
-
-**Typical Size**: 30-50 lines (inherits 10 base methods)
-
-**Characteristics**:
-- All methods are `@staticmethod` (no instance state)
-- No calculations, just comparisons
-- Returns boolean (condition met or not)
-- Takes enums instead of strings (type-safe)
-- Input: value, threshold, comparison enum
-- Output: True/False
-
-**Type-Safe Parameters**:
-```python
-# ❌ Old way - strings, confusing
-validate_price_threshold(100.5, 100.0, "greater")  # What is "greater"?
-
-# ✅ New way - enums, crystal clear
-validate_price_threshold(100.5, 100.0, Comparison.GREATER)  # Obvious intent
-```
-
-**Inheritance Model**:
-```python
-class Validator:  # Base class - 240 lines, 10 methods
-    @staticmethod
-    def validate_candle_color_consistency(df, target_color): ...
-    
-    @staticmethod
-    def validate_price_threshold(price, threshold, comparison): ...
-    
-    @staticmethod
-    def validate_volume_threshold(volume, threshold, comparison): ...
-    # ... 7 more methods
-```
-
-```python
-class StrongCandleValidator(Validator):  # Only 35 lines
-    # Inherits all 10 methods automatically
-    # Add approach-specific validation if needed
-```
-
-**Examples of Validator Methods**:
-
-1. **validate_candle_color_consistency()** - Are most candles this color?
-   ```python
-   Input:  dataframe, target_color=CandleColor.GREEN
-   Output: True/False
-   ```
-
-2. **validate_price_threshold()** - Is price above/below threshold?
-   ```python
-   Input:  price=100.5, threshold=100.0, comparison=Comparison.GREATER
-   Output: True (100.5 > 100.0)
-   ```
-
-3. **validate_volume_threshold()** - Is volume high enough?
-   ```python
-   Input:  volume=2000000, threshold=1500000, comparison=Comparison.GREATER
-   Output: True (2000000 > 1500000)
-   ```
-
-4. **validate_volume_multiplier()** - Is volume X times average?
-   ```python
-   Input:  current_volume=2000000, avg_volume=1000000, multiplier=1.5
-   Output: True (2000000 >= 1.5 × 1000000)
-   ```
-
-**Required Parameters** (No Defaults!):
-```python
-# ❌ Old way - default comparison
-def validate_price_threshold(price, threshold, comparison="greater"):
-    # Developer might forget to specify, defaults to "greater"
-    # Bug: sometimes wrong comparison used silently
-
-# ✅ New way - required comparison
-def validate_price_threshold(price, threshold, comparison: Comparison):
-    # Developer MUST specify - no silent defaults
-    # Bug: IDE catches if forgotten
-```
-
----
-
-## 🎓 Pattern Variations
-
-### Variation 1: Simple Approach (Minimal Customization)
-
-**When to use**: Approach logic is simple or reuses base methods
-
-**Structure**:
-```
-Executor: 30 lines (pure orchestration)
-Analyzer: 20 lines (only custom methods, inherits 9 base)
-Validator: 25 lines (only custom methods, inherits 10 base)
-Total: 75 lines (vs. 200-300 for monolithic)
-```
-
-**Example**: STRONG_CANDLE
-- Executor: orchestrates pre-existing validation rules
-- Analyzer: uses all 9 inherited methods
-- Validator: uses all 10 inherited methods
-
-### Variation 2: Extended Approach (Custom Methods)
-
-**When to use**: Approach needs specialized calculations/validations
-
-**Structure**:
-```
-Executor: 40 lines (orchestration + custom logic)
-Analyzer: 80 lines (9 inherited + 5 custom calculation methods)
-Validator: 60 lines (10 inherited + 3 custom validation methods)
-Total: 180 lines (still much cleaner than monolithic)
-```
-
-**Example**: ICHIMOKU
-- Executor: coordinates complex signal validation
-- Analyzer: inherits 9 base + adds Tenkan, Kijun, etc. (5+ custom)
-- Validator: inherits 10 base + adds ICHIMOKU-specific checks (3 custom)
-
-### Variation 3: Heavy Customization (Significant Custom Logic)
-
-**When to use**: Approach is complex with many custom calculations
-
-**Structure**:
-```
-Executor: 50 lines (orchestration + state management)
-Analyzer: 150 lines (9 inherited + 15 custom calculations)
-Validator: 100 lines (10 inherited + 8 custom validations)
-Total: 300 lines (organized and modular)
-```
-
-**Example**: CVA (if heavily customized)
-- Executor: complex orchestration
-- Analyzer: inherits 9 base + many custom methods
-- Validator: inherits 10 base + many custom checks
-
-**Benefits Even at 300 Lines**:
-- Still more readable than monolithic 500+ line executor
-- Clear separation of concerns
-- Easier to test each layer
-- Base methods reusable in other approaches
-
----
-
-## 🔄 Pattern Application Flowchart
-
-```
-START: Need a new trading approach?
-│
-├─ YES → Continue
-└─ NO → Stop
-
-Step 1: Identify base requirements
-   ├─ Uses OHLCV data? → YES
-   ├─ Needs color classification? → Probably YES
-   ├─ Needs threshold validation? → Probably YES
-   └─ Needs volume analysis? → Maybe
-
-Step 2: Can base Analyzer cover it?
-   ├─ body_ratio, body_size, candle_color?
-   ├─ window_price_range, max_volume?
-   ├─ trend_direction, opposite_color?
-   └─ If YES → Inherits all 9 methods
-
-Step 3: Can base Validator cover it?
-   ├─ color_consistency, price_threshold?
-   ├─ ratio_threshold, volume_threshold?
-   ├─ volume_multiplier, required columns?
-   └─ If YES → Inherits all 10 methods
-
-Step 4: Custom needs?
-   ├─ Custom calculations? → Add to Analyzer
-   ├─ Custom validation? → Add to Validator
-   └─ Complex orchestration? → Expand Executor
-
-Step 5: Build structure
-   ├─ Create Executor (30-50 lines)
-   ├─ Create Analyzer (20-80 lines)
-   ├─ Create Validator (25-100 lines)
-   └─ Total: 75-230 lines (clean & maintainable)
-
-Step 6: Test
-   ├─ Test Analyzer methods (pure functions)
-   ├─ Test Validator methods (pure functions)
-   ├─ Test Executor flow (integration)
-   └─ Test on real data
-
-DONE: Production-ready approach
-```
-
----
-
-## 🚀 Real-World Example: STRONG_CANDLE
-
-### Before Applying Pattern (Monolithic - 454 lines)
-```python
-class StrongCandleAlert:
-    def run(self, dataframe):
-        # 454 lines of mixed concerns:
+        # 450+ lines of everything:
         # - Data loading
         # - Calculations
         # - Validation logic
         # - Signal generation
         # - Error handling
-        # - Everything in ONE place!
-        
-        # Problems:
-        # ❌ Hard to test (too many dependencies)
-        # ❌ Hard to understand (450+ lines to read)
-        # ❌ Hard to reuse (tightly coupled)
-        # ❌ Hard to maintain (change anywhere breaks something)
+        pass
 ```
 
-### After Applying Pattern (Modular - 107 lines total)
+**Problems:**
+- Hard to test (too many dependencies)
+- Hard to understand (450+ lines to read)
+- Hard to reuse (tightly coupled)
+- Hard to maintain (change anywhere breaks something)
 
-**Executor** (43 lines):
+### After Pattern (Modular - 107 lines total)
 ```python
+# Executor (43 lines):
 class StrongCandleExecutor:
-    def __init__(self, settings):
-        self.settings = settings
-        self.analyzer = StrongCandleAnalyzer()
-        self.validator = StrongCandleValidator()
-    
     def run(self, dataframe):
-        # Clear orchestration
         latest = dataframe.iloc[-1]
-        body_ratio = self.analyzer.calculate_body_ratio(latest)
-        candle_color = self.analyzer.get_candle_color(latest)
-        
-        checks = [
-            self.validator.validate_candle_color_consistency(...),
-            self.validator.validate_ratio_threshold(...)
-        ]
-        
-        return Signal.SELL if all(checks) else Signal.NEUTRAL
-```
+        ratio = self.analyzer.calculate_body_ratio(latest)
+        if self.validator.validate_ratio(ratio, threshold):
+            return Signal.SELL
+        return Signal.NEUTRAL
 
-**Analyzer** (29 lines):
-```python
+# Analyzer (29 lines):
 class StrongCandleAnalyzer(Analyzer):
-    # Inherits 9 methods from base
-    # Uses all: calculate_body_ratio, get_candle_color, etc.
-    # Doesn't need to redefine anything!
-    pass  # That's it!
-```
+    pass  # Inherits all 9 methods
 
-**Validator** (35 lines):
-```python
+# Validator (35 lines):
 class StrongCandleValidator(Validator):
-    # Inherits 10 methods from base
-    # Uses all: validate_candle_color_consistency, etc.
-    # Only adds 2 STRONG_CANDLE specific checks if needed
+    pass  # Inherits all 10 methods
 ```
 
-### Results
-
-```
-                Before    After    Reduction
-Total Lines:    454       107      -76%
-Complexity:     High      Low      Clear flow
-Testability:    Difficult Easy     Pure functions
-Reusability:    0%        100%     Inherits 19 methods
-Readability:    Poor      Excellent Each class: <50 lines
-```
+**Results:**
+- ✅ -76% reduction in lines
+- ✅ Clear separation of concerns
+- ✅ Testable in isolation
+- ✅ Reusable components
 
 ---
 
-## 🛡️ Common Mistakes to Avoid
+## 🎓 Pattern Variations
 
-### Mistake 1: Putting Calculations in Executor
+### Variation 1: Simple Approach
+- **Use When**: Logic is straightforward, mostly uses base methods
+- **Analyzer**: ~20 lines (inherit 9 methods, no custom)
+- **Validator**: ~25 lines (inherit 10 methods, no custom)
+- **Example**: STRONG_CANDLE
+
+### Variation 2: Extended Approach
+- **Use When**: Need custom calculations or validation
+- **Analyzer**: ~80 lines (inherit 9 + add 5 custom methods)
+- **Validator**: ~60 lines (inherit 10 + add 3 custom methods)
+- **Example**: ICHIMOKU
+
+### Variation 3: Complex Approach
+- **Use When**: Approach has significant custom logic
+- **Analyzer**: ~150 lines (inherit 9 + add 15 custom methods)
+- **Validator**: ~100 lines (inherit 10 + add 8 custom methods)
+- **Total**: Still modular and organized (vs. 500+ monolithic)
+
+---
+
+## ⚠️ Common Mistakes to Avoid
+
+### Mistake 1: Calculations in Executor
 ```python
-# ❌ WRONG - Executor should not calculate
-class BadExecutor:
-    def run(self, dataframe):
-        body_ratio = abs(candle['close'] - candle['open']) / \
-                     (candle['high'] - candle['low'])  # Calculation in executor!
+# ❌ WRONG
+def run(self, dataframe):
+    ratio = abs(close - open) / (high - low)  # Calculation here!
+
+# ✅ CORRECT
+def run(self, dataframe):
+    ratio = self.analyzer.calculate_body_ratio(candle)  # Clean!
 ```
 
+### Mistake 2: Validation Logic in Analyzer
 ```python
-# ✅ CORRECT - Executor calls analyzer
-class GoodExecutor:
-    def run(self, dataframe):
-        body_ratio = self.analyzer.calculate_body_ratio(candle)  # Clean!
-```
-
-### Mistake 2: Putting Validation Logic in Analyzer
-```python
-# ❌ WRONG - Analyzer should not validate
-class BadAnalyzer:
-    @staticmethod
-    def analyze_body_ratio(candle):
-        ratio = ...
+# ❌ WRONG
+class Analyzer:
+    def analyze_ratio(self, candle):
         if ratio > 0.5:  # Business logic - belongs in Validator!
             return True
-```
 
-```python
-# ✅ CORRECT - Analyzer calculates, Validator validates
-class GoodAnalyzer:
-    @staticmethod
-    def analyze_body_ratio(candle):
+# ✅ CORRECT
+class Analyzer:
+    def analyze_ratio(self, candle):
         return ratio  # Just the number
-
-class GoodValidator:
-    @staticmethod
-    def validate_ratio(ratio, threshold):
-        return ratio > threshold  # Business logic here
 ```
 
-### Mistake 3: Using String Parameters Instead of Enums
+### Mistake 3: String Parameters Instead of Enums
 ```python
-# ❌ WRONG - String is ambiguous
-validator.validate_price_threshold(100.5, 100.0, "greater")
+# ❌ WRONG
+validator.validate_threshold(100, 90, "greater")
 
-# ✅ CORRECT - Enum is clear
-validator.validate_price_threshold(100.5, 100.0, Comparison.GREATER)
+# ✅ CORRECT
+validator.validate_threshold(100, 90, Comparison.GREATER)
 ```
 
-### Mistake 4: Having Default Values on Required Parameters
+### Mistake 4: Hardcoded Values in Executor
 ```python
-# ❌ WRONG - Developer might forget to specify
-def validate_threshold(value, threshold, comparison="greater"):
-    # Silent bug if comparison not specified!
+# ❌ WRONG
+if ratio > 0.5:  # Magic number!
 
-# ✅ CORRECT - No default, must specify
-def validate_threshold(value, threshold, comparison: Comparison):
-    # IDE catches if comparison forgotten!
-```
-
-### Mistake 5: Not Using Inheritance for Common Methods
-```python
-# ❌ WRONG - Redefine calculate_body_ratio in every analyzer
-class BadAnalyzer1:
-    def calculate_body_ratio(self, candle):
-        return (candle['close'] - candle['open']) / ...
-
-class BadAnalyzer2:
-    def calculate_body_ratio(self, candle):
-        return (candle['close'] - candle['open']) / ...  # Same code!
-
-# ✅ CORRECT - Inherit from base
-class GoodAnalyzer1(Analyzer):
-    pass  # Inherits calculate_body_ratio
-
-class GoodAnalyzer2(Analyzer):
-    pass  # Inherits calculate_body_ratio
+# ✅ CORRECT
+if ratio > self.settings.get("min_ratio", 0.5):
 ```
 
 ---
 
-## 🔍 Pattern Checklist
+## 📊 Base Methods Available (19 Total)
 
-When designing a new approach, verify:
+### Analyzer Base Methods (9)
+1. `calculate_body_ratio(candle)` - Body size relative to range
+2. `calculate_body_size(candle)` - |close - open|
+3. `get_candle_color(candle)` - GREEN if close > open
+4. `calculate_window_price_range(dataframe)` - High - Low
+5. `get_max_volume_in_window(dataframe)` - Maximum volume
+6. `get_trend_direction(dataframe)` - UP, DOWN, or SIDEWAYS
+7. `get_opposite_color_candles(dataframe, color)` - Filter by color
+8. `calculate_average_volume_in_window(dataframe)` - Mean volume
+9. `get_price_at_position(dataframe, position)` - Price at index
 
-### Executor Layer
-- [ ] Loads data correctly
-- [ ] Initializes Analyzer and Validator
-- [ ] Calls analyzer for calculations (no direct calculation)
-- [ ] Calls validator for checks (no direct validation)
-- [ ] Combines results into final signal
-- [ ] 30-50 lines (not more than 100)
-- [ ] No hardcoded values (use settings)
-- [ ] Handles errors gracefully
+### Validator Base Methods (10)
+1. `validate_candle_color_consistency(dataframe, color)` - % of target color
+2. `validate_price_threshold(price, threshold, comparison)` - Price check
+3. `validate_volume_threshold(volume, threshold, comparison)` - Volume check
+4. `validate_ratio_threshold(ratio, threshold, comparison)` - Ratio check
+5. `validate_volume_multiplier(current, avg, multiplier)` - Volume X times
+6. `validate_required_columns(dataframe, columns)` - Column existence
+7. `validate_minimum_window_size(dataframe, min_size)` - Data size
+8. `validate_no_null_values(dataframe, columns)` - Null check
+9. `validate_price_range(price, min, max)` - Range check
+10. `validate_data_recency(timestamp, max_age_minutes)` - Freshness
 
-### Analyzer Layer
-- [ ] All methods are `@staticmethod`
-- [ ] No instance state
-- [ ] No conditional logic based on thresholds
-- [ ] Returns values (numbers, colors, DataFrames)
-- [ ] Uses CandleColumn enums (not strings)
-- [ ] Pure functions (same input → same output)
-- [ ] Inherits 9 base methods
-- [ ] 20-80 lines (depends on custom methods)
+**See:** `TECHNICAL_REFERENCE/LAYER_4_APPROACH_EXECUTION/ABSTRACT_BASE_CLASSES_ARCHITECTURE.md` for all details
 
-### Validator Layer
-- [ ] All methods are `@staticmethod`
-- [ ] No instance state
-- [ ] Returns boolean only
-- [ ] Uses Comparison enum (no string defaults)
-- [ ] Uses CandleColor enum (not strings)
-- [ ] Pure functions (no side effects)
-- [ ] Inherits 10 base methods
-- [ ] 25-100 lines (depends on custom methods)
+---
 
-### Type Safety
-- [ ] No magic strings for colors
-- [ ] No magic strings for comparisons
-- [ ] No magic strings for columns
-- [ ] All enums used correctly
-- [ ] Type hints on all parameters
-- [ ] IDE autocomplete works
+## 🔄 Decision Tree: When to Use What
 
-### Testing
-- [ ] All Analyzer methods have tests
-- [ ] All Validator methods have tests
-- [ ] Executor tested with mock Analyzer/Validator
-- [ ] Integration tests on real data
-- [ ] Edge cases covered
+```
+START: Implementing new approach?
+│
+├─ Can reuse all 9 Analyzer base methods?
+│  ├─ YES → class YourAnalyzer(Analyzer): pass
+│  └─ NO  → Inherit + add custom methods
+│
+├─ Can reuse all 10 Validator base methods?
+│  ├─ YES → class YourValidator(Validator): pass
+│  └─ NO  → Inherit + add custom methods
+│
+├─ Executor complexity?
+│  ├─ Simple (30-50 lines) → Good fit for EAV
+│  ├─ Medium (50-100 lines) → Good fit for EAV
+│  └─ Complex (100+ lines) → Still use EAV (might split further)
+│
+└─ RESULT: Always use EAV pattern
+           (varies in customization, not application)
+```
 
 ---
 
 ## 📚 Related Documentation
 
+**For More Details:**
+- **EXECUTOR_ANALYZER_VALIDATOR_PATTERN.md** (TECHNICAL_REFERENCE/LAYER_4)
+  - Technical deep dive with complete code examples
+  - All 19 base methods explained with examples
+  - Real-world STRONG_CANDLE walkthrough
+
+- **EAV_PATTERN_STEP_BY_STEP.md** (IMPLEMENTATION_GUIDES/LAYER_4)
+  - Step-by-step implementation guide
+  - Code templates for all three classes
+  - Complete testing strategies
+
+**Related Patterns:**
+- **EXECUTOR_PATTERN_OVERVIEW.md** - Pattern diagrams and concepts
+- **EXECUTOR_PATTERN_DIAGRAMS.md** - Visual representations
+- **ABSTRACT_BASE_CLASSES_ARCHITECTURE.md** - All base method implementations
+
+**Quality Standards:**
+- **CODE_QUALITY_STANDARDS.md** - All code quality requirements
 - **ARCHITECTURE_OVERVIEW.md** - System-wide architecture
-- **ABSTRACT_BASE_CLASSES_IMPLEMENTATION.md** - All 19 base methods
-- **CREATING_NEW_APPROACH.md** - Step-by-step implementation guide
-- **CODE_QUALITY_STANDARDS.md** - What makes code production-ready
-- **STRONG_CANDLE_REFACTORING_COMPLETION_REPORT.md** - Real-world example
 
 ---
 
 ## ✅ Key Takeaways
 
-1. **EAV Pattern**: Executor → Analyzer → Validator
-2. **Clear Roles**: Orchestration, Calculation, Verification
-3. **Type Safety**: Use enums, not strings
-4. **Pure Functions**: No side effects or state
-5. **Inheritance**: 19 common methods in base classes
-6. **Modularity**: Each class 20-100 lines (readable!)
-7. **Scalability**: Apply pattern to all 18+ approaches
-8. **Maintainability**: Changes propagate to all approaches
+1. **Always Use EAV Pattern**: For ALL trading approaches
+2. **Executor**: Orchestrates (30-50 lines, no calculations)
+3. **Analyzer**: Calculates (20-80 lines, pure functions)
+4. **Validator**: Verifies (25-100 lines, returns booleans)
+5. **Inheritance**: Reuse 19 common methods in base classes
+6. **Type Safety**: Use enums, never magic strings
+7. **Testability**: Each layer tested independently
+8. **Scalability**: Pattern scales from simple to complex approaches
 
 ---
 
-**Status**: ✅ Complete reference document  
-**Next**: See CREATING_NEW_APPROACH.md for step-by-step guide  
-**Recommended Time**: 25 minutes to understand  
-**Difficulty**: Intermediate developers (assumes basic OOP knowledge)
+## 🎯 Next Steps
+
+**To Implement a New Approach:**
+1. Read this document (10 minutes)
+2. Read EXECUTOR_ANALYZER_VALIDATOR_PATTERN.md (30 minutes)
+3. Follow EAV_PATTERN_STEP_BY_STEP.md (2-3 hours implementation)
+
+**To Review Code:**
+1. Check for EAV pattern application
+2. Verify Executor has no calculations
+3. Verify Analyzer is pure functions
+4. Verify Validator returns booleans
+5. Check type safety (enums, no defaults)
+
+**To Understand Patterns:**
+1. Study EXECUTOR_PATTERN_OVERVIEW.md
+2. Review EXECUTOR_PATTERN_DIAGRAMS.md
+3. Compare with STRONG_CANDLE_REFACTORING_COMPLETION_REPORT.md
+
+---
+
+**Status**: ✅ Architectural reference  
+**Difficulty**: Beginner to Intermediate  
+**Time**: 5-10 minutes to understand  
+**Next**: See EXECUTOR_ANALYZER_VALIDATOR_PATTERN.md for technical details

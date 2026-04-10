@@ -9,7 +9,7 @@
 
 ## 📚 Documentation Structure
 
-### Phase 1: Learn the Architecture
+### Technical Reference: Learn the Architecture
 **Read in order**:
 1. **`docs/ARCHITECTURE/ARCHITECTURE_OVERVIEW.md`** ← START HERE
    - Understanding the EAV pattern
@@ -29,7 +29,7 @@
    - How to apply correctly
    - Duration: 10 minutes
 
-### Phase 2: Learn Implementation
+### Implementation Guides: Learn Implementation
 **Read in order**:
 4. **`docs/IMPLEMENTATION/CREATING_NEW_APPROACH.md`**
    - Step-by-step guide for new approaches
@@ -108,7 +108,7 @@
 
 ### Scenario 2: "I need to refactor a complex approach"
 **Steps**:
-1. Read `docs/REFACTORING_AI_PROMPT.md` Phase 2 (Analysis)
+1. Read `docs/REFACTORING_AI_PROMPT.md` Implementation Guides (Analysis)
 2. Read `docs/REFACTORING_EXAMPLES.md` (Example 4-6)
 3. Study `src/stockreports/alert/approach/VRA/` (complex reference)
 4. Keep both QUICK_REFERENCE and AI_PROMPT open

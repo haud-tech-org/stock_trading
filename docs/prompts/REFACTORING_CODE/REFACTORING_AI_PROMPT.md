@@ -18,7 +18,7 @@ You are an expert software architect specializing in code refactoring. Your task
 
 ---
 
-## 📋 Phase 1: Architecture Foundation - Read First
+## 📋 Technical Reference: Architecture Foundation - Read First
 
 Before refactoring ANY approach, you MUST understand and internalize the following documents:
 
@@ -68,7 +68,7 @@ Before refactoring ANY approach, you MUST understand and internalize the followi
 
 ---
 
-## 🔍 Phase 2: Analysis - Understand the Original Code
+## 🔍 Implementation Guides: Analysis - Understand the Original Code
 
 ### Step 1: Identify the Approach
 
