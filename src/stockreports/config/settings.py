@@ -72,7 +72,7 @@ DATA_PROCESSING = {
 # Guidance: A shorter interval (e.g., 5-10 seconds) provides more real-time data but increases API usage. A longer interval (e.g., 60 seconds) is less resource-intensive. Do not set this lower than the data resolution (e.g., don't check every 5 seconds for 1-minute data).
 # Range: Integer > 0.
 # Example: `MONITORING_INTERVAL_SECONDS = 5`
-MONITORING_INTERVAL_SECONDS = 7
+MONITORING_INTERVAL_SECONDS = 27
 
 
 # --- General Alerting & Reporting ---
@@ -117,7 +117,7 @@ MODE = "DEPLOYMENT"
 
 # GOOGLE CLOUD RUN STORAGE SETTINGS
 # Name of the Google Cloud Storage bucket for report uploads
-GCS_REPORT_BUCKET_NAME = "stock_trading"
+GCS_REPORT_BUCKET_NAME = "stock-trading-2"
 # Enable or disable Google Cloud Storage for report uploads
 # Set to True to upload reports to GCS, False to skip GCS upload
 ENABLE_GCS_REPORT_STORAGE = False

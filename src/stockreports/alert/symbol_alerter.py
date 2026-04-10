@@ -110,14 +110,24 @@ class SymbolAlerter:
         Storage structure: Dict[int, Optional[pd.DataFrame]]
             - Key: resolution in minutes (e.g., 1, 5, 15)
             - Value: accumulated DataFrame or None
+        
+        Note: Resolution 1 (1-minute) is ALWAYS included because:
+        - Price Alerter always uses 1-minute data
+        - Monitoring loop expects resolution 1 to exist
         """
         try:
             # Get required resolutions for this symbol
             resolutions = self.resolution_coordinator.get_required_resolutions(self.symbol)
             
+            # CRITICAL: Always include resolution 1 (1-minute)
+            # - Price Alerter always needs it
+            # - Monitoring loop uses it as first-run indicator
+            resolutions_set = set(resolutions)
+            resolutions_set.add(1)  # Always add 1-minute resolution
+            
             # Initialize dict: resolution (int) → DataFrame
             self._resolution_dataframes: Dict[int, Optional[pd.DataFrame]] = {
-                resolution: None for resolution in resolutions
+                resolution: None for resolution in sorted(resolutions_set)
             }
             
             self.logger.info(
@@ -127,7 +137,8 @@ class SymbolAlerter:
         
         except Exception as e:
             self.logger.error(f"Failed to initialize resolution dataframes: {e}")
-            self._resolution_dataframes = {}
+            # Fallback: Always at least have 1-minute resolution
+            self._resolution_dataframes = {1: None}
 
     def _update_resolution_dataframes(self, from_dt: pd.Timestamp, to_dt: pd.Timestamp) -> bool:
         """
@@ -363,6 +374,15 @@ class SymbolAlerter:
         Returns:
             bool: True if the session completed without error, signaling a clean exit.
         """
+        # Guard: Check if this symbol has any approaches configured
+        approaches_to_run = self._get_approaches_for_symbol()
+        if not approaches_to_run:
+            self.logger.error(
+                f"Symbol {self.symbol} has no approaches configured in SYMBOL_ALERT_APPROACHES. "
+                f"Cannot run monitoring session. Skipping..."
+            )
+            return True  # Return True to signal clean exit (not an error)
+        
         time_simulator = TimeSimulator(
             replay_start_str=settings.DEBUG_REPLAY_START_TIME,
             interval_seconds=settings.MONITORING_INTERVAL_SECONDS
