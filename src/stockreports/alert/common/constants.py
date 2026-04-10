@@ -7,6 +7,23 @@ class Approach:
     CONSISTENT_VOLUME_ANCHOR = "CONSISTENT_VOLUME_ANCHOR"
     PRICE_MOVEMENT = "PRICE_MOVEMENT"  # Price level crossing alerts
 
+    @staticmethod
+    def get_all_approaches() -> set:
+        """
+        Get all approach constants as a set of strings.
+        
+        Returns:
+            set: Set of all approach string constants (e.g., {"STRONG_CANDLE", "VRA", ...})
+            
+        Example:
+            valid_approaches = Approach.get_all_approaches()
+            # Returns: {"STRONG_CANDLE", "CONSISTENT_MOMENTUM", "ICHIMOKU", ...}
+        """
+        return {
+            getattr(Approach, attr) for attr in dir(Approach)
+            if not attr.startswith('_') and isinstance(getattr(Approach, attr), str)
+        }
+
 class Mode:
     DEVELOPMENT = "DEVELOPMENT"
     DEPLOYMENT = "DEPLOYMENT"

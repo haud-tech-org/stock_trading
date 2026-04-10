@@ -606,12 +606,36 @@ When adding a new executor:
 - [ ] Create settings class (YOUR_APPROACH/settings.py)
 - [ ] Create executor class (YOUR_APPROACH/executor.py)
 - [ ] Implement `_find_alerts()` method
+- [ ] **Add resolution mapping to APPROACH_RESOLUTION_MAPPING in signal_settings.py**
 - [ ] Add configuration to config system
 - [ ] Write unit tests
 - [ ] Test in REPLAY mode
 - [ ] Verify LIVE mode compatibility
 - [ ] Document your approach
 - [ ] Add to integration tests
+
+**NEW: Resolution Configuration (CRITICAL)**
+Each executor must be mapped to a resolution:
+
+```python
+# In src/stockreports/config/signal_settings.py:
+APPROACH_RESOLUTION_MAPPING = {
+    # ... existing approaches
+    "YOUR_APPROACH": 1,  # ← Add this line
+                         # 1 = 1-minute, 5 = 5-min, 15 = 15-min, 60 = 60-min
+}
+```
+
+The ResolutionCoordinator will:
+- Read APPROACH_RESOLUTION_MAPPING at startup
+- Validate that YOUR_APPROACH is a valid Approach constant
+- Validate that the resolution (1, 5, 15, or 60) is supported
+- Provide resolution lookups when SymbolAlerter runs your executor
+
+**Common Resolution Choices:**
+- High-frequency strategies (Strong Candle, Momentum): 1-minute
+- Swing strategies (Ichimoku): 5-15 minutes
+- Trend following: 15-60 minutes
 
 ---
 

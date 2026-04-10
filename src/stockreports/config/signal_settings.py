@@ -63,7 +63,21 @@ SCHEDULED_REMINDER_ORDER_DELAY_MINUTES = 4
 # The number of minutes to wait after a signal is sent before sending a "Close Position" notification.
 # Typically longer than order reminder delay (default 2x longer).
 # Set to None to disable close position reminders.
-SCHEDULED_REMINDER_CLOSE_DELAY_MINUTES = 10
+SCHEDULED_REMINDER_CLOSE_DELAY_MINUTES = 8
+
+
+# --- Multi-Resolution Configuration ---
+# Maps each approach to its target resolution (in minutes)
+# Supported resolutions: 1, 5, 15, 60
+# Configuration-driven: no code changes needed to modify resolutions
+APPROACH_RESOLUTION_MAPPING = {
+    "CONSISTENT_MOMENTUM": 1,      # 1-minute resolution
+    "ICHIMOKU": 1,                # 1-minute resolution
+    "STRONG_CANDLE": 1,            # 1-minute resolution
+    "VRA": 1,                      # 1-minute resolution
+    "VOLUME_SPIKE_CONFIRMATION": 1,  # 1-minute resolution
+    "CONSISTENT_VOLUME_ANCHOR": 1   # 1-minute resolution
+}
 
 
 # --- Approach-Specific Configurations ---

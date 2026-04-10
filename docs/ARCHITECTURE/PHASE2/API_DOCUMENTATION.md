@@ -199,29 +199,156 @@ result = AlertResult(
     status=Status.SUCCESS
 )
 
-# ✅ Valid: None
-result = AlertResult(
-    approach_name='Test',
-    confirmed_alerts=None,
-    status=Status.FAILED
-)
+---
 
-# ❌ Invalid: String instead of list
-# Raises TypeError: "confirmed_alerts must be List[AlertData] or None"
-result = AlertResult(
-    approach_name='Test',
-    confirmed_alerts='alert1',  # ❌ Wrong
-    status=Status.SUCCESS
-)
+## ResolutionCoordinator
 
-# ❌ Invalid: List of dicts instead of AlertData
-# Raises TypeError: "All items in confirmed_alerts must be AlertData"
-result = AlertResult(
-    approach_name='Test',
-    confirmed_alerts=[{'signal': 'BUY'}],  # ❌ Wrong
-    status=Status.SUCCESS
-)
+**File:** `/src/stockreports/coordination/resolution_coordinator.py` (180 lines)
+
+**Purpose:** Map trading approaches to configured time resolutions
+
+### ResolutionCoordinator API
+
+```python
+from src.stockreports.coordination.resolution_coordinator import ResolutionCoordinator
+from src.stockreports.alert.common.constants import Approach
+
+# Initialize (loads APPROACH_RESOLUTION_MAPPING from signal_settings.py)
+coordinator = ResolutionCoordinator()
+
+# Get resolution for a specific approach
+def get_resolutions(approach: str) -> int:
+    """
+    Get resolution (in minutes) for an approach.
+    
+    Args:
+        approach: Approach constant string (e.g., Approach.ICHIMOKU)
+    
+    Returns:
+        Resolution in minutes: 1, 5, 15, or 60
+    
+    Raises:
+        KeyError: If approach not in APPROACH_RESOLUTION_MAPPING
+    
+    Example:
+        resolution = coordinator.get_resolutions(Approach.ICHIMOKU)
+        # Returns: 15 (if configured for 15-minute resolution)
+    """
+    
+# Get all required resolutions for a symbol
+def get_required_resolutions(symbol: str) -> list[int]:
+    """
+    Get list of resolutions needed for a symbol's approaches.
+    
+    Gets all approaches configured for the symbol from SYMBOL_ALERT_APPROACHES,
+    then returns sorted unique resolutions for those approaches.
+    Always includes resolution 1 (1-minute).
+    
+    Args:
+        symbol: Stock symbol (e.g., "VN30F1M")
+    
+    Returns:
+        Sorted list of unique resolutions: e.g., [1, 5, 15]
+    
+    Example:
+        resolutions = coordinator.get_required_resolutions("VN30F1M")
+        # Returns: [1, 5, 15] if VN30F1M has approaches on 1, 5, 15 min
+    """
 ```
+
+### Usage Examples
+
+**Example 1: Get Resolution for Single Approach**
+```python
+from src.stockreports.coordination.resolution_coordinator import ResolutionCoordinator
+from src.stockreports.alert.common.constants import Approach
+
+coordinator = ResolutionCoordinator()
+
+# Get resolution for ICHIMOKU
+ichimoku_res = coordinator.get_resolutions(Approach.ICHIMOKU)
+print(f"ICHIMOKU uses {ichimoku_res}-minute data")  # Output: 15-minute data
+```
+
+**Example 2: Initialize Multi-Resolution Storage**
+```python
+from src.stockreports.coordination.resolution_coordinator import ResolutionCoordinator
+
+coordinator = ResolutionCoordinator()
+symbol = "VN30F1M"
+
+# Get all required resolutions for this symbol
+required_resolutions = coordinator.get_required_resolutions(symbol)
+print(f"Required resolutions for {symbol}: {required_resolutions}")
+
+# Initialize storage
+resolution_dfs = {
+    res: None for res in required_resolutions
+}
+# Result: {1: None, 5: None, 15: None}
+```
+
+**Example 3: In Monitoring Loop**
+```python
+from src.stockreports.coordination.resolution_coordinator import ResolutionCoordinator
+
+coordinator = ResolutionCoordinator()
+
+# For each approach configured for the symbol
+for approach_name in symbol_approaches:
+    # Get resolution for this approach
+    resolution = coordinator.get_resolutions(approach_name)
+    
+    # Get data for this resolution (from multi-resolution storage)
+    approach_df = resolution_dfs[resolution]
+    
+    # Run executor on correct resolution data
+    executor = get_executor(approach_name)
+    result = executor.run(df=approach_df, ...)
+```
+
+### Configuration: APPROACH_RESOLUTION_MAPPING
+
+Located in: `src/stockreports/config/signal_settings.py`
+
+```python
+APPROACH_RESOLUTION_MAPPING = {
+    "CONSISTENT_MOMENTUM": 1,      # 1-minute resolution
+    "ICHIMOKU": 1,                # 1-minute resolution
+    "STRONG_CANDLE": 1,            # 1-minute resolution
+    "VRA": 1,                      # 1-minute resolution
+    "VOLUME_SPIKE_CONFIRMATION": 1,  # 1-minute resolution
+    "CONSISTENT_VOLUME_ANCHOR": 1   # 1-minute resolution
+}
+```
+
+**To Change Resolution:**
+```python
+# Before:
+APPROACH_RESOLUTION_MAPPING = {
+    "ICHIMOKU": 1,  # Was 1-minute
+}
+
+# After:
+APPROACH_RESOLUTION_MAPPING = {
+    "ICHIMOKU": 15,  # Now 15-minute
+}
+
+# No code changes needed! ResolutionCoordinator will auto-detect.
+```
+
+### Validation Rules
+
+ResolutionCoordinator validates configuration at initialization:
+
+1. **Approach exists:** All keys must be valid Approach constants
+   - Error: `ValueError: Approach 'INVALID_APPROACH' not found in Approach class`
+
+2. **Resolution is integer:** All values must be `int` type
+   - Error: `TypeError: Approach 'ICHIMOKU' resolution must be int, got str: '15'`
+
+3. **Resolution is supported:** Must be in {1, 5, 15, 60}
+   - Error: `ValueError: Approach 'ICHIMOKU' uses unsupported resolution 7`
 
 ---
 

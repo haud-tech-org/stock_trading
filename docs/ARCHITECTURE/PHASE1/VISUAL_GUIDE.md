@@ -26,7 +26,19 @@
         │ (VN30F1M)    │          │ (VN30)       │
         └──────────────┘          └──────────────┘
               │                           │
-              ▼                           ▼
+         ┌────┴────┐                 ┌────┴────┐
+         ▼         ▼                 ▼         ▼
+    ┌────────┐ ┌──────────────────┐ ┌────────┐ ┌──────────────────┐
+    │ResolCoord  ResolutionStorage  │ResolCoord  ResolutionStorage │
+    │ (Maps      _resolution_dfs    │(Maps       _resolution_dfs   │
+    │ approach   {1: df, 5: df, ..} │approach    {1: df, 5: df, ..}│
+    │ →res)      (per symbol)       │→res)       (per symbol)      │
+    └────────┘ └──────────────────┘ └────────┘ └──────────────────┘
+         │              │                  │              │
+         └──────────────┴──────────────────┴──────────────┘
+                         │
+              ┌──────────────────────────────┐
+              ▼                               ▼
         ┌──────────────────────────────────────────┐
         │   _run_deployment_mode()                 │
         │   [Supervisor Loop - Error Recovery]     │
@@ -44,9 +56,12 @@
         │   │  while time_simulator.is_running()│ │
         │   │    ├─ Check scheduled closes      │ │
         │   │    ├─ Check trading hours         │ │
-        │   │    ├─ Fetch data                  │ │
+        │   │    ├─ UPDATE ALL RESOLUTIONS      │ │
+        │   │    │  (multi-res data fetch)     │ │
         │   │    ├─ Run price movement alerts   │ │
-        │   │    ├─ Run executors (6 approaches)│ │
+        │   │    │  (on 1-min data)            │ │
+        │   │    ├─ Run executors (each on     │ │
+        │   │    │  its configured resolution) │ │
         │   │    └─ Notify via channels         │ │
         │   └────────────────────────────────────┘ │
         └──────────────────────────────────────────┘
@@ -705,6 +720,87 @@ if suggestion_type:
     
 if run_analysis_flag:
     analyze_overall_performance(...)
+```
+
+---
+
+## 12. Multi-Resolution Architecture (NEW)
+
+```
+ResolutionCoordinator: Maps Approaches to Resolutions
+
+CONFIGURATION (APPROACH_RESOLUTION_MAPPING):
+┌──────────────────────────────────────────────────┐
+│ "CONSISTENT_MOMENTUM" → 1   (1-minute)           │
+│ "ICHIMOKU" → 1              (1-minute)           │
+│ "STRONG_CANDLE" → 1         (1-minute)           │
+│ "VRA" → 1                   (1-minute)           │
+│ "VOLUME_SPIKE_CONFIRMATION" → 1  (1-minute)     │
+│ "CONSISTENT_VOLUME_ANCHOR" → 1   (1-minute)     │
+└──────────────────────────────────────────────────┘
+
+PER-SYMBOL RESOLUTION STORAGE:
+
+For Symbol "VN30F1M":
+┌────────────────────────────────────────────────────┐
+│ _resolution_dataframes = {                         │
+│     1: DataFrame[...],      ← 1-min candles       │
+│     5: DataFrame[...],      ← 5-min candles       │
+│    15: DataFrame[...]       ← 15-min candles      │
+│ }                                                  │
+└────────────────────────────────────────────────────┘
+        │
+        ├─ Resolution 1 (Always included)
+        │  ├─ Required by: PriceMovementAlerter
+        │  ├─ Required by: All approaches (in this config)
+        │  └─ Used as: First-run indicator
+        │
+        ├─ Resolution 5 (If configured)
+        │  └─ Required by: Any approach mapped to 5-min
+        │
+        └─ Resolution 15 (If configured)
+           └─ Required by: Any approach mapped to 15-min
+
+MULTI-RESOLUTION DATA FETCH:
+
+for each resolution in _resolution_dataframes.keys():
+    latest_df = orchestrator.fetch_and_process(
+        symbol=self.symbol,
+        start_time=from_dt,
+        end_time=to_dt,
+        resolution=resolution  ← KEY: Different for each
+    )
+    
+    if latest_df not None:
+        if _resolution_dataframes[resolution] is None:
+            _resolution_dataframes[resolution] = latest_df
+        else:
+            concat + deduplicate + sort
+
+APPROACH EXECUTION:
+
+for approach_name in approaches_to_run:
+    resolution = coordinator.get_resolutions(approach_name)
+    
+    approach_df = _resolution_dataframes[resolution]
+    
+    executor = get_executor(approach_name)
+    result = executor.run(df=approach_df)
+
+EXAMPLE: ICHIMOKU on 15-min vs STRONG_CANDLE on 1-min
+
+┌─────────────────────┐         ┌─────────────────────┐
+│ ICHIMOKU            │         │ STRONG_CANDLE       │
+│ (15-minute candles) │         │ (1-minute candles)  │
+│                     │         │                     │
+│ Data: 15-min df     │         │ Data: 1-min df      │
+│ Lookback: 200 bars  │         │ Lookback: 50 bars   │
+│ Signal: T+15        │         │ Signal: T+1         │
+└─────────────────────┘         └─────────────────────┘
+        └─────────────┬──────────┘
+                      ▼
+            Both trigger on same candle
+            (if signals align)
 ```
 
 ---
