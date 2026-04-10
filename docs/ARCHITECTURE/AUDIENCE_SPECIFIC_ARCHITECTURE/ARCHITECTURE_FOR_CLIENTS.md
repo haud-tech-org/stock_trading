@@ -302,14 +302,14 @@ Backtesting: Compare performance across all 9 scenarios
 
 ## Getting Started: Step-by-Step
 
-### Phase 1: Setup (15 minutes)
+### Technical Reference: Setup (15 minutes)
 1. Choose which symbols to monitor
 2. Select your alert approaches
 3. Set profit targets
 4. Set stop losses
 5. Configure notifications
 
-### Phase 2: Backtest Your Strategy (30 minutes)
+### Implementation Guides: Backtest Your Strategy (30 minutes)
 1. Choose a date range (30-60 days recommended)
 2. Run backtesting on historical data
 3. Review the performance report

@@ -10,7 +10,7 @@
 
 ## 🎯 By Code Generation Phase
 
-### Phase 1: Understand the Approach
+### Technical Reference: Understand the Approach
 **What**: Before generating code, understand key patterns
 
 → Read: **Case Study 1** (why logging matters)
@@ -30,7 +30,7 @@
 
 **Time**: 30-40 minutes reading and understanding
 
-### Phase 2: Fill Approach Specification
+### Implementation Guides: Fill Approach Specification
 **What**: Define your approach rules in PART 1 of AI prompt
 
 → Reference: **Case Study 7b** (parameter naming)
