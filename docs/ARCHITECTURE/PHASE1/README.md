@@ -52,10 +52,11 @@
 
 ### 🏗️ Complete Architecture
 👉 **[DEEP_DIVE_FINDINGS.md](./DEEP_DIVE_FINDINGS.md)** (30-40 minutes)
-- 8 major alert generation components
+- **9 major alert generation components** (added ResolutionCoordinator)
+- **NEW:** ResolutionCoordinator - Approach-to-resolution mapping for multi-resolution support
 - **NEW:** Centralized Report Generator (performance metrics service) - critical feedback loop
 - 5 sub-components for trade simulation, consolidation, analysis, and optimization
-- Complete system architecture with feedback loop
+- Complete system architecture with feedback loop and multi-resolution data management
 - Data flows and integration points
 - Configuration points
 - **NEW:** Deployment mode & TimeSimulator deep dive

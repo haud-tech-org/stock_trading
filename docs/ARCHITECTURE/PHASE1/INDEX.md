@@ -23,9 +23,10 @@
 
 **Sections:**
 1. Executive Summary
-2. Component Verification & Details (1.1-1.8)
+2. Component Verification & Details (1.1-1.9)
    - SymbolAlertManager
-   - SymbolAlerter
+   - SymbolAlerter (with multi-resolution support)
+   - **ResolutionCoordinator** ⭐ NEW
    - DataServiceOrchestrator
    - PriceMovementAlerter
    - Executor Framework
@@ -131,7 +132,12 @@
 ### "How does the system start monitoring?"
 → PHASE1_DEEP_DIVE_FINDINGS.md → Part 1.1-1.2 (SymbolAlertManager, SymbolAlerter)
 
-### "What is TimeSimulator and how does it work?"
+### "How does multi-resolution support work?"
+→ PHASE1_DEEP_DIVE_FINDINGS.md → Part 1.2 (SymbolAlerter with multi-resolution) and Part 1.3 (ResolutionCoordinator)
+
+### "How are approaches mapped to resolutions?"
+→ PHASE1_DEEP_DIVE_FINDINGS.md → Part 1.3 (ResolutionCoordinator)
+→ Configuration: `APPROACH_RESOLUTION_MAPPING` in signal_settings.py
 → PHASE1_DEEP_DIVE_FINDINGS.md → Part 9
 → DEBUG_REPLAY_START_TIME_INVESTIGATION.md → Parts 2-3
 
@@ -170,6 +176,7 @@
 |-----------|------|-------|
 | SymbolAlertManager | `alert/symbol_alert_manager.py` | 312 |
 | SymbolAlerter | `alert/symbol_alerter.py` | 491 |
+| **ResolutionCoordinator** | **`coordination/resolution_coordinator.py`** | **180** |
 | **TimeSimulator** | `utils/time_utils.py` | 35-80 |
 | DataServiceOrchestrator | `data_services/orchestrator.py` | ~100 |
 | PriceMovementAlerter | `alert/price_movement_alerter.py` | 252 |

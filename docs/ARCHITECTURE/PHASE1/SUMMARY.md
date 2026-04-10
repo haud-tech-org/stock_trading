@@ -91,18 +91,27 @@ Separate directories (`reports/` vs `reports_replay/`) ensure:
 ### 1. PHASE1_DEEP_DIVE_FINDINGS.md (Updated)
 **Contents:**
 - Complete system architecture overview
-- All 8 core components with locations
+- **9 core components** (added ResolutionCoordinator for multi-resolution support)
 - Data flow diagrams
 - Configuration points
 - **NEW:** Detailed Part 8-9 on Deployment Mode with Time Sub-Modes
 - **NEW:** TimeSimulator deep dive with LIVE vs REPLAY comparison table
 - **NEW:** Mode-dependent behavior at all decision points
+- **NEW:** ResolutionCoordinator: Approach-to-resolution mapping
+
+**New Component: ResolutionCoordinator**
+- Maps each approach to configured resolution (1, 5, 15, or 60 minutes)
+- Validates configuration at initialization
+- Enables per-resolution data fetching
+- Configuration: `APPROACH_RESOLUTION_MAPPING` in signal_settings.py
 
 **Key Additions:**
 - TimeSimulator class functionality (is_running, advance, is_replay_mode)
 - Trading hours handling differences
 - Error recovery differences
 - Report storage separation logic
+- Multi-resolution architecture: SymbolAlerter now stores per-resolution dataframes
+- ResolutionCoordinator integration: approach → resolution lookups
 
 ### 2. DEBUG_REPLAY_START_TIME_INVESTIGATION.md (New)
 **Contents:**

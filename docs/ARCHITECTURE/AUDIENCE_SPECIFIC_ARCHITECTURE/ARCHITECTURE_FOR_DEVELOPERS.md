@@ -176,7 +176,75 @@ class BaseDataProvider(ABC):
 
 ---
 
-### 3. Analysis Layer: Executor Framework
+### 3. Coordination Layer: ResolutionCoordinator
+
+**File:** `src/stockreports/coordination/resolution_coordinator.py`  
+**Responsibility:** Map approaches to configured resolutions  
+**Pattern:** Facade pattern (simple interface for lookups)  
+**Key Methods:**
+- `get_resolutions(approach: str) -> int` - Get resolution for approach
+- `get_required_resolutions(symbol: str) -> List[int]` - Get resolutions needed
+- `_validate_config()` - Validate configuration at init
+
+**Purpose:**
+Different trading approaches need different timeframes. ResolutionCoordinator maintains the mapping:
+- ICHIMOKU → 15-minute charts
+- VRA → 5-minute charts
+- STRONG_CANDLE → 1-minute charts
+- etc.
+
+**Configuration (signal_settings.py):**
+```python
+APPROACH_RESOLUTION_MAPPING = {
+    "CONSISTENT_MOMENTUM": 1,      # 1-minute resolution
+    "ICHIMOKU": 1,                # 1-minute resolution
+    "STRONG_CANDLE": 1,            # 1-minute resolution
+    "VRA": 1,                      # 1-minute resolution
+    "VOLUME_SPIKE_CONFIRMATION": 1,  # 1-minute resolution
+    "CONSISTENT_VOLUME_ANCHOR": 1   # 1-minute resolution
+}
+```
+
+**Validation Rules:**
+1. All approaches must exist in Approach class constants
+2. All resolutions must be integers
+3. All resolutions must be in supported set: {1, 5, 15, 60}
+
+**Integration with SymbolAlerter:**
+```python
+# In SymbolAlerter.__init__:
+self.resolution_coordinator = ResolutionCoordinator()
+self._resolution_dataframes = {}  # Dict[int, Optional[DataFrame]]
+
+# In monitoring loop:
+for approach_name in approaches_to_run:
+    resolution = self.resolution_coordinator.get_resolutions(approach_name)
+    approach_df = self._resolution_dataframes.get(resolution)
+    executor.run(df=approach_df, ...)
+```
+
+**Key Design Decisions:**
+- **Configuration-driven:** No code changes needed to modify resolutions
+- **Single responsibility:** Only maps approach → resolution
+- **Validates early:** Catches config errors at initialization
+- **Read-only:** No dynamic updates (resolution per approach is fixed)
+- **Always includes 1-minute:** Resolution 1 required by PriceMovementAlerter
+
+**How to Modify Resolutions:**
+```python
+# In signal_settings.py:
+# Change:
+APPROACH_RESOLUTION_MAPPING = {
+    "ICHIMOKU": 15  # ← Change from 1 to 15
+}
+
+# No code changes needed!
+# System auto-detects change and fetches 15-min data for ICHIMOKU
+```
+
+---
+
+### 4. Analysis Layer: Executor Framework
 
 #### Executor Architecture
 
@@ -267,7 +335,7 @@ class MyCustomExecutor(BaseExecutor):
 
 ---
 
-### 4. Notification Layer
+### 5. Notification Layer
 
 #### NotificationManager
 **File:** `src/notification/notification_manager.py`  

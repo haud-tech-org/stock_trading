@@ -22,21 +22,24 @@ The end-to-end flow described is **accurate but incomplete**. Investigation reve
 ```
 SymbolAlertManager (Multi-symbol orchestrator)
   └─→ SymbolAlerter (Single-symbol supervisor)
+      ├─→ ResolutionCoordinator (Approach-to-resolution mapping)
+      │   └─→ APPROACH_RESOLUTION_MAPPING config
+      │
       └─→ Monitoring Session (Time-based loop)
-          ├─→ DataServiceOrchestrator (Data fetching with caching)
+          ├─→ DataServiceOrchestrator (Multi-resolution data fetching)
           │   └─→ HistoricalDataManager (Cache hub)
           │       └─→ DataProviderCoordinator (Provider routing)
           │           └─→ 3 Providers (Vietstock, Binance API, Binance CCXT)
           │
-          ├─→ PriceMovementAlerter (Price level detection)
+          ├─→ PriceMovementAlerter (Price level detection on 1-min resolution)
           │
           ├─→ Executor Framework (6 approach-specific executors)
-          │   ├─→ CONSISTENT_MOMENTUM
-          │   ├─→ STRONG_CANDLE
-          │   ├─→ VOLUME_SPIKE_CONFIRMATION
-          │   ├─→ VRA (Volume Reversal Analysis)
-          │   ├─→ CONSISTENT_VOLUME_ANCHOR
-          │   └─→ ICHIMOKU
+          │   ├─→ CONSISTENT_MOMENTUM (resolution-specific)
+          │   ├─→ STRONG_CANDLE (resolution-specific)
+          │   ├─→ VOLUME_SPIKE_CONFIRMATION (resolution-specific)
+          │   ├─→ VRA (resolution-specific)
+          │   ├─→ CONSISTENT_VOLUME_ANCHOR (resolution-specific)
+          │   └─→ ICHIMOKU (resolution-specific)
           │
           └─→ Close Position Scheduler (Time-based position closing)
               └─→ NotificationManager (Multi-channel notifications)
@@ -76,8 +79,9 @@ SymbolAlertManager (Multi-symbol orchestrator)
 
 **Responsibility:**
 - Single-symbol supervision (acts as resilient supervisor)
+- **Multi-resolution data management** (stores dataframes per resolution)
 - Continuous monitoring with crash resilience
-- Data fetching via DataServiceOrchestrator
+- Data fetching via DataServiceOrchestrator (for multiple resolutions)
 - Alert detection via Executors & PriceMovementAlerter
 - Notification dispatch
 
@@ -86,6 +90,10 @@ SymbolAlertManager (Multi-symbol orchestrator)
 SymbolAlerter (Deployment Mode)
 ├─ Supervisor Loop: Catches crashes, restarts session
 │   └─ Monitoring Session: Time-based continuous execution
+│       ├─ Multi-Resolution Storage: Dict[resolution] → DataFrame
+│       │   └─ Resolution 1 (1-min): Always required
+│       │   └─ Other resolutions: Per-approach configured
+│       │
 │       └─ Main Loop: Interval-based operations
 ```
 
@@ -93,7 +101,27 @@ SymbolAlerter (Deployment Mode)
 1. `execute()` - Entry point for deployment mode execution
 2. `_run_deployment_mode()` - Supervisor loop with restart capability
 3. `_perform_monitoring_session()` - Main monitoring loop
-4. `_get_approaches_for_symbol()` - Gets symbol-specific approaches
+4. `_init_resolution_dataframes()` - Initialize resolution storage
+5. `_update_resolution_dataframes(from_dt, to_dt)` - Fetch data for all resolutions
+6. `_get_approaches_for_symbol()` - Gets symbol-specific approaches
+
+**Multi-Resolution Storage:**
+```python
+# In __init__:
+self.resolution_coordinator = ResolutionCoordinator()
+self._init_resolution_dataframes()  # Dict[int, Optional[DataFrame]]
+
+# Example structure for VN30F1M with multiple approaches:
+self._resolution_dataframes = {
+    1: None,    # 1-minute (required by PriceMovementAlerter + approaches)
+    5: None,    # 5-minute (if any approach configured for 5-min)
+    15: None    # 15-minute (if any approach configured for 15-min)
+}
+
+# Resolution 1 (1-minute) is ALWAYS included because:
+# - PriceMovementAlerter always uses 1-minute data
+# - Monitoring loop uses resolution 1 as first-run indicator
+```
 
 **Data Flow in Main Loop:**
 ```python
@@ -104,14 +132,34 @@ while time_simulator.is_running():
     # 2. Check trading hours
     if not is_trading_hours(current_time): continue
     
-    # 3. Fetch data via DataServiceOrchestrator
-    orchestrator = DataServiceOrchestrator()
-    latest_df = orchestrator.fetch_and_process(
-        symbol=self.symbol,
-        start_time=from_dt,
-        end_time=to_dt,
-        resolution=MONITORING_DATA_RESOLUTION_MINUTES
-    )
+    # 3. UPDATE ALL RESOLUTION DATAFRAMES (multi-resolution support)
+    has_data = self._update_resolution_dataframes(from_dt, to_dt)
+    if not has_data: continue
+    
+    # 4. Price Movement Detection (always on 1-min resolution)
+    price_df = self._resolution_dataframes.get(1)
+    price_alerter = PriceMovementAlerter(self.symbol)
+    price_result = price_alerter.execute(price_df)
+    
+    # 5. Executor-based Approaches (each on configured resolution)
+    for approach_name in approaches_to_run:
+        resolution = resolution_coordinator.get_resolutions(approach_name)
+        approach_df = self._resolution_dataframes.get(resolution)
+        
+        executor = get_approach_executor(approach_name)
+        result = executor.run(df=approach_df)
+    
+    # 6. Advance time simulator
+    time_simulator.advance()
+```
+
+**Key Changes from Previous Architecture:**
+- ✅ **Before:** Single `master_df` for all approaches
+- ✅ **Now:** Per-resolution dataframes (`_resolution_dataframes` dict)
+- ✅ **Before:** All approaches ran on same resolution
+- ✅ **Now:** Each approach configured for specific resolution
+- ✅ **Before:** Redundant data fetching
+- ✅ **Now:** Efficient multi-resolution fetch once per cycle
     
     # 4. Price Movement Detection
     price_alerter = PriceMovementAlerter(self.symbol)
@@ -132,7 +180,102 @@ while time_simulator.is_running():
 
 ---
 
-### 1.3 Data Services: DataServiceOrchestrator ✅
+### 1.3 Resolution Coordinator ✅
+
+**Location:** `src/stockreports/coordination/resolution_coordinator.py`
+
+**Responsibility:**
+- **Maps each approach to its configured resolution** (1, 5, 15, or 60 minutes)
+- Validates configuration at initialization
+- Provides approach-to-resolution lookups
+- Returns required resolutions for a symbol
+
+**Pattern:** Facade - Simple interface for approach-to-resolution mappings
+
+**Key Concept:**
+Each trading approach runs on a specific time resolution (intraday chart timeframe):
+- `ICHIMOKU` → 15-minute resolution
+- `VRA` → 5-minute resolution  
+- `STRONG_CANDLE` → 1-minute resolution
+- etc.
+
+This allows different approaches to run on different timeframes simultaneously.
+
+**Configuration (APPROACH_RESOLUTION_MAPPING in signal_settings.py):**
+```python
+APPROACH_RESOLUTION_MAPPING = {
+    "CONSISTENT_MOMENTUM": 1,      # 1-minute charts
+    "ICHIMOKU": 1,                # 1-minute charts
+    "STRONG_CANDLE": 1,            # 1-minute charts
+    "VRA": 1,                      # 1-minute charts
+    "VOLUME_SPIKE_CONFIRMATION": 1,  # 1-minute charts
+    "CONSISTENT_VOLUME_ANCHOR": 1   # 1-minute charts
+}
+```
+
+**Public Methods:**
+
+```python
+def get_resolutions(approach: str) -> int:
+    """
+    Get resolution for an approach.
+    
+    Args:
+        approach: Approach constant (e.g., Approach.ICHIMOKU)
+    
+    Returns:
+        Resolution in minutes (1, 5, 15, or 60)
+    
+    Raises:
+        KeyError: If approach not found in APPROACH_RESOLUTION_MAPPING
+    
+    Example:
+        coordinator.get_resolutions(Approach.ICHIMOKU)  # Returns 15
+    """
+
+def get_required_resolutions(symbol: str) -> list[int]:
+    """
+    Get list of required resolutions for a symbol.
+    
+    Gets all approaches configured for the symbol, then collects
+    unique resolutions needed. Always includes resolution 1.
+    
+    Args:
+        symbol: Stock symbol (e.g., "VN30F1M")
+    
+    Returns:
+        Sorted list of unique resolutions [1, 5, 15]
+    
+    Example:
+        coordinator.get_required_resolutions("VN30F1M")  # [1, 5, 15]
+    """
+```
+
+**Validation:**
+- ✅ All approaches exist in Approach class
+- ✅ All resolutions are numeric integers
+- ✅ All resolutions in supported set: {1, 5, 15, 60}
+- Raises ValueError/TypeError if validation fails
+
+**Integration with SymbolAlerter:**
+```python
+# In SymbolAlerter.__init__:
+self.resolution_coordinator = ResolutionCoordinator()
+self._init_resolution_dataframes()
+
+# In _init_resolution_dataframes():
+resolutions = self.resolution_coordinator.get_required_resolutions(self.symbol)
+self._resolution_dataframes = {resolution: None for resolution in resolutions}
+
+# In monitoring loop:
+resolution = self.resolution_coordinator.get_resolutions(approach_name)
+approach_df = self._resolution_dataframes.get(resolution)
+executor.run(df=approach_df)
+```
+
+---
+
+### 1.4 Data Services: DataServiceOrchestrator ✅
 
 **Location:** `src/stockreports/data_services/orchestrator.py`
 
@@ -175,7 +318,7 @@ DataServiceOrchestrator (Public Facade)
 
 ---
 
-### 1.4 Price Movement Detection: PriceMovementAlerter ✅
+### 1.5 Price Movement Detection: PriceMovementAlerter ✅
 
 **Location:** `src/stockreports/alert/price_movement_alerter.py`
 
@@ -200,7 +343,7 @@ def execute(df: pd.DataFrame) -> AlertResult
 
 ---
 
-### 1.5 Executor Framework ✅
+### 1.6 Executor Framework ✅
 
 **Location:** `src/stockreports/alert/executor.py` (base), `src/stockreports/alert/approach/[NAME]/executor.py` (implementations)
 
@@ -241,7 +384,7 @@ Executor (Abstract Base)
 
 ---
 
-### 1.6 Close Position Scheduler ✅
+### 1.7 Close Position Scheduler ✅
 
 **Location:** `src/stockreports/notification/unified_scheduler.py`
 
@@ -323,7 +466,7 @@ To add new notification type (e.g., "weekly_review"):
 
 ---
 
-### 1.7 Notification Service: NotificationManager ✅
+### 1.8 Notification Service: NotificationManager ✅
 
 **Location:** `src/stockreports/notification/notification_manager.py`
 
@@ -354,7 +497,7 @@ def _send_alert(notification: AlertNotification)
 
 ---
 
-### 1.8 Supporting Components ✅
+### 1.9 Supporting Components ✅
 
 #### Analyzer (Abstract Base)
 **Location:** `src/stockreports/alert/analyzer.py`
