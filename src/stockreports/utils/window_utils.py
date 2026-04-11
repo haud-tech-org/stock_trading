@@ -1,7 +1,7 @@
 import pandas as pd
 from scipy.signal import find_peaks
 from typing import Optional, List, Tuple
-from src.stockreports.alert.common.constants import Trend
+from src.stockreports.alert.common.constants import Trend, PriceColumn, CandleColumn
 from src.stockreports.utils.candle_utils import get_first_candle, get_last_candle
 
 def get_window_by_trend(window_data: pd.DataFrame, expected_trend: Trend) -> pd.DataFrame:
@@ -16,9 +16,9 @@ def get_window_by_trend(window_data: pd.DataFrame, expected_trend: Trend) -> pd.
         A new DataFrame containing only the candles that match the expected trend.
     """
     if expected_trend == Trend.UPTREND:
-        return window_data[window_data['close'] > window_data['open']]
+        return window_data[window_data[CandleColumn.CLOSE] > window_data[CandleColumn.OPEN]]
     elif expected_trend == Trend.DOWNTREND:
-        return window_data[window_data['close'] < window_data['open']]
+        return window_data[window_data[CandleColumn.CLOSE] < window_data[CandleColumn.OPEN]]
     
     return pd.DataFrame()
 
@@ -39,7 +39,7 @@ def get_trend(window_data: pd.DataFrame) -> Optional[Trend]:
     if first_candle is None or last_candle is None or first_candle.name == last_candle.name:
         return None
 
-    if last_candle['close'] > first_candle['open']:
+    if last_candle[CandleColumn.CLOSE] > first_candle[CandleColumn.OPEN]:
         return Trend.UPTREND
     else:
         return Trend.DOWNTREND
@@ -55,7 +55,7 @@ def get_highest_peak(window_data: pd.DataFrame) -> Optional[Tuple[pd.Series, flo
         A tuple containing the highest peak candle (pd.Series) and its prominence (float),
         or None if no peaks are found.
     """
-    peaks_indices, properties = find_peaks(window_data['high'], prominence=1)
+    peaks_indices, properties = find_peaks(window_data[CandleColumn.HIGH], prominence=1)
     
     if len(peaks_indices) == 0:
         return None
@@ -65,7 +65,7 @@ def get_highest_peak(window_data: pd.DataFrame) -> Optional[Tuple[pd.Series, flo
     all_prominences = properties['prominences']
 
     # Find the index of the peak with the maximum 'high' value
-    highest_peak_idx_in_all_peaks = all_peaks['high'].idxmax()
+    highest_peak_idx_in_all_peaks = all_peaks[CandleColumn.HIGH].idxmax()
     
     # Get the candle
     peak_candle = all_peaks.loc[highest_peak_idx_in_all_peaks]
@@ -88,7 +88,7 @@ def get_lowest_trough(window_data: pd.DataFrame) -> Optional[Tuple[pd.Series, fl
         or None if no troughs are found.
     """
     # Find troughs by finding peaks in the inverted 'low' series
-    troughs_indices, properties = find_peaks(-window_data['low'], prominence=1)
+    troughs_indices, properties = find_peaks(-window_data[CandleColumn.LOW], prominence=1)
     
     if len(troughs_indices) == 0:
         return None
@@ -98,7 +98,7 @@ def get_lowest_trough(window_data: pd.DataFrame) -> Optional[Tuple[pd.Series, fl
     all_prominences = properties['prominences']
 
     # Find the index of the trough with the minimum 'low' value
-    lowest_trough_idx_in_all_troughs = all_troughs['low'].idxmin()
+    lowest_trough_idx_in_all_troughs = all_troughs[CandleColumn.LOW].idxmin()
 
     # Get the candle
     trough_candle = all_troughs.loc[lowest_trough_idx_in_all_troughs]
@@ -120,7 +120,7 @@ def get_list_of_peaks(window_data: pd.DataFrame) -> List[Tuple[pd.Series, float]
         A list of tuples, where each tuple contains a peak candle (pd.Series) 
         and its prominence (float). Returns an empty list if no peaks are found.
     """
-    peaks_indices, properties = find_peaks(window_data['high'], prominence=1)
+    peaks_indices, properties = find_peaks(window_data[CandleColumn.HIGH], prominence=1)
     
     if len(peaks_indices) == 0:
         return []
@@ -144,7 +144,7 @@ def get_list_of_troughs(window_data: pd.DataFrame) -> List[Tuple[pd.Series, floa
         A list of tuples, where each tuple contains a trough candle (pd.Series) 
         and its prominence (float). Returns an empty list if no troughs are found.
     """
-    troughs_indices, properties = find_peaks(-window_data['low'], prominence=1)
+    troughs_indices, properties = find_peaks(-window_data[CandleColumn.LOW], prominence=1)
     
     if len(troughs_indices) == 0:
         return []
@@ -177,7 +177,7 @@ def get_window_size_and_trend(window_data: pd.DataFrame) -> Tuple[float, Optiona
     if first_candle is None or last_candle is None or first_candle.name == last_candle.name:
         return 0, None
 
-    size = last_candle['close'] - first_candle['open']
+    size = last_candle[CandleColumn.CLOSE] - first_candle[CandleColumn.OPEN]
     
     trend = None
     if size > 0:
@@ -265,7 +265,86 @@ def get_median_volume(df: pd.DataFrame) -> float:
     Returns:
         The median volume value. Returns 0 if DataFrame is empty or 'volume' column is missing.
     """
-    if df is None or len(df) == 0 or 'volume' not in df.columns:
+    if df is None or len(df) == 0 or CandleColumn.VOLUME not in df.columns:
         return 0.0
     
-    return df['volume'].median()
+    return df[CandleColumn.VOLUME].median()
+
+def get_window_high_low_range(window_data: pd.DataFrame) -> float:
+    """
+    Calculate the total price range (MAX(HIGH) - MIN(LOW)) across entire window.
+    
+    Finds the highest high and lowest low across all candles in the window,
+    then calculates the total range. Useful for determining the extent of
+    price movement across the entire window.
+    
+    Args:
+        window_data: The DataFrame containing the candle data.
+    
+    Returns:
+        float: The total price range (MAX(HIGH) - MIN(LOW)).
+               Returns 0.0 if window is empty or missing HIGH/LOW columns.
+    
+    Raises:
+        ValueError: If window_data is None or has fewer than 1 candle.
+    
+    Example:
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({
+        ...     'high': [105, 110, 108, 112, 107],
+        ...     'low': [100, 103, 101, 105, 102]
+        ... })
+        >>> price_range = get_window_high_low_range(df)
+        >>> price_range
+        12.0  # MAX(high) - MIN(low) = 112 - 100
+    """
+    if window_data is None or window_data.empty:
+        return 0.0
+    
+    if CandleColumn.HIGH not in window_data.columns or CandleColumn.LOW not in window_data.columns:
+        return 0.0
+    
+    window_high: float = window_data[CandleColumn.HIGH].max()
+    window_low: float = window_data[CandleColumn.LOW].min()
+    price_range: float = window_high - window_low
+    
+    return price_range
+
+
+def get_average_candle_range(window_data: pd.DataFrame) -> float:
+    """
+    Calculate the average candle range (HIGH - LOW) for all candles in window.
+    
+    Calculates HIGH - LOW for each candle, then returns the mean.
+    Useful for determining typical candle size/volatility in the window.
+    
+    Args:
+        window_data: The DataFrame containing the candle data.
+    
+    Returns:
+        float: The average candle range (HIGH - LOW) across all candles.
+               Returns 0.0 if window is empty or missing HIGH/LOW columns.
+    
+    Raises:
+        ValueError: If window_data is None or has fewer than 1 candle.
+    
+    Example:
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({
+        ...     'high': [105, 110, 108, 112, 107],
+        ...     'low': [100, 103, 101, 105, 102]
+        ... })
+        >>> avg_range = get_average_candle_range(df)
+        >>> avg_range
+        5.0  # Average of [5, 7, 7, 7, 5] = 6.2
+    """
+    if window_data is None or window_data.empty:
+        return 0.0
+    
+    if CandleColumn.HIGH not in window_data.columns or CandleColumn.LOW not in window_data.columns:
+        return 0.0
+    
+    candle_ranges: pd.Series = window_data[CandleColumn.HIGH] - window_data[CandleColumn.LOW]
+    average_range: float = candle_ranges.mean()
+    
+    return average_range

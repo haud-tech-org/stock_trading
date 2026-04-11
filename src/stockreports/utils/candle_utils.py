@@ -1,8 +1,7 @@
 import pandas as pd
 
 from typing import Optional
-from src.stockreports.alert.common.constants import Trend
-from src.stockreports.alert.common.constants import Signal
+from src.stockreports.alert.common.constants import Trend, Signal, PriceColumn, CandleColumn
 from src.stockreports.utils.alert_utils import get_reversal_trend
 
 def find_max_volume_candle(window_df: pd.DataFrame) -> pd.Series:
@@ -15,7 +14,7 @@ def find_max_volume_candle(window_df: pd.DataFrame) -> pd.Series:
     Returns:
         The candle (as a Series) with the highest volume.
     """
-    max_vol_idx = window_df['volume'].idxmax()
+    max_vol_idx = window_df[CandleColumn.VOLUME].idxmax()
     return window_df.loc[max_vol_idx]
 
 def find_min_volume_candle(window_df: pd.DataFrame) -> pd.Series:
@@ -28,7 +27,7 @@ def find_min_volume_candle(window_df: pd.DataFrame) -> pd.Series:
     Returns:
         The candle (as a Series) with the lowest volume.
     """
-    min_vol_idx = window_df['volume'].idxmin()
+    min_vol_idx = window_df[CandleColumn.VOLUME].idxmin()
     return window_df.loc[min_vol_idx]
 
 def find_biggest_body_candle(window_df: pd.DataFrame) -> pd.Series:
@@ -42,7 +41,7 @@ def find_biggest_body_candle(window_df: pd.DataFrame) -> pd.Series:
     Returns:
         The candle (as a Series) with the biggest body size.
     """
-    body_sizes = (window_df['close'] - window_df['open']).abs()
+    body_sizes = (window_df[CandleColumn.CLOSE] - window_df[CandleColumn.OPEN]).abs()
     biggest_body_idx = body_sizes.idxmax()
     return window_df.loc[biggest_body_idx]
 
@@ -61,19 +60,19 @@ def validate_volume_ratio(large_volume_candle: pd.Series, small_volume_candle: p
         - bool: True if the validation passes, False otherwise.
         - float: The calculated volume ratio.
     """
-    if small_volume_candle['volume'] == 0:
+    if small_volume_candle[CandleColumn.VOLUME] == 0:
         # If the small candle's volume is 0, the ratio is infinite if the large candle's volume is > 0.
         # We can consider the validation passed if the large volume is also 0, otherwise it's infinitely larger.
         # The ratio is effectively infinite, so we can return a large number or handle as a special case.
         # Let's return 0.0 for the ratio to avoid division by zero, and the status will depend on the logic.
-        # If large_volume_candle['volume'] is also 0, then ratio is undefined, let's say 1.0 and status is True if min_volume_multiplier <= 1
-        # If large_volume_candle['volume'] > 0, ratio is infinite, so status is True.
-        if large_volume_candle['volume'] > 0:
+        # If large_volume_candle[CandleColumn.VOLUME] is also 0, then ratio is undefined, let's say 1.0 and status is True if min_volume_multiplier <= 1
+        # If large_volume_candle[CandleColumn.VOLUME] > 0, ratio is infinite, so status is True.
+        if large_volume_candle[CandleColumn.VOLUME] > 0:
             return True, float('inf')
         else:
             return True, 1.0  # Or handle as per specific requirements for 0/0
 
-    ratio = large_volume_candle['volume'] / small_volume_candle['volume']
+    ratio = large_volume_candle[CandleColumn.VOLUME] / small_volume_candle[CandleColumn.VOLUME]
     status = ratio >= min_volume_multiplier
     return status, ratio
 
@@ -87,7 +86,7 @@ def get_candle_body_size(candle: pd.Series) -> float:
     Returns:
         The absolute difference between the close and open price.
     """
-    return abs(candle['close'] - candle['open'])
+    return abs(candle[CandleColumn.CLOSE] - candle[CandleColumn.OPEN])
 
 def is_candle_trend_consistent(candle: pd.Series, expected_trend: Trend) -> bool:
     """
@@ -167,7 +166,7 @@ def is_green_candle(candle: pd.Series) -> bool:
     Returns:
         True if the close price is greater than the open price, False otherwise.
     """
-    return candle['close'] > candle['open']
+    return candle[CandleColumn.CLOSE] > candle[CandleColumn.OPEN]
 
 def is_red_candle(candle: pd.Series) -> bool:
     """
@@ -179,7 +178,7 @@ def is_red_candle(candle: pd.Series) -> bool:
     Returns:
         True if the close price is less than the open price, False otherwise.
     """
-    return candle['close'] < candle['open']
+    return candle[CandleColumn.CLOSE] < candle[CandleColumn.OPEN]
 
 def is_body_bigger_than_min(candle: pd.Series, min_body_size: float) -> tuple[bool, float]:
     """
@@ -194,7 +193,7 @@ def is_body_bigger_than_min(candle: pd.Series, min_body_size: float) -> tuple[bo
         - bool: True if the candle's body size is greater than or equal to the minimum, False otherwise.
         - float: The calculated body size.
     """
-    body_size = abs(candle['close'] - candle['open'])
+    body_size = abs(candle[CandleColumn.CLOSE] - candle[CandleColumn.OPEN])
     status = body_size >= min_body_size
     return status, body_size
 
@@ -209,7 +208,7 @@ def is_body_smaller_than_max(candle: pd.Series, max_body_size: float) -> bool:
     Returns:
         True if the candle's body size is less than or equal to the maximum, False otherwise.
     """
-    return abs(candle['close'] - candle['open']) <= max_body_size
+    return abs(candle[CandleColumn.CLOSE] - candle[CandleColumn.OPEN]) <= max_body_size
 
 def get_first_candle(window_data: pd.DataFrame) -> Optional[pd.Series]:
     """
@@ -258,26 +257,26 @@ def create_consolidated_candle(candles: pd.DataFrame) -> Optional[pd.Series]:
     if candles.empty:
         return None
 
-    open_close_prices = pd.concat([candles['open'], candles['close']])
+    open_close_prices = pd.concat([candles[CandleColumn.OPEN], candles[CandleColumn.CLOSE]])
     
     consolidated_open = open_close_prices.min()
     consolidated_close = open_close_prices.max()
     
-    consolidated_high = candles['high'].max()
-    consolidated_low = candles['low'].min()
+    consolidated_high = candles[CandleColumn.HIGH].max()
+    consolidated_low = candles[CandleColumn.LOW].min()
     
     # Use sum of volume as requested for data consistency
-    consolidated_volume = candles['volume'].sum()
+    consolidated_volume = candles[CandleColumn.VOLUME].sum()
 
     # The timestamp of the last candle is used for context
     last_time = candles.index[-1]
 
     return pd.Series({
-        'open': consolidated_open,
-        'high': consolidated_high,
-        'low': consolidated_low,
-        'close': consolidated_close,
-        'volume': consolidated_volume
+        CandleColumn.OPEN: consolidated_open,
+        CandleColumn.HIGH: consolidated_high,
+        CandleColumn.LOW: consolidated_low,
+        CandleColumn.CLOSE: consolidated_close,
+        CandleColumn.VOLUME: consolidated_volume
     }, name=last_time)
 
 def is_first_candle_in_window(candle: pd.Series, window_data: pd.DataFrame) -> bool:
@@ -325,8 +324,8 @@ def is_body_ratio_bigger_than_min(candle: pd.Series, min_body_ratio: float) -> t
         - bool: True if the body ratio is greater than or equal to the minimum, False otherwise.
         - float: The calculated body ratio.
     """
-    body_size = abs(candle['close'] - candle['open'])
-    entire_range = candle['high'] - candle['low']
+    body_size = abs(candle[CandleColumn.CLOSE] - candle[CandleColumn.OPEN])
+    entire_range = candle[CandleColumn.HIGH] - candle[CandleColumn.LOW]
 
     if entire_range == 0:
         ratio = 0.0 if body_size == 0 else float('inf')
@@ -348,8 +347,8 @@ def is_body_ratio_smaller_than_max(candle: pd.Series, max_body_ratio: float) -> 
     Returns:
         True if the body ratio is less than or equal to the maximum, False otherwise.
     """
-    body_size = abs(candle['close'] - candle['open'])
-    entire_range = candle['high'] - candle['low']
+    body_size = abs(candle[CandleColumn.CLOSE] - candle[CandleColumn.OPEN])
+    entire_range = candle[CandleColumn.HIGH] - candle[CandleColumn.LOW]
 
     if entire_range == 0:
         return True # If range is 0, ratio is effectively 0, which is <= max_body_ratio
@@ -367,7 +366,7 @@ def is_upper_wick_bigger_than_min(candle: pd.Series, min_size: float) -> bool:
     Returns:
         True if the upper wick is greater than or equal to the minimum size, False otherwise.
     """
-    upper_wick = candle['high'] - max(candle['open'], candle['close'])
+    upper_wick = candle[CandleColumn.HIGH] - max(candle[CandleColumn.OPEN], candle[CandleColumn.CLOSE])
     return upper_wick >= min_size
 
 def is_upper_wick_smaller_than_max(candle: pd.Series, max_size: float) -> bool:
@@ -381,7 +380,7 @@ def is_upper_wick_smaller_than_max(candle: pd.Series, max_size: float) -> bool:
     Returns:
         True if the upper wick is less than or equal to the maximum size, False otherwise.
     """
-    upper_wick = candle['high'] - max(candle['open'], candle['close'])
+    upper_wick = candle[CandleColumn.HIGH] - max(candle[CandleColumn.OPEN], candle[CandleColumn.CLOSE])
     return upper_wick <= max_size
 
 def is_lower_wick_bigger_than_min(candle: pd.Series, min_size: float) -> bool:
@@ -395,7 +394,7 @@ def is_lower_wick_bigger_than_min(candle: pd.Series, min_size: float) -> bool:
     Returns:
         True if the lower wick is greater than or equal to the minimum size, False otherwise.
     """
-    lower_wick = min(candle['open'], candle['close']) - candle['low']
+    lower_wick = min(candle[CandleColumn.OPEN], candle[CandleColumn.CLOSE]) - candle[CandleColumn.LOW]
     return lower_wick >= min_size
 
 def is_lower_wick_smaller_than_max(candle: pd.Series, max_size: float) -> bool:
@@ -409,5 +408,40 @@ def is_lower_wick_smaller_than_max(candle: pd.Series, max_size: float) -> bool:
     Returns:
         True if the lower wick is less than or equal to the maximum size, False otherwise.
     """
-    lower_wick = min(candle['open'], candle['close']) - candle['low']
+    lower_wick = min(candle[CandleColumn.OPEN], candle[CandleColumn.CLOSE]) - candle[CandleColumn.LOW]
     return lower_wick <= max_size
+
+def get_candle_high_low_range(candle: pd.Series) -> float:
+    """
+    Calculate the full price range (HIGH - LOW) of a single candle.
+    
+    This represents the total extent of price movement for the candle,
+    including both the body and wicks.
+    
+    Args:
+        candle: The candle (as a Series) to measure.
+    
+    Returns:
+        float: The difference between high and low price.
+        
+    Raises:
+        ValueError: If candle is missing required columns.
+        
+    Example:
+        >>> import pandas as pd
+        >>> candle = pd.Series({
+        ...     'high': 110,
+        ...     'low': 100,
+        ...     'open': 105,
+        ...     'close': 108
+        ... })
+        >>> range_size = get_candle_high_low_range(candle)
+        >>> range_size
+        10.0  # HIGH - LOW = 110 - 100
+    """
+    if CandleColumn.HIGH not in candle.index or CandleColumn.LOW not in candle.index:
+        raise ValueError(f"Candle must contain '{CandleColumn.HIGH}' and '{CandleColumn.LOW}' columns")
+    
+    price_range: float = candle[CandleColumn.HIGH] - candle[CandleColumn.LOW]
+    return price_range
+

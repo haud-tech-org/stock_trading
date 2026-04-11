@@ -209,7 +209,10 @@ class SymbolAlerter:
         """Configures logging to file and console."""
         log_dir = os.path.join(project_root, "logs", settings.MODE.lower())
         os.makedirs(log_dir, exist_ok=True)
-        log_file_path = os.path.join(log_dir, f"alerter_{self.symbol}.log")
+        
+        # Sanitize symbol name for use in filename (replace / with _)
+        sanitized_symbol = self.symbol.replace("/", "_")
+        log_file_path = os.path.join(log_dir, f"alerter_{sanitized_symbol}.log")
 
         # Use a logger specific to this symbol instance
         self.logger = logging.getLogger(f"SymbolAlerter.{self.symbol}")

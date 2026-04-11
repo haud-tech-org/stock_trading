@@ -84,6 +84,8 @@ class BinanceNormalizer:
             # Convert timestamps from milliseconds to seconds, then to datetime
             timestamps_sec = [ts_ms / 1000.0 for ts_ms in timestamps_ms]
             datetimes = pd.to_datetime(timestamps_sec, unit='s', utc=True)
+            # Localize to market timezone (CRITICAL: Match Vietstock behavior)
+            datetimes = datetimes.tz_convert(self.market_tz)
             
             # Create DataFrame
             df = pd.DataFrame({
@@ -192,6 +194,14 @@ class BinanceNormalizer:
             raise ValueError("Index must be DatetimeIndex")
         if df.index.tz is None:
             raise ValueError("Index must be timezone-aware")
+        
+        # Check timezone matches market timezone (CRITICAL: Match Vietstock behavior)
+        market_tz_str = get_market_timezone_str()
+        if str(df.index.tz) != market_tz_str:
+            raise ValueError(
+                f"Index timezone must be {market_tz_str}, "
+                f"got {df.index.tz}"
+            )
         
         # Check no NaN values in critical columns
         if df[required_columns].isnull().any().any():

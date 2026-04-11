@@ -82,7 +82,7 @@ def get_execution_symbol() -> str:
     """
     return settings.SYMBOLS[0]
 
-def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: Optional[str] = None) -> Tuple[Optional[float], Optional[float]]:
+def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: Optional[str] = None, symbol: Optional[str] = None) -> Tuple[Optional[float], Optional[float]]:
     """
     Calculates both performance-based and structural suggested prices.
 
@@ -90,13 +90,15 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
         signal (str): The alert signal ('BUY' or 'SELL').
         alert_time (pd.Timestamp): The timestamp of the alert.
         approach (Optional[str]): The name of the alert approach.
+        symbol (Optional[str]): The trading symbol. If provided, overrides the default execution symbol.
+                               If None, uses the primary execution symbol from settings.
 
     Returns:
         Tuple[Optional[float], Optional[float]]: A tuple containing:
             - performance_suggested_price
             - structural_suggested_price
     """
-    execution_symbol = get_execution_symbol()
+    execution_symbol = symbol if symbol is not None else get_execution_symbol()
     performance_price = None
     structural_price = None
 

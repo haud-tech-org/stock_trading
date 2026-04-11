@@ -56,7 +56,7 @@ class BaseDataProvider(ABC):
         
         Args:
             symbol (str): Symbol identifier (format depends on provider)
-                         Examples: "VN30" (Vietstock), "BTC/USDT" (Binance)
+                         Examples: "VN30" (Vietstock), "BTCUSDT" (Binance)
             from_timestamp (int): Start time as Unix timestamp in seconds
             to_timestamp (int): End time as Unix timestamp in seconds
             resolution (int): Candle resolution in minutes (default: 1).
@@ -91,8 +91,8 @@ class BaseDataProvider(ABC):
             bool: True if symbol format is valid, False otherwise
         
         Examples:
-            VietstockProvider: "VN30", "VN30F1M" → True, "BTC/USDT" → False
-            BinanceProvider: "BTC/USDT", "ETH/USDT" → True, "VN30" → False
+            VietstockProvider: "VN30", "VN30F1M" → True, "BTCUSDT" → False
+            BinanceProvider: "BTCUSDT", "ETH/USDT" → True, "VN30" → False
         """
         pass
     

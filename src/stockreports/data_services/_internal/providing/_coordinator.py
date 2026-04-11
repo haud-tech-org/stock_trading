@@ -59,7 +59,7 @@ class DataProviderCoordinator:
         4. Raise error if symbol not supported by any enabled provider
         
         Args:
-            symbol: Stock/crypto symbol (e.g., 'VCB', 'BTCUSDT', 'BTC/USDT')
+            symbol: Stock/crypto symbol (e.g., 'VCB', 'BTCUSDT', 'BTCUSDT')
         
         Returns:
             Provider enum indicating which provider handles this symbol
@@ -128,7 +128,7 @@ class DataProviderCoordinator:
         Fetch OHLCV data for a symbol. Provider is auto-detected if not specified.
         
         Args:
-            symbol (str): Stock/crypto symbol (e.g., 'VCB', 'BTC/USDT')
+            symbol (str): Stock/crypto symbol (e.g., 'VCB', 'BTCUSDT')
             from_timestamp (int): Start time as Unix timestamp
             to_timestamp (int): End time as Unix timestamp
             provider (Provider): Specific provider to use (as Provider enum).

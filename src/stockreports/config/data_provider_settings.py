@@ -113,7 +113,7 @@ PROVIDER_SYMBOLS_CONFIG = {
     "binance_ccxt": {
         "name": "binance_ccxt",
         "supported_symbols": [
-            "BTC/USDT",  # Bitcoin - Tether
+            "BTCUSDT",  # Bitcoin - Tether
             "ETH/USDT",  # Ethereum - Tether
             "BNB/USDT",  # Binance Coin - Tether
             "ADA/USDT",  # Cardano - Tether

@@ -99,7 +99,7 @@ class BinanceCCXTProvider(BaseDataProvider):
         Fetch OHLCV data from Binance through CCXT.
         
         Args:
-            symbol (str): Trading pair (e.g., "BTC/USDT", "ETH/USDT")
+            symbol (str): Trading pair (e.g., "BTCUSDT", "ETH/USDT")
                          Note: CCXT uses "/" separator format
             from_timestamp (int): Start time as Unix timestamp in seconds
             to_timestamp (int): End time as Unix timestamp in seconds
@@ -194,13 +194,13 @@ class BinanceCCXTProvider(BaseDataProvider):
         """
         Validate that symbol is supported by Binance CCXT.
         
-        Binance CCXT supports trading pairs with "/" separator (e.g., "BTC/USDT", "ETH/USDT")
+        Binance CCXT supports trading pairs with "/" separator (e.g., "BTCUSDT", "ETH/USDT")
         or standard format (e.g., "BTCUSDT", "ETHUSDT").
         
         Uses centralized configuration from SymbolConfigRegistry with custom "/" handling.
         
         Args:
-            symbol (str): Trading pair (e.g., "BTCUSDT", "BTC/USDT", "ETH/USDT")
+            symbol (str): Trading pair (e.g., "BTCUSDT", "BTCUSDT", "ETH/USDT")
                          Accepts both Binance format and CCXT "/" format
         
         Returns:
@@ -291,8 +291,8 @@ class BinanceCCXTProvider(BaseDataProvider):
         Normalize symbol format to CCXT format with "/" separator.
         
         Examples:
-            "BTCUSDT" -> "BTC/USDT"
-            "BTC/USDT" -> "BTC/USDT"
+            "BTCUSDT" -> "BTCUSDT"
+            "BTCUSDT" -> "BTCUSDT"
             "ETHBUSD" -> "ETH/BUSD"
         
         Args:
@@ -358,8 +358,12 @@ class BinanceCCXTProvider(BaseDataProvider):
         """Close the exchange connection."""
         try:
             if hasattr(self, 'exchange') and self.exchange:
-                self.exchange.close()
-                self.logger.debug("CCXT exchange connection closed")
+                # Not all CCXT exchange instances have a close() method
+                if hasattr(self.exchange, 'close') and callable(getattr(self.exchange, 'close')):
+                    self.exchange.close()
+                    self.logger.debug("CCXT exchange connection closed")
+                else:
+                    self.logger.debug("CCXT exchange does not have close() method, skipping")
         except Exception as e:
             self.logger.warning(f"Error closing exchange: {e}")
     

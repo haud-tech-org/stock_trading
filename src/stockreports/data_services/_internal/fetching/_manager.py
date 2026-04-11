@@ -95,7 +95,7 @@ class HistoricalDataManager:
         the default resolution (None).
         
         Args:
-            symbol: Stock symbol (e.g., 'VCB', 'BTC/USDT')
+            symbol: Stock symbol (e.g., 'VCB', 'BTCUSDT')
             start_time: Start of time range
             end_time: End of time range
             
@@ -122,7 +122,7 @@ class HistoricalDataManager:
         3. Merge new data with cache and return
         
         Args:
-            symbol: Stock symbol (e.g., 'VCB', 'BTC/USDT')
+            symbol: Stock symbol (e.g., 'VCB', 'BTCUSDT')
             start_time: Start of time range
             end_time: End of time range
             resolution: Optional resolution (1, 5, 15, 60 min etc)

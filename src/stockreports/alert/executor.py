@@ -131,7 +131,8 @@ class Executor(ABC):
         performance_suggested_price, structural_suggested_price = calculate_suggested_prices(
             alert.signal,
             alert.alert_time,
-            alert.approach
+            alert.approach,
+            symbol=alert.symbol
         )
         suggested_profit_threshold = get_suggested_take_profit(alert.magnitude)
         alert.structural_suggested_price = structural_suggested_price
