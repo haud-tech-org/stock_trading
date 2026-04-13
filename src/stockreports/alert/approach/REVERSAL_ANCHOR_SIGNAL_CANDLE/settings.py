@@ -15,7 +15,7 @@ class ReversalAnchorSignalCandleSettings(BaseSettings):
         """Initialize settings for REVERSAL_ANCHOR_SIGNAL_CANDLE approach.
         
         Args:
-            symbol: Trading symbol (e.g., 'BTCUSDT')
+            symbol: Trading symbol (e.g., 'BTC/USDT:USDT')
             
         Raises:
             ValueError: If configuration not found in signal_settings.py

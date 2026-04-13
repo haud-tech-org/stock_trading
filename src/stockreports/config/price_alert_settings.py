@@ -10,18 +10,18 @@ LEVEL_ALERT_COOLDOWN_MINUTES = 3
 
 PRICE_ALERTS = {
     "VN30": {
-        "reference_price": 1915.01,
+        "reference_price": 1928.23,
         "fixed_levels": [1771.57, 1803.39, 1844.11, 1877.71, 1894.36, 1904.72, 1915.54, 1939.53, 1966.48, 2053.99],
         "absolute_interval": 9.0,
     },
     "VN30F1M": {
-        "reference_price": 1921.7,
+        "reference_price": 1931.0,
         "fixed_levels": [1767.58, 1832.97, 1855.58, 1874.7, 1895.83, 1924.3, 2043.83],
         "absolute_interval": 9.0,
     },
-    "BTCUSDT": {
-        "reference_price": 72784.0,
-        "fixed_levels": [71500.0, 72000.0, 72500.0, 73000.0, 73500.0, 74000.0],
+    "BTC/USDT:USDT": {
+        "reference_price": 70800.0,
+        "fixed_levels": [68000.0, 68500.0, 69000.0, 69500.0, 70000.0, 70500.0, 71000.0, 71500.0, 72000.0, 72500.0, 73000.0, 73500.0, 74000.0],
         "absolute_interval": 500.0,
     }
 }

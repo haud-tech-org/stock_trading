@@ -40,7 +40,7 @@ class ReversalAnchorSignalCandleExecutor(Executor):
         """Initialize REVERSAL_ANCHOR_SIGNAL_CANDLE executor.
         
         Args:
-            symbol: Trading symbol (e.g., 'BTCUSDT')
+            symbol: Trading symbol (e.g., 'BTC/USDT:USDT')
         """
         self.settings = ReversalAnchorSignalCandleSettings(symbol)
         self.analyzer = ReversalAnchorSignalCandleAnalyzer()

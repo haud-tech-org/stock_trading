@@ -183,15 +183,15 @@ APPROACH_CONFIG = {
         "LOOKBACK_WINDOW": 11,
         
         # Validation 1: Window size threshold
-        "MIN_SIZE_PRICE_WINDOW": 350,
+        "MIN_SIZE_PRICE_WINDOW": 750,
         
         # Validation 2: Anchor candle thresholds
         "MIN_SIZE_CANDLE": 150,
-        "MULTIPLIER_SIZE": 2.0,
+        "MULTIPLIER_SIZE": 1.3,
         
         # Validation 3: Signal candle thresholds
-        "MIN_VOLUME": 200,
-        "MULTIPLIER_VOLUME": 1.3,
+        "MIN_VOLUME": 500,
+        "MULTIPLIER_VOLUME": 2.5,
 
         # Validation 4: Alert candle wick thresholds
         "MIN_PERCENTAGE": 0.1,

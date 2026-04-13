@@ -13,7 +13,7 @@ notifications, and market-specific details.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
 # Always include the derivative symbol is the FIRST symbol
-SYMBOLS = ["VN30F1M", "VN30", "BTCUSDT"]
+SYMBOLS = ["VN30F1M", "VN30", "BTC/USDT:USDT"]
 
 # List of symbols that have a significant impact on the market.
 IMPACT_SYMBOLS = ["VIC", "VHM"]
@@ -182,7 +182,7 @@ SYMBOL_ALERT_APPROACHES = {
     ],
     "VN30": [
     ],
-    "BTCUSDT": [
+    "BTC/USDT:USDT": [
         "REVERSAL_ANCHOR_SIGNAL_CANDLE"
     ]
 }
@@ -252,4 +252,4 @@ CONSOLIDATED_PROFITABILITY = {
 # Guidance: This is useful for testing how the system would have behaved in the past. Set this to a time within the `DEV_DATA_DATE_RANGE`.
 # Format: "YYYY-MM-DD HH:MM:SS"
 # Example: `DEBUG_REPLAY_START_TIME = "2026-01-08 09:05:00"`
-DEBUG_REPLAY_START_TIME = "2026-04-10 22:27:00"
+DEBUG_REPLAY_START_TIME = None
