@@ -46,7 +46,7 @@ from src.stockreports.data_services._internal.fetching._manager import Historica
 **Purpose:** Fetch data with default resolution
 
 **Parameters:**
-- `symbol` (str): Symbol to fetch (e.g., 'VCB', 'BTCUSDT', 'BTC/USDT')
+- `symbol` (str): Symbol to fetch (e.g., 'VCB', 'BTCUSDT', 'BTCUSDT')
 - `start_time` (pd.Timestamp): Start of time range
 - `end_time` (pd.Timestamp): End of time range
 
@@ -95,7 +95,7 @@ df_1m = manager.get_with_resolution('VCB', start, end, 1)
 df_5m = manager.get_with_resolution('VCB', start, end, 5)
 
 # 1-hour candles
-df_1h = manager.get_with_resolution('BTC/USDT', start, end, 60)
+df_1h = manager.get_with_resolution('BTCUSDT', start, end, 60)
 ```
 
 ---
@@ -105,10 +105,16 @@ df_1h = manager.get_with_resolution('BTC/USDT', start, end, 60)
 **Standardized Output Structure:**
 
 ```python
-Index:   pd.DatetimeIndex named 'time' (with timezone)
+Index:   pd.DatetimeIndex named 'time' (with market timezone)
 Columns: ['open', 'high', 'low', 'close', 'volume']
 Dtype:   All numeric columns are float64
+Timezone: Market timezone (Asia/Ho_Chi_Minh, NOT UTC)
 ```
+
+**⚠️ IMPORTANT - Timezone:**
+- All data returned uses **market timezone** (Asia/Ho_Chi_Minh, +07:00 in Vietnam)
+- NOT UTC - this is by design to ensure consistency across all providers
+- This is enforced in normalizers with strict validation
 
 **Example Output:**
 ```
@@ -118,6 +124,8 @@ time
 2026-04-01 09:01:00+07:00  1768.65 1769.20 1768.40 1768.99  1200000.00
 2026-04-01 09:02:00+07:00  1768.99 1769.50 1768.80 1769.20   900000.00
 2026-04-01 09:03:00+07:00  1769.20 1769.80 1769.00 1769.50  1100000.00
+
+# Note: All timestamps have +07:00 timezone (market timezone)
 ```
 
 **Access Data:**
@@ -156,8 +164,8 @@ The data layer uses cache keys to identify unique datasets:
 ('VCB', None)         # VCB with default resolution
 ('VCB', 1)            # VCB with 1-minute candles
 ('VCB', 5)            # VCB with 5-minute candles
-('BTCUSDT', 1)        # BTC/USDT (Binance API format) with 1-min
-('BTC/USDT', 1)       # BTC/USDT (CCXT format) with 1-min
+('BTCUSDT', 1)        # BTCUSDT (Binance API format) with 1-min
+('BTCUSDT', 1)       # BTCUSDT (CCXT format) with 1-min
 ('VN30F1M', 60)       # VN30F1M (Vietnam index) with 1-hour
 ```
 
@@ -280,7 +288,7 @@ print(binance_symbols)  # List of 100+ symbols
 
 ### Cryptocurrency - Binance CCXT Provider
 
-**Sample Symbols:** BTC/USDT, ETH/USDT, BNB/USDT, etc.
+**Sample Symbols:** BTCUSDT, ETH/USDT, BNB/USDT, etc.
 
 **Check All Symbols:**
 ```python
@@ -402,7 +410,7 @@ return df
 
 1. **"None returned - symbol not found"**
    - Verify symbol in PROVIDER_SYMBOLS_CONFIG
-   - Check symbol format (e.g., 'BTC/USDT' vs 'BTCUSDT')
+   - Check symbol format (e.g., 'BTCUSDT' vs 'BTCUSDT')
 
 2. **"Empty DataFrame - no data for range"**
    - Check if range is during trading hours
@@ -414,7 +422,42 @@ return df
 
 ---
 
-## 🔗 Related Documentation
+## � Context Manager Usage (For Providers)
+
+All data providers support the context manager pattern for safe resource cleanup:
+
+```python
+# Using a provider directly (normally done by coordinator)
+from src.stockreports.data_services._internal.providing._provider_factory import get_provider
+
+provider = get_provider('VCB')
+
+# Context manager ensures cleanup
+with provider:
+    ohlcv = provider.fetch_ohlcv('VCB', from_ts, to_ts, resolution)
+# Cleanup called automatically on exit ✅
+
+# Even if error occurs, cleanup still happens
+try:
+    with provider:
+        data = provider.fetch_ohlcv(...)
+except Exception as e:
+    print(f"Error: {e}")
+# Cleanup still called despite exception ✅
+```
+
+**Why This Matters:**
+- Prevents 1-2 hour connection timeouts
+- Guarantees resource cleanup (connections, sessions, etc.)
+- Makes monitoring loop reliable for 24+ hours
+- Exception-safe (cleanup even on errors)
+
+**For Developers:**
+If you're implementing a new provider, see `CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md` for step-by-step instructions on implementing context managers.
+
+---
+
+## �🔗 Related Documentation
 
 **See Also:**
 - 👉 [TECHNICAL_REFERENCE/DATA_LAYER_ARCHITECTURE.md](../TECHNICAL_REFERENCE/DATA_LAYER_ARCHITECTURE.md) - Complete 7-step pipeline architecture

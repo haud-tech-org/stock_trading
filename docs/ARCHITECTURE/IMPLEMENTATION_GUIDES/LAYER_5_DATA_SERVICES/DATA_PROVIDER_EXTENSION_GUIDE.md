@@ -43,7 +43,7 @@ Located in `/src/stockreports/data_services/_internal/providing/`:
 
 2. **BinanceAPIProvider** - `binance/api_provider.py`
    - Data source: Binance REST API
-   - Symbols: Cryptocurrency pairs (BTC/USDT, ETH/USDT, etc.)
+   - Symbols: Cryptocurrency pairs (BTCUSDT, ETH/USDT, etc.)
    - Resolution: 1, 5, 15, 30, 60, 240, 1440 minutes
    - URL: https://api.binance.com
 
@@ -158,7 +158,7 @@ def fetch_ohlcv(
     
     Args:
         symbol (str): Symbol identifier in provider format
-                     Examples: "VN30" (Vietstock), "BTC/USDT" (Binance)
+                     Examples: "VN30" (Vietstock), "BTCUSDT" (Binance)
         from_timestamp (int): Start time as Unix timestamp in seconds
         to_timestamp (int): End time as Unix timestamp in seconds
         resolution (int): Candle resolution in minutes (default: 1)
@@ -203,19 +203,52 @@ def validate_symbol(self, symbol: str) -> None:
 
 ### Normalizer Pattern
 
-Each provider has a normalizer class:
+Each provider has a normalizer class that converts raw API responses to standard OHLCV format:
 - `VietstockNormalizer` - Converts Vietstock API format
 - `BinanceNormalizer` - Converts Binance API format
 
+**All normalizers MUST follow the same pattern for timezone handling:**
+
 ```python
 # In your provider's __init__:
+import pytz
+from src.stockreports.utils.time_utils import get_market_timezone_str
+
 self.normalizer = YourProviderNormalizer()
 
-# In your fetch_ohlcv:
-raw_data = self._fetch_from_api(...)
-normalized_df = self.normalizer.normalize(raw_data)
-return normalized_df
+# In your normalizer's normalize() method:
+def normalize(self, raw_data):
+    # ... extract data ...
+    
+    # CRITICAL: Convert timestamps to market timezone
+    datetimes = pd.to_datetime(timestamps, unit='s', utc=True)
+    datetimes = datetimes.tz_convert(self.market_tz)  # ← MUST HAVE THIS
+    
+    # Create DataFrame with market-timezone index
+    df = pd.DataFrame({
+        'time': datetimes,
+        'open': opens,
+        'high': highs,
+        'low': lows,
+        'close': closes,
+        'volume': volumes
+    })
+    df.set_index('time', inplace=True)
+    
+    return df
+
+# In your normalizer's validate_ohlcv() method:
+def validate_ohlcv(self, df: pd.DataFrame) -> bool:
+    # Check timezone matches market timezone (not just UTC)
+    market_tz_str = get_market_timezone_str()
+    if str(df.index.tz) != market_tz_str:
+        raise ValueError(
+            f"Index timezone must be {market_tz_str}, got {df.index.tz}"
+        )
+    return True
 ```
+
+**⚠️ WARNING:** If timezone handling is inconsistent between providers, downstream code will fail with cryptic errors like: "int() argument must be a string, a bytes-like object or a real number, not 'Timestamp'". This was discovered during debugging of the Binance provider.
 
 ---
 
@@ -275,7 +308,7 @@ def fetch_ohlcv(
 **Key Features:**
 - Cryptocurrency pairs
 - Uses Binance REST API
-- Symbols: "BTC/USDT", "ETH/USDT", etc.
+- Symbols: "BTCUSDT", "ETH/USDT", etc.
 
 **Resolution Mapping:**
 - 1 min → "1m"
@@ -351,28 +384,100 @@ src/stockreports/data_services/_internal/providing/your_provider/
 ```python
 # src/stockreports/data_services/_internal/providing/your_provider/normalizer.py
 import pandas as pd
+import pytz
 from typing import Dict, List
+from src.stockreports.utils.time_utils import get_market_timezone_str
 
 class YourProviderNormalizer:
     """Normalizes YOUR_PROVIDER data to standard format."""
+    
+    def __init__(self):
+        """Initialize normalizer with market timezone."""
+        self.market_tz = pytz.timezone(get_market_timezone_str())
     
     def normalize(self, raw_data: Dict) -> pd.DataFrame:
         """
         Convert provider format to standard OHLCV format.
         
+        CRITICAL: Ensure timezone handling matches across all providers.
+        - All timestamps must be converted to market timezone
+        - Index must be DatetimeIndex with market timezone (NOT UTC)
+        - This ensures consistent data structures across providers
+        
         Expected output:
             DataFrame with columns: [time, open, high, low, close, volume]
-            - time: datetime64[ns] with Asia/Ho_Chi_Minh timezone
+            - time: datetime64[ns] with market timezone (Asia/Ho_Chi_Minh)
             - prices: float64
             - volume: int64
+        
+        Raises:
+            ValueError: If timezone conversion fails or data is invalid
         """
         # Your normalization logic
         df = pd.DataFrame(...)
+        
+        # CRITICAL: Convert to UTC first, then to market timezone
         df['time'] = pd.to_datetime(df['time']).dt.tz_localize(
             'UTC'
-        ).dt.tz_convert('Asia/Ho_Chi_Minh')
+        ).dt.tz_convert(self.market_tz)  # Convert to market timezone!
+        
+        # Set time as index (CRITICAL: This becomes DatetimeIndex with market_tz)
+        df.set_index('time', inplace=True)
+        
+        # Validate output format
+        self.validate_ohlcv(df)
+        
         return df
+    
+    def validate_ohlcv(self, df: pd.DataFrame) -> bool:
+        """
+        Validate that normalized DataFrame meets OHLCV requirements.
+        
+        Returns:
+            bool: True if valid
+            
+        Raises:
+            ValueError: If DataFrame doesn't meet requirements
+        """
+        # Check required columns
+        required_columns = ['open', 'high', 'low', 'close', 'volume']
+        if not all(col in df.columns for col in required_columns):
+            raise ValueError(f"Missing required columns")
+        
+        # Check index is DatetimeIndex with market timezone
+        if not isinstance(df.index, pd.DatetimeIndex):
+            raise ValueError("Index must be DatetimeIndex")
+        
+        market_tz_str = get_market_timezone_str()
+        if str(df.index.tz) != market_tz_str:
+            raise ValueError(
+                f"Index timezone must be {market_tz_str}, got {df.index.tz}"
+            )
+        
+        return True
 ```
+
+**⚠️ CRITICAL TIMEZONE NOTE:**
+
+All normalizers MUST apply timezone conversion consistently:
+
+```python
+# ✅ CORRECT - Vietstock and Binance implementation
+datetimes = pd.to_datetime(timestamps, unit='s', utc=True)
+datetimes = datetimes.tz_convert(self.market_tz)  # Convert to MARKET TIMEZONE
+
+# ❌ WRONG - Will cause downstream errors
+datetimes = pd.to_datetime(timestamps, unit='s', utc=True)  # STOP - Still UTC!
+# Missing: datetimes.tz_convert(self.market_tz)
+
+# ❌ WRONG - Inconsistent approach
+if str(df.index.tz) != market_tz_str:
+    # Only checking existence, not correctness
+```
+
+This consistency requirement was discovered when Binance provider was initially missing the `tz_convert()` call, causing the error: "int() argument must be a string, a bytes-like object or a real number, not 'Timestamp'"
+
+**Key Lesson:** Provider data structures must be identical. Any timezone inconsistency cascades through the entire system.
 
 ### Step 4: Create Provider Class
 
@@ -557,6 +662,106 @@ class HistoricalDataManager:
 
 ---
 
+### Step 7: Implement Resource Cleanup (Context Manager Pattern)
+
+All providers must support the context manager protocol for guaranteed resource cleanup. This is **CRITICAL** to prevent 1-2 hour connection timeouts in the monitoring loop.
+
+**Why This Is Important:**
+
+The monitoring system uses a 57-second cycle. Without proper cleanup:
+- Connections reused indefinitely → timeout after 1-2 hours ❌
+- Data collection fails without recovery → system down ❌
+
+With context managers:
+- Fresh connection every cycle → never times out ✅
+- Automatic cleanup even on errors → reliable ✅
+- 24+ hour operation validated ✅
+
+**Implementation:**
+
+Your provider already inherits context manager support from `BaseDataProvider`. You just need to override `close()` if you have persistent resources:
+
+```python
+# In your provider class
+class YourProviderClass(BaseDataProvider):
+    def __init__(self):
+        super().__init__(Provider.YOUR_PROVIDER.value)
+        self._session = None  # Or whatever resource you hold
+    
+    def close(self):
+        """
+        Clean up persistent resources.
+        
+        Called automatically on exit from 'with' block.
+        Must handle:
+        - Resource already closed
+        - Errors during cleanup
+        - Missing resources
+        """
+        try:
+            if hasattr(self, '_session') and self._session:
+                self._session.close()  # Or your cleanup logic
+        except Exception as e:
+            self.logger.error(f"Error closing resources: {e}")
+            # Don't re-raise - cleanup failure shouldn't crash system
+```
+
+**Real Examples:**
+
+```python
+# ✅ VIETSTOCK EXAMPLE - No persistent resources, uses default
+class VietstockProvider(BaseDataProvider):
+    def fetch_ohlcv(self, ...):
+        # Makes HTTP request - auto-closed by requests library
+        response = requests.get(url)
+        # No close() override needed - inherits no-op default
+```
+
+```python
+# ✅ BINANCE API EXAMPLE - HTTP session management (lines 70-82)
+class BinanceAPIProvider(BaseDataProvider):
+    def __init__(self):
+        super().__init__(Provider.BINANCE.value)
+        self._session = requests.Session()
+    
+    def close(self):
+        """Close HTTP session - CRITICAL"""
+        try:
+            if hasattr(self, '_session') and self._session:
+                self._session.close()
+        except Exception as e:
+            self.logger.error(f"Error closing session: {e}")
+    
+    def fetch_ohlcv(self, ...):
+        # Use self._session for persistent connection
+        response = self._session.get(url)
+        return self._normalize(response.json())
+```
+
+**Usage in Coordinator (Already Implemented):**
+
+```python
+# src/stockreports/data_services/_internal/providing/_coordinator.py (lines 168-174)
+def fetch_ohlcv(self, symbol, from_ts, to_ts, resolution):
+    provider = self._get_provider(symbol)
+    
+    with provider:  # Automatically calls your close() on exit!
+        ohlcv = provider.fetch_ohlcv(symbol, from_ts, to_ts, resolution)
+    
+    return ohlcv
+```
+
+**For Detailed Implementation Guide:**
+
+See `CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md` for step-by-step instructions on:
+- When to implement context managers
+- How to handle persistent resources
+- Exception-safe cleanup patterns
+- Testing resource cleanup
+- Common issues and solutions
+
+---
+
 ## Testing
 
 ### Unit Tests
@@ -668,15 +873,66 @@ def test_orchestrator_with_your_provider():
 - [ ] Add provider to Provider enum in `_providers.py`
 - [ ] Create provider directory with normalizer
 - [ ] Implement BaseDataProvider.fetch_ohlcv()
-- [ ] Implement normalizer class
+- [ ] Implement normalizer class with timezone conversion
+  - [ ] **CRITICAL: Use `tz_convert(self.market_tz)` after `tz_localize('UTC')`**
+  - [ ] **CRITICAL: Validate timezone matches market timezone (not just UTC)**
+  - [ ] **WARNING: Missing timezone conversion causes downstream type errors**
 - [ ] Register in provider factory
 - [ ] Add symbols to validator
 - [ ] Write unit tests
 - [ ] Test with DataServiceOrchestrator
-- [ ] Test timezone handling
+- [ ] **Test timezone handling explicitly** (critical validation)
 - [ ] Verify DataFrame structure
 - [ ] Document configuration requirements
 - [ ] Add error handling for API failures
+
+---
+
+## Timezone Handling - Common Pitfalls
+
+### Pitfall 1: Forgetting tz_convert()
+
+❌ **WRONG:**
+```python
+datetimes = pd.to_datetime(timestamps_sec, unit='s', utc=True)
+# Stops here with UTC timezone - will cause errors downstream
+df = pd.DataFrame({'time': datetimes, ...})
+```
+
+✅ **CORRECT:**
+```python
+datetimes = pd.to_datetime(timestamps_sec, unit='s', utc=True)
+datetimes = datetimes.tz_convert(self.market_tz)  # Convert to market timezone!
+df = pd.DataFrame({'time': datetimes, ...})
+```
+
+### Pitfall 2: Not Validating Timezone
+
+❌ **WRONG:**
+```python
+# Only checks that timezone exists, not that it's correct
+if df.index.tz is None:
+    raise ValueError("Must have timezone")
+# Could still be UTC instead of market timezone!
+```
+
+✅ **CORRECT:**
+```python
+market_tz_str = get_market_timezone_str()
+if str(df.index.tz) != market_tz_str:
+    raise ValueError(
+        f"Index timezone must be {market_tz_str}, got {df.index.tz}"
+    )
+```
+
+### Why This Matters
+
+When a provider has the wrong timezone, downstream code that expects `pd.Timestamp` objects with market timezone will fail with:
+- "int() argument must be a string, a bytes-like object or a real number, not 'Timestamp'"
+- Inconsistent time-based filtering and indexing
+- Type errors when comparing timestamps
+
+All providers must have identical timezone handling to prevent these cascading failures.
 
 ---
 

@@ -15,7 +15,7 @@ import logging
 from typing import Optional
 import pandas as pd
 
-from src.stockreports.data_services._internal.fetching._manager import HistoricalDataManager
+from src.stockreports.data_services._internal.fetching._manager import get_manager
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ class DataServiceOrchestrator:
     All internal complexity is hidden behind this facade. External code
     should ONLY import DataServiceOrchestrator, never access internal modules.
     
+    IMPORTANT: Uses shared singleton HistoricalDataManager to ensure cache
+    persistence across all consumers (executors, alerts, analysis, etc).
+    
     Example:
         >>> orchestrator = DataServiceOrchestrator()
         >>> data = orchestrator.fetch_and_process(
@@ -41,10 +44,16 @@ class DataServiceOrchestrator:
     """
     
     def __init__(self):
-        """Initialize the orchestrator with internal manager."""
-        self._manager = HistoricalDataManager()
+        """
+        Initialize the orchestrator with the shared singleton manager.
+        
+        Uses get_manager() to access the module-level singleton instance,
+        ensuring all components share the same cache throughout the application.
+        This is critical for data consistency across executors, alerts, and analysis.
+        """
+        self._manager = get_manager()
         self.logger = logging.getLogger(__name__)
-        self.logger.info("Initialized DataServiceOrchestrator")
+        self.logger.info("Initialized DataServiceOrchestrator (using shared singleton manager)")
     
     def fetch_and_process(
         self,

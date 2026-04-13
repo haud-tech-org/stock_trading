@@ -508,20 +508,13 @@ class SymbolAlerter:
                     executor.run(df=approach_df.copy(), new_candle_count=new_candle_count)
                 )
                 if result.has_alerts:
-                    # Step 1: Enrich alerts with suggested prices
-                    for alert in result.confirmed_alerts:  # Type: AlertData (inferred from List[AlertData])
-                        perf_price, struct_price = calculate_suggested_prices(
-                            signal=alert.signal,
-                            alert_time=alert.alert_time,
-                            approach=alert.approach
-                        )
-                        alert.performance_suggested_price = perf_price
-                        alert.structural_suggested_price = struct_price
-
-                    # Step 2: Send notification with enriched data
+                    # Alerts are already enriched with suggested prices from base Executor.update_alert_suggestions()
+                    # (called during alert creation in Executor._create_alert_with_details)
+                    
+                    # Send notification with enriched data
                     self.notification_manager.process_and_notify(result, self.symbol)
                     
-                    # Step 3: Save the enriched report.
+                    # Save the enriched report
                     self._enrich_and_save_reports(result, time_simulator.processing_date)
             
             self.logger.info(f"Interval finished. Advancing time...")
@@ -577,20 +570,13 @@ class SymbolAlerter:
             )
             
             if result.has_alerts:
-                # Step 1: Enrich alerts with suggested prices
-                for alert in result.confirmed_alerts:  # Type: AlertData (inferred from List[AlertData])
-                    perf_price, struct_price = calculate_suggested_prices(
-                        signal=alert.signal,
-                        alert_time=alert.alert_time,
-                        approach=alert.approach
-                    )
-                    alert.performance_suggested_price = perf_price
-                    alert.structural_suggested_price = struct_price
-
-                # Step 2: Send notifications (fire-and-forget)
+                # Alerts are already enriched with suggested prices from base Executor.update_alert_suggestions()
+                # (called during alert creation in Executor._create_alert_with_details)
+                
+                # Send notifications (fire-and-forget)
                 self.notification_manager.process_and_notify(result, self.symbol)
 
-                # Step 3: Further enrich with validation data and save reports
+                # Further enrich with validation data and save reports
                 if settings.MODE == "DEVELOPMENT":
                     for alert in result.confirmed_alerts:  # Type: AlertData (inferred from List[AlertData])
                         alert.symbol = self.symbol

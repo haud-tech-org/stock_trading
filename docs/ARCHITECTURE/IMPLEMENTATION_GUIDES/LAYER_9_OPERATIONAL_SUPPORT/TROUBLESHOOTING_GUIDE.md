@@ -2,8 +2,90 @@
 
 **Date:** April 8, 2026  
 **Status:** Based on Actual Exception Types and Error Handling  
-**Audience:** DevOps, System Administrators, Developers  
-**Prerequisites:** Technical Reference architecture understanding  
+**Audience:** DevOps, System Administrators, Developers```
+
+---
+
+### Error: "Connection Timeout After 1-2 Hours" (Context Manager Issue)
+
+**Cause:** Data provider not using context manager properly - connections being reused instead of closed
+
+**File:** `src/stockreports/data_services/_internal/providing/_coordinator.py` (lines 168-174)
+
+**Symptom:**
+- System runs fine for 1-2 hours
+- Then suddenly crashes with "Connection reset by peer" or "Broken pipe"
+- Works again if restarted
+- Happens consistently around same time interval
+
+**Root Cause:**
+```python
+# ❌ WRONG - Connection stays open, eventually times out
+provider = get_provider(symbol)
+data = provider.fetch_ohlcv(symbol, ...)
+# No cleanup! Connection reused next cycle
+
+# ✅ CORRECT - Fresh connection every cycle
+with provider:
+    data = provider.fetch_ohlcv(symbol, ...)
+# Cleanup guaranteed on exit
+```
+
+**Monitoring:**
+```bash
+# Watch connection count - should spike/drop with each cycle
+watch -n 1 "netstat -an | grep ESTABLISHED | grep -E ':(443|8080|api.binance)' | wc -l"
+
+# Before fix: connections accumulate, never decrease
+# After fix: connections open/close with each 57-second cycle
+
+# Check logs for timeout errors
+tail -f logs/symbol_*.log | grep -i "timeout\|connection\|reset"
+
+# Look for timeout pattern (appears after ~1.5 hours)
+grep "Connection reset\|Broken pipe\|timeout" logs/*.log | head -20
+```
+
+**Resolution:**
+```python
+# Verify all provider usage is wrapped in context manager
+
+# In coordinator.py (should be around line 168-174):
+def fetch_ohlcv(self, symbol, from_ts, to_ts, resolution):
+    provider = self._get_provider(symbol)
+    
+    # MUST use: with provider:
+    with provider:  # This ensures cleanup on exit
+        ohlcv = provider.fetch_ohlcv(symbol, from_ts, to_ts, resolution)
+    
+    return ohlcv
+```
+
+**Prevention:**
+- All providers inherit `BaseDataProvider` which provides `__enter__()` and `__exit__()`
+- Each provider can override `close()` for custom cleanup (HTTP sessions, etc.)
+- Never use provider outside `with` block
+- Test with 24+ hour runs to verify no timeouts
+
+**For Developers:**
+See [CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md](../TECHNICAL_REFERENCE/LAYER_5_DATA_SERVICES/CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md) for implementation details.
+
+---
+
+## Data Processing Errors
+
+### Error: "ValueError: Found NaN values"
+
+**Cause:** OHLCV data contains missing/null values
+
+**File:** `/src/stockreports/data_services/_internal/providing/binance/normalizer.py:199`
+
+**Actual Code:**
+```python
+nan_info = df.isna().sum()
+if nan_info.sum() > 0:
+    raise ValueError(f"Found NaN values: {nan_info[nan_info > 0].to_dict()}")
+````:** Technical Reference architecture understanding  
 
 ---
 

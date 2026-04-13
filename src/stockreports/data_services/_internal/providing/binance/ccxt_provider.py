@@ -140,15 +140,39 @@ class BinanceCCXTProvider(BaseDataProvider):
             current_start_ms = from_timestamp * 1000
             end_ms = to_timestamp * 1000
             
-            # CCXT limit per request is 1000 for most exchanges
+            # Calculate initial optimal limit based on entire window
             max_candles_per_request = 1000
+            initial_optimal_limit = self._calculate_optimal_limit(
+                from_timestamp,
+                to_timestamp,
+                resolution,
+                max_candles_per_request
+            )
+            self.logger.debug(
+                f"Calculated optimal limit: {initial_optimal_limit} candles "
+                f"for window {from_timestamp}-{to_timestamp} @ {resolution}m"
+            )
             
             while current_start_ms < end_ms:
+                # Calculate remaining time in milliseconds
+                remaining_time_ms = end_ms - current_start_ms
+                
+                # Calculate candles remaining
+                candles_remaining = (remaining_time_ms // (resolution * 60 * 1000)) + 1
+                
+                # Use minimum of remaining and max per request
+                request_limit = min(candles_remaining, max_candles_per_request)
+                
+                self.logger.debug(
+                    f"API call with limit={request_limit} "
+                    f"(remaining {candles_remaining} candles)"
+                )
+                
                 candles = self.exchange.fetch_ohlcv(
                     ccxt_symbol,
                     timeframe=timeframe,
                     since=current_start_ms,
-                    limit=max_candles_per_request
+                    limit=request_limit
                 )
                 
                 if not candles or len(candles) == 0:
@@ -162,7 +186,7 @@ class BinanceCCXTProvider(BaseDataProvider):
                 current_start_ms = last_candle_time_ms + 1
                 
                 # Check if we've reached the end
-                if len(candles) < max_candles_per_request:
+                if len(candles) < request_limit:
                     break
             
             if not all_candles:
@@ -174,8 +198,16 @@ class BinanceCCXTProvider(BaseDataProvider):
             normalized_candles = [c[:6] for c in all_candles]  # Keep only [time, o, h, l, c, v]
             df = self.normalizer.normalize(normalized_candles, ccxt_symbol)
             
+            # Filter to exact time window (in case API returned data beyond boundaries)
+            df_start_time = pd.Timestamp(from_timestamp, unit='s', tz='UTC')
+            df_end_time = pd.Timestamp(to_timestamp, unit='s', tz='UTC')
+            rows_before_filter = len(df)
+            df = df[(df.index >= df_start_time) & (df.index <= df_end_time)]
+            rows_after_filter = len(df)
+            
             self.logger.info(
-                f"Successfully fetched {len(df)} candles for {ccxt_symbol} {timeframe}"
+                f"Successfully fetched {rows_after_filter} candles for {ccxt_symbol} {timeframe} "
+                f"(filtered from {rows_before_filter}, time window: {from_timestamp}-{to_timestamp})"
             )
             
             return df
@@ -353,6 +385,52 @@ class BinanceCCXTProvider(BaseDataProvider):
             raise ValueError(f"Unsupported resolution: {resolution} minutes. Supported: {list(mapping.keys())}")
         
         return mapping[resolution]
+    
+    def _calculate_optimal_limit(
+        self,
+        from_timestamp: int,
+        to_timestamp: int,
+        resolution: int,
+        max_per_request: int = 1000
+    ) -> int:
+        """
+        Calculate optimal API request limit based on time window and resolution.
+        
+        Instead of always requesting 1000 candles, calculate the exact amount
+        needed based on the time window and resolution. This minimizes API
+        request waste while respecting Binance's 1000 candle limit per request.
+        
+        Args:
+            from_timestamp (int): Start time as Unix timestamp (seconds)
+            to_timestamp (int): End time as Unix timestamp (seconds)
+            resolution (int): Candle resolution in minutes (1, 5, 15, 30, 60, 240, 1440)
+            max_per_request (int): Maximum candles per API request. Defaults to 1000
+        
+        Returns:
+            int: Optimal limit value between 1 and max_per_request
+            
+        Examples:
+            >>> _calculate_optimal_limit(10800, 11400, 1)  # 10 minutes, 1m candles
+            10
+            
+            >>> _calculate_optimal_limit(0, 86400, 1)  # 24 hours, 1m candles → exceeds 1000
+            1000
+            
+            >>> _calculate_optimal_limit(0, 86400, 60)  # 24 hours, 1h candles
+            24
+        """
+        # Calculate time window in seconds
+        time_window_seconds = to_timestamp - from_timestamp
+        
+        # Calculate candles that fit in this window
+        # Add 1 for safety (boundary alignment)
+        candles_in_window = (time_window_seconds // (resolution * 60)) + 1
+        
+        # Use minimum of needed candles and max per request
+        optimal_limit = min(candles_in_window, max_per_request)
+        
+        # Ensure we never return 0
+        return max(1, optimal_limit)
     
     def close(self):
         """Close the exchange connection."""

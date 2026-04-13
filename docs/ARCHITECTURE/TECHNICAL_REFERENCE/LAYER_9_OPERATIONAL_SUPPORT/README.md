@@ -225,7 +225,100 @@ Layer 9 is **cross-cutting** - it supports ALL other layers:
 
 ---
 
-## 📞 Need More Information?
+## � Provider Resource Management (Monitoring Integration)
+
+**Layer 5 → Layer 9 Integration:** Data providers use context managers to ensure reliable operation within the monitoring system.
+
+### Connection Lifecycle Management
+
+**Problem Solved:** Connection timeouts in 57-second monitoring cycle
+- **Before:** Connections reused indefinitely → 1-2 hour timeout ❌
+- **After:** Fresh connection every cycle → 24+ hour reliability ✅
+
+### Context Manager Pattern
+
+All data providers implement Python's context manager protocol:
+
+```python
+with provider:
+    # Fresh connection on entry
+    data = provider.fetch_ohlcv(symbol, ...)
+# Automatic cleanup on exit - guaranteed! ✅
+```
+
+**Operational Benefits:**
+1. **Reliability**: No connection timeouts after extended operation
+2. **Resource Safety**: No accumulated open connections (no memory leak)
+3. **Error Resilience**: Cleanup happens even if exception occurs
+4. **Monitoring Loop**: 57-second cycle with fresh connections proven for 24+ hours
+
+### Resource Monitoring
+
+**What to Monitor:**
+- Active connections count (should spike/drop with each cycle)
+- Memory usage (should remain stable, not grow)
+- Provider error logs (should be clean, no timeout errors)
+- Connection state (should show cycles of open/close)
+
+**Healthy Indicators:**
+- ✅ Connections: 0 → 1 → 0 every 57 seconds
+- ✅ Memory: ±5MB variance (no growth trend)
+- ✅ Logs: No "Connection reset" or "Broken pipe" after 1+ hour
+- ✅ Operation: 24+ hours without timeout
+
+**Operational Commands:**
+```bash
+# Monitor active connections
+watch -n 1 "netstat -an | grep ESTABLISHED | grep -E ':(443|8080)' | wc -l"
+
+# Check memory usage
+ps aux | grep stockreports
+
+# Check logs for provider issues
+tail -f logs/symbol_*.log | grep -i "connection\|timeout\|error"
+```
+
+### Troubleshooting Provider Resource Issues
+
+**Symptom:** System times out after 1-2 hours
+
+**Root Cause:** Providers not using context managers properly
+
+**Check:**
+```python
+# ❌ Wrong - no context manager
+provider = get_provider(symbol)
+data = provider.fetch_ohlcv(symbol, ...)
+
+# ✅ Correct - with context manager
+provider = get_provider(symbol)
+with provider:
+    data = provider.fetch_ohlcv(symbol, ...)
+```
+
+**Solution:** Ensure all provider usage wraps in `with provider:` block
+
+**Symptom:** Growing connection count, memory leak
+
+**Root Cause:** Context managers not calling close() properly
+
+**Check:**
+- Provider's `close()` method implemented
+- `__exit__()` calls `close()` (should inherit from BaseDataProvider)
+- Exception handling in `close()` (shouldn't crash if already closed)
+
+**Solution:** Review provider's close() implementation against CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md
+
+### Related Documentation
+
+For detailed information on provider resource management:
+- **Architecture**: [LAYER_5_DATA_SERVICES/DATA_LAYER_ARCHITECTURE.md](../LAYER_5_DATA_SERVICES/DATA_LAYER_ARCHITECTURE.md) - Resource Management section
+- **Implementation**: [LAYER_5_DATA_SERVICES/CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md](../LAYER_5_DATA_SERVICES/CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md) - Step-by-step implementation
+- **Operations**: [LAYER_5_DATA_SERVICES/PROVIDER_RESOURCE_LIFECYCLE.md](../LAYER_5_DATA_SERVICES/PROVIDER_RESOURCE_LIFECYCLE.md) - Comprehensive operational guide
+
+---
+
+## �📞 Need More Information?
 
 - **How to add logging**: See IMPLEMENTATION_GUIDES/LAYER_9
 - **Error handling patterns**: See IMPLEMENTATION_GUIDES/LAYER_9

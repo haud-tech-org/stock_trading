@@ -19,6 +19,7 @@ Layer 5 implementation focuses on **adding data providers, indicators, and exten
 |------|---------|-----------|-------|
 | **DATA_SERVICES_QUICK_REFERENCE.md** | Quick reference for available data services and indicators | 10 min | Beginner |
 | **DATA_PROVIDER_EXTENSION_GUIDE.md** | Complete guide to adding new data providers | 25 min | Intermediate |
+| **TIMEZONE_CONSISTENCY_GUIDE.md** | ⭐ CRITICAL: Timezone handling for data providers | 20 min | Intermediate |
 | **API_DOCUMENTATION.md** | Data service API documentation | 15 min | Reference |
 
 ---
@@ -33,17 +34,21 @@ Layer 5 implementation focuses on **adding data providers, indicators, and exten
 5. Deploy: Enable for strategies
 
 ### **"How do I support a new data provider (exchange)?"**
-1. Study: DATA_PROVIDER_EXTENSION_GUIDE.md
-2. Implement: New provider class
-3. Test: Fetch data and verify accuracy
-4. Configure: Add to provider configuration
-5. Validate: Multi-symbol support
+1. ⭐ **First:** Read TIMEZONE_CONSISTENCY_GUIDE.md (critical requirement)
+2. Study: DATA_PROVIDER_EXTENSION_GUIDE.md
+3. Implement: New provider class
+4. Test: Fetch data and verify accuracy
+5. Configure: Add to provider configuration
+6. Validate: Multi-symbol support
 
 ### **"What indicators are already available?"**
 → See DATA_SERVICES_QUICK_REFERENCE.md for complete list
 
 ### **"What's the API for getting candle data?"**
 → See API_DOCUMENTATION.md for method signatures and examples
+
+### **"How do I handle timezones in a data provider?"**
+→ ⭐ **See TIMEZONE_CONSISTENCY_GUIDE.md** - This is critical and must be done correctly
 
 ---
 
@@ -63,6 +68,18 @@ Step-by-step guide to extending data providers:
 - Error handling and retries
 - Testing new providers
 - Performance optimization
+
+### TIMEZONE_CONSISTENCY_GUIDE.md
+⭐ **CRITICAL GUIDE** for timezone handling in data providers:
+- Why timezone consistency is critical
+- Standard pattern for all providers
+- Common mistakes and how to avoid them
+- Real-world Binance bug example (before/after)
+- Implementation verification steps
+- Unit test template
+- Troubleshooting guide for timezone issues
+
+**⚠️ Important:** All data providers MUST use market timezone (Asia/Ho_Chi_Minh), NOT UTC. Missing this causes cascading TypeErrors downstream. See this guide before implementing any provider.
 
 ### API_DOCUMENTATION.md
 Complete API reference:
@@ -137,11 +154,13 @@ class MyExchangeProvider(BaseDataProvider):
 
 - **Theory**: See TECHNICAL_REFERENCE/LAYER_5
 - **How to add indicator**: See this guide + DATA_SERVICES_QUICK_REFERENCE.md
-- **How to add provider**: See DATA_PROVIDER_EXTENSION_GUIDE.md
+- **How to add provider**: See DATA_PROVIDER_EXTENSION_GUIDE.md (start with TIMEZONE_CONSISTENCY_GUIDE.md!)
+- **Timezone handling**: ⭐ See TIMEZONE_CONSISTENCY_GUIDE.md (critical for providers)
 - **API details**: See API_DOCUMENTATION.md
 - **Debugging**: See LAYER_9 TROUBLESHOOTING_GUIDE.md
 
 ---
 
-*Last Updated: April 10, 2026*  
+*Last Updated: April 11, 2026*  
 *Part of Tier 3 Documentation - Implementation & How-To*
+*Note: TIMEZONE_CONSISTENCY_GUIDE.md added to address critical timezone requirement in data providers*

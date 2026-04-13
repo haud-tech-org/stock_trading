@@ -174,6 +174,28 @@ class BaseDataProvider(ABC):
 - Size-limited (100 entries max)
 - Provider-specific cache invalidation
 
+**Resource Management (Context Managers):**
+All providers inherit from `BaseDataProvider` which implements Python's context manager protocol:
+
+```python
+# All provider usage in coordinator follows this pattern:
+with provider:
+    ohlcv = provider.fetch_ohlcv(symbol, from_ts, to_ts, resolution)
+# Cleanup guaranteed on exit (connection closed, resources freed)
+```
+
+**Why Context Managers Matter:**
+- **Problem Solved:** Prevents 1-2 hour timeouts from reused connections
+- **Solution:** Fresh connection every 57-second monitoring cycle
+- **Implementation:** `__enter__()` initializes, `__exit__()` calls `close()`
+- **Provider-Specific:** Each provider can override `close()` for resource cleanup
+  - BinanceAPIProvider: Closes HTTP session
+  - BinanceCCXTProvider: Cleans up exchange connection
+  - VietstockProvider: No override needed (stateless API calls)
+- **Benefit:** Proven reliable for 24+ hour operation without timeouts ✅
+
+For implementation details, see: [CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md](../TECHNICAL_REFERENCE/LAYER_5_DATA_SERVICES/CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md)
+
 ---
 
 ### 3. Coordination Layer: ResolutionCoordinator
@@ -658,7 +680,7 @@ VALIDATION_DATA_SOURCE = 1  # 1 = local JSON, 0 = live API
 VALIDATION_DATE_FILTER = None  # None = all dates, "YYYY-MM-DD" = specific date
 
 # Price adjustment
-PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30", "VN30F1M", "BTC/USDT"]
+PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30", "VN30F1M", "BTCUSDT"]
 ```
 
 ---

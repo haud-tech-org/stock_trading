@@ -120,18 +120,55 @@ def calculate_body_ratio(candle):
 - ✅ EAV_PATTERN_STEP_BY_STEP.md (Implementation walkthrough)
 - ✅ ABSTRACT_BASE_CLASSES_ARCHITECTURE.md (Inheritance hierarchy)
 - ✅ EXECUTOR_IMPLEMENTATION_GUIDE.md (Complete creation guide)
+- ✅ ANALYZER_VALIDATOR_QUICK_REFERENCE.md (Method library reference)
+- ✅ EXECUTOR_PATTERN_OVERVIEW.md (High-level pattern structure)
+- ✅ DEEP_DIVE_FINDINGS.md (System-wide integration details)
 
 **What This Ensures**:
 - Generated code aligns with system architecture
 - Consistent patterns across all 6 current executors
 - Proper Layer 4 integration in overall system
 - Adherence to abstract base class design
+- Understanding of Mode system and how executors operate in SymbolAlerter
+
+**Critical Pattern Reminders From Architecture Docs**:
+
+**a) Multi-Resolution Architecture** (from DEEP_DIVE_FINDINGS.md):
+- ⚠️ **NOT YOUR CONCERN IN EXECUTOR**: SymbolAlerter handles all multi-resolution data management
+- Your executor receives ONLY the pre-processed DataFrame for your configured resolution
+- You don't fetch data, manage resolutions, or know about ResolutionCoordinator
+- Just analyze the DataFrame you receive and generate alerts
+- Resolution mapping in `APPROACH_RESOLUTION_MAPPING` is configuration-only
+
+**b) Mode System** (from DEEP_DIVE_FINDINGS.md):
+- LIVE Mode: Real-time indefinite monitoring (`DEBUG_REPLAY_START_TIME = None`)
+- REPLAY Mode: Historical simulation bounded loop (`DEBUG_REPLAY_START_TIME = "timestamp"`)
+- Both use Mode.DEPLOYMENT for data access (development mode being removed)
+- Your executor must support both modes without code changes
+- Return immediately on first alert in DEPLOYMENT mode
+
+**c) @staticmethod Pattern** (from ABSTRACT_BASE_CLASSES_ARCHITECTURE.md):
+- ALL Analyzer methods MUST be @staticmethod
+- ALL Validator methods MUST be @staticmethod
+- Static methods have NO instance state
+- Pure functions - same input always produces same output
+- Enables easy testing and reuse across approaches
+
+**d) Validation Tracking Pattern** (from EXECUTOR_IMPLEMENTATION_GUIDE.md):
+- Each step gets tracked with `current_step` counter
+- Each sub-validation gets tracked with `validation_step` counter
+- Use `next_step()` in main loop BEFORE calling private method
+- Use `next_validation()` in private method AT START
+- Append `Validation` objects to `self.validations` list for debugging
+- Base class provides `_add_details_for_alert()` to build details from validations
 
 **Do NOT generate code that contradicts Layer 4 architecture.**
 
 ---
 
 ## 🔍 Pre-Generation Verification
+
+### Step 1: Documentation Review
 
 Before using this prompt, verify you have read:
 - [x] DESIGN_PATTERNS_GUIDE.md - Pattern compliance
@@ -140,6 +177,51 @@ Before using this prompt, verify you have read:
 - [x] LAYER_4 IMPLEMENTATION_GUIDES - Practical examples
 
 If not all checked, stop and read these documents first.
+
+### Step 2: ⭐ MANDATORY - Configuration Setup
+
+**CRITICAL**: Before code generation begins, configurations MUST be added to the project configuration files.
+
+**Files to Update**:
+
+1. **`src/stockreports/config/signal_settings.py`** - Three updates required:
+
+   **a) Add approach to `APPROACH_RESOLUTION_MAPPING` dictionary**
+   - Specifies the resolution (in minutes) for this approach (typically 1, 5, 15, or 60)
+   - Example:
+     ```python
+     APPROACH_RESOLUTION_MAPPING = {
+         # ... existing approaches ...
+         "REVERSAL_ANCHOR_SIGNAL_CANDLE": 1,  # 1-minute resolution
+     }
+     ```
+
+   **b) Add approach configuration to `APPROACH_CONFIG` dictionary**
+   - All configuration parameters must use UPPERCASED keys
+   - Add configuration block following existing approach patterns (e.g., VRA, STRONG_CANDLE)
+   - Example:
+     ```python
+     "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
+         "LOOKBACK_WINDOW": 50,
+         "MIN_SIZE_PRICE_WINDOW": 0.5,
+         # ... additional parameters ...
+     },
+     ```
+
+2. **`src/stockreports/alert/common/constants.py`** - Register approach in `Approach` class
+   - Add constant with exact same name as configuration key
+   - Example: `REVERSAL_ANCHOR_SIGNAL_CANDLE = "REVERSAL_ANCHOR_SIGNAL_CANDLE"`
+   - This enables recognition throughout the pipeline
+
+**Verification Checklist**:
+- [ ] Approach added to `APPROACH_RESOLUTION_MAPPING` with target resolution in signal_settings.py
+- [ ] Configuration block added to `APPROACH_CONFIG` in signal_settings.py
+- [ ] Approach constant added to `Approach` class in constants.py
+- [ ] Configuration key matches Approach constant value exactly
+- [ ] All parameter keys are UPPERCASED
+- [ ] Configuration follows existing approach patterns (indentation, comment style)
+
+**Do NOT proceed to code generation until all three configuration updates have been completed and verified.**
 
 ---
 
@@ -197,6 +279,8 @@ If not all checked, stop and read these documents first.
 - [ ] Imports: Relative imports, organized (stdlib, third-party, local)
 - [ ] Naming: PascalCase classes, snake_case methods, UPPER_SNAKE_CASE constants
 - [ ] File Structure: 5 files (settings.py, analyzer.py, validator.py, executor.py, __init__.py)
+- [ ] **MANDATORY: settings.py must NOT have default values in `self.get()` calls** - Configuration is mandatory, not optional
+- [ ] **MANDATORY: Use `Approach` constant (not literal string) in settings.py `super().__init__()` call** - Import from `src.stockreports.alert.common.constants` and use `Approach.YOUR_APPROACH_NAME`
 
 **Do NOT proceed to Phase 4 until all items are checked.**
 
@@ -286,19 +370,21 @@ For each of the 5 files, document:
    ```python
    # ✅ PATTERN (from STRONG_CANDLE, VRA, ICHIMOKU)
    from src.stockreports.alert.common.base_settings import BaseSettings
+   from src.stockreports.alert.common.constants import Approach
    
    class StrongCandleSettings(BaseSettings):
        def __init__(self, symbol: str):
-           super().__init__(symbol, "STRONG_CANDLE")
+           super().__init__(symbol, Approach.STRONG_CANDLE)
            
            # Core logic parameters loaded from signal_settings.py
-           self.lookback_period = self.get("LOOKBACK_PERIOD", 50)
-           self.min_body_ratio = self.get("MIN_BODY_RATIO", 0.7)
-           self.min_body_pips = self.get("MIN_BODY_PIPS", 50)
+           # IMPORTANT: No default values - configuration is mandatory in signal_settings.py
+           self.lookback_period = self.get("LOOKBACK_PERIOD")
+           self.min_body_ratio = self.get("MIN_BODY_RATIO")
+           self.min_body_pips = self.get("MIN_BODY_PIPS")
            
            # Optional filter flags
-           self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION", True)
-           self.cooldown_candles = self.get("COOLDOWN_CANDLES", 5)
+           self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION")
+           self.cooldown_candles = self.get("COOLDOWN_CANDLES")
    ```
 
 2. **analyzer.py** - ALL methods MUST be @staticmethod
@@ -383,41 +469,87 @@ For each of the 5 files, document:
        ) = self.get_window_context(i, df_indexed, self.settings.lookback_period)
    ```
 
-   **d) Use next_step() and next_validation() for tracking:**
+   **d) Use next_step() and next_validation() in correct places:**
    ```python
-   # In _find_*_alerts main loop
-   for i in range(...):
-       # Reset context
-       self.current_step = 1
+   # ✅ CORRECT PATTERN (from ALL working executors)
+   
+   # In _find_alerts main loop:
+   for i in range(loop_end, loop_start - 1, -1):
+       self.set_window_context(i, df_indexed, lookback_window_size)
        
-       # Step 1: Check condition
-       self.current_step += 1  # Now step 2
-       if not condition:
-           self.next_validation()
+       # MAIN LOOP: Call next_step() BEFORE calling private method
+       self.next_step()
+       result = self._step_validate_condition_1()
+       if result is None:
            continue
        
-       # In helper methods
-       def _check_volume(self, ...):
-           if not valid:
-               self.next_validation()
-               return False
-           return True
+   # In private step validation methods:
+   def _step_validate_condition_1(self) -> Optional[SomeType]:
+       # PRIVATE METHOD: Call next_validation() at the START
+       self.next_validation()
+       try:
+           if not is_valid:
+               log(...)
+               return None
+           
+           # Append validation tracking object
+           self.validations.append(Validation(
+               name=nameof(self.settings.param_name),
+               step=self.current_step,
+               validation=self.validation_step,
+               message="Condition 1 passed",
+               status=ValidationStatus.PASSED
+           ))
+           return result
+       except Exception as e:
+           log(...)
+           return None
    ```
 
-   **e) Create alerts with _create_alert_with_details():**
+   **KEY POINTS**:
+   - `self.next_step()` - Call in MAIN LOOP before calling private method
+   - `self.next_validation()` - Call in PRIVATE METHOD at the start
+   - Private methods return value on success, None on failure
+   - Each validation appends Validation object with tracking info
+   - Main loop continues on None (failed validation)
+
+   **e) Create alerts using base class helper methods:**
    ```python
-   # ✅ PATTERN (from VRA, STRONG_CANDLE)
-   alert = self._create_alert_with_details(
-       symbol=self.symbol,
-       time=last_candle['time'],
-       close=last_candle[CandleColumn.CLOSE],
-       signal=Signal.BUY,
-       approach=self.APPROACH_NAME,
-       details={
-           nameof(IchimokuColumn.TENKAN_SEN): tenkan_value,
-           'validations': [v.to_json() for v in self.validations]
-       }
+   # ✅ CURRENT PATTERN (from STRONG_CANDLE, CONSISTENT_MOMENTUM, VRA)
+   
+   # Step N: Alert creation
+   self.next_step()
+   details_dict = self._add_details_for_alert(
+       # Add custom details as keyword arguments
+       field1=value1,
+       field2=value2,
+       validations_included_automatically=True  # Base class adds validations
    )
+
+   alert_data = self._create_alert_with_details(
+       final_signal=signal,
+       final_trend=trend,
+       final_alert_candle=self.last_candle,
+       final_magnitude=magnitude_value,
+       details=details_dict
+   )
+
+   if alert_data is not None:
+       self.alerts.append(alert_data)
+       YourApproachExecutor.LATEST_ALERT = alert_data
+
+       if not self.is_development_mode:
+           return self.alerts
+   ```
+
+   **KEY POINTS**:
+   - `_add_details_for_alert(**kwargs)` - Builds details dict from any keyword args (base class method)
+   - `_create_alert_with_details()` - Creates AlertData with proper structure (base class method)
+   - `self.current_window_end_time` - Used automatically as alert timestamp
+   - `self.current_window_start_time` - Used automatically as start time
+   - Validations are appended to details automatically by base class
+   - Alert ID generated from timestamp automatically
+   - Returns immediately in DEPLOYMENT mode to stop scanning
    ```
 
 5. **__init__.py** - Simple relative imports
@@ -441,6 +573,142 @@ Business Logic Rule 2 → Use Analyzer method Z + Validator method W
 - ✅ **Validation Tracking**: Use varname's nameof() for setting names, json serialization for alert details
 - ✅ **Error Handling**: Wrap _find_*_alerts() in try/except in run() method
 - ✅ **Logging**: Use log_factory.log() for all validation messages
+
+---
+
+## ⭐ CRITICAL EXECUTOR IMPLEMENTATION PATTERNS (From All 6 Working Executors)
+
+**These patterns are MANDATORY and must be followed exactly:**
+
+### 1. Private Step Methods Pattern
+
+**Location**: Each validation step gets its own `_step_validate_*()` private method
+
+```python
+def _step_validate_condition_1(self) -> Optional[ReturnType]:
+    """Step N: [Description]."""
+    # Pattern 1: Call next_validation() at START of method
+    self.next_validation()
+    
+    try:
+        # Pattern 2: Perform analysis/validation
+        result = self.analyzer.calculate_something()
+        is_valid = self.validator.validate_something(result, self.settings.param)
+        
+        # Pattern 3: Log and return None on failure
+        if not is_valid:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Validation failed: {reason}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
+            )
+            return None
+        
+        # Pattern 4: Track validation on success
+        self.validations.append(Validation(
+            name=nameof(self.settings.param_name),
+            step=self.current_step,
+            validation=self.validation_step,
+            message="Validation passed",
+            status=ValidationStatus.PASSED
+        ))
+        
+        return result
+        
+    except Exception as e:
+        log(..., message=f"Exception: {str(e)}", log_level=LogLevel.DEBUG)
+        return None
+```
+
+### 2. Main Loop Pattern
+
+**Location**: In `_find_alerts()` loop before calling each step method
+
+```python
+# Pattern 1: Call next_step() BEFORE calling private method
+self.next_step()
+result = self._step_validate_condition_1()
+
+# Pattern 2: Check for None (failure) and continue
+if result is None:
+    continue
+
+# Pattern 3: Unpack/use result for next steps
+value1, value2 = result
+```
+
+### 3. Cooldown Check Pattern (MUST use base class method)
+
+**Location**: As a regular step before alert creation
+
+```python
+# Pattern: Call base class _step_cooldown_check() with parameters
+self.next_step()
+if not self._step_cooldown_check(
+    last_alert=YourApproachExecutor.LATEST_ALERT,
+    signal=signal,
+    cooldown_window=self.settings.cooldown_window
+):
+    continue
+```
+
+**KEY**: Do NOT implement your own _step_cooldown_check() method - the base Executor class provides it.
+
+### 4. Alert Creation Pattern (MUST use base class helpers)
+
+**Location**: After all validations passed and before main loop ends
+
+```python
+# Pattern 1: Add step for alert creation
+self.next_step()
+
+# Pattern 2: Use _add_details_for_alert() to build details dict
+details_dict = self._add_details_for_alert(
+    field1=value1,
+    field2=value2,
+    field3=value3
+)
+# Base class automatically adds validations to details_dict
+
+# Pattern 3: Use _create_alert_with_details() with correct parameters
+alert_data = self._create_alert_with_details(
+    final_signal=signal,
+    final_trend=trend,
+    final_alert_candle=self.last_candle,
+    final_magnitude=magnitude,
+    details=details_dict
+)
+
+# Pattern 4: Check alert and update LATEST_ALERT
+if alert_data is not None:
+    self.alerts.append(alert_data)
+    YourApproachExecutor.LATEST_ALERT = alert_data
+    
+    # Pattern 5: Return immediately in DEPLOYMENT mode
+    if not self.is_development_mode:
+        return self.alerts
+```
+
+**MANDATORY Parameters for _create_alert_with_details()**:
+- `final_signal: Signal` - BUY or SELL
+- `final_trend: Trend` - UPTREND, DOWNTREND, or NEUTRAL
+- `final_alert_candle: pd.Series` - The candle that triggered the alert
+- `final_magnitude: float` - Magnitude/strength of the signal
+- `details: dict` - Details dict from _add_details_for_alert()
+
+**DO NOT use these outdated parameters** ❌:
+- `symbol=` (use self.symbol from base class)
+- `time=` (use self.current_window_end_time automatically)
+- `close=` (extracted from final_alert_candle automatically)
+- `approach=` (use self.APPROACH_NAME automatically)
+
 
 **Do NOT proceed to Phase 5 until you've documented similarities to STRONG_CANDLE and studied the get_loop_setup/get_window_context patterns.**
 
@@ -629,19 +897,32 @@ class YourApproachExecutor(Executor):
                 return None
             
             # All validations passed - create alert
-            alert = self._create_alert_with_details(
-                symbol=self.symbol,
-                time=last_candle['time'],
-                close=last_candle[CandleColumn.CLOSE],
-                signal=Signal.BUY,  # or Signal.SELL depending on your logic
-                approach=self.APPROACH_NAME,
-                details={
-                    'step': self.current_step,
-                    'validations': [v.to_json() for v in self.validations]
-                }
+            self.next_validation()
+            
+            # Step 4: Alert creation
+            self.next_step()
+            details_dict = self._add_details_for_alert(
+                condition_1_result=result1,
+                condition_2_result=result2,
+                condition_3_result=result3
             )
             
-            return alert
+            alert_data = self._create_alert_with_details(
+                final_signal=Signal.BUY,  # or Signal.SELL depending on logic
+                final_trend=Trend.UPTREND,  # or Trend.DOWNTREND depending on logic
+                final_alert_candle=last_candle,
+                final_magnitude=some_magnitude_value,
+                details=details_dict
+            )
+            
+            if alert_data is not None:
+                self.alerts.append(alert_data)
+                YourApproachExecutor.LATEST_ALERT = alert_data
+                
+                if not self.is_development_mode:
+                    return self.alerts
+            
+            return None
             
         except Exception as e:
             log(
@@ -1475,8 +1756,9 @@ After generating the code with this prompt, use these resources for implementati
 **Requirements**:
 - Inherit from `BaseSettings`
 - Constructor: `__init__(self, symbol: str)`
-- Load all thresholds via `self.get("CONFIG_KEY")`
+- Load all thresholds via `self.get("CONFIG_KEY")` with NO default values
 - No validation logic (just configuration storage)
+- **MANDATORY: Do NOT use fallback defaults in `self.get()` calls.** Configuration loading must fail if the parameter is missing from `signal_settings.py`. This ensures configuration is truly mandatory.
 
 **Structure**:
 ```python
@@ -1487,6 +1769,7 @@ class YourApproachSettings(BaseSettings):
         super().__init__(symbol, Approach.YOUR_APPROACH_NAME)
         
         # Load all settings from centralized configuration
+        # IMPORTANT: Use self.get("[CONFIG_KEY_NAME]") WITHOUT a default parameter
         self.[param_name] = self.get("[CONFIG_KEY_NAME]")
         ...
 ```

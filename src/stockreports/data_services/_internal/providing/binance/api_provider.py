@@ -67,6 +67,22 @@ class BinanceAPIProvider(BaseDataProvider):
         self.session = requests.Session()
         self.logger.info(f"Initialized {self.provider_name} API provider (timeout={timeout}s, retries={retries})")
     
+    def close(self):
+        """
+        Close HTTP session for this provider.
+        
+        This method is called automatically when exiting a 'with' statement:
+            with provider:
+                df = provider.fetch_ohlcv(...)
+            # Session is closed here automatically
+        """
+        try:
+            if self.session:
+                self.session.close()
+                self.logger.debug("HTTP session closed")
+        except Exception as e:
+            self.logger.warning(f"Error closing HTTP session: {e}")
+    
     def fetch_ohlcv(
         self,
         symbol: str,
