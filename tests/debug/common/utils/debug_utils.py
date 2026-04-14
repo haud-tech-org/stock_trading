@@ -4,6 +4,7 @@ Utilities specifically designed for debugging and test script execution.
 import os
 import pandas as pd
 from src.stockreports.config import loader
+from src.stockreports.utils.symbol_utils import sanitize_symbol_for_filename
 
 def save_debug_data(df: pd.DataFrame, symbol: str, start_time: pd.Timestamp, end_time: pd.Timestamp, project_root: str):
     """
@@ -24,13 +25,28 @@ def save_debug_data(df: pd.DataFrame, symbol: str, start_time: pd.Timestamp, end
         settings = loader.get_settings()
         timezone = settings.TRADING_HOURS[settings.MARKET_COUNTRY_CODE]['timezone']
 
+        # Sanitize symbol for filename using the centralized utility
+        sanitized_symbol = sanitize_symbol_for_filename(symbol)
+
         # Format the filename
         start_str = start_time.strftime('%Y%m%d_%H%M')
         end_str = end_time.strftime('%Y%m%d_%H%M')
         
         # Create a specific directory for debug data if it doesn't exist
         debug_data_dir = os.path.join(project_root, 'tests', 'debug', 'data')
-        os.makedirs(debug_data_dir, exist_ok=True)
+        
+        # Ensure directory exists with explicit error handling
+        try:
+            os.makedirs(debug_data_dir, exist_ok=True)
+        except Exception as dir_error:
+            print(f"WARNING: Could not create debug data directory {debug_data_dir}: {dir_error}")
+            print(f"Attempting to save to project_root directly: {project_root}")
+            debug_data_dir = project_root
+        
+        # Verify directory is writable
+        if not os.path.isdir(debug_data_dir):
+            print(f"WARNING: Debug data directory {debug_data_dir} is not accessible")
+            debug_data_dir = project_root
         
         # Create a copy for file saving to avoid modifying the original df
         df_to_save = df.copy()
@@ -45,24 +61,31 @@ def save_debug_data(df: pd.DataFrame, symbol: str, start_time: pd.Timestamp, end
             df_to_save['time'] = df_to_save['time'].dt.tz_convert(timezone)
 
         # --- Save to CSV with local timezone ---
-        csv_filename = f"debug_data_{symbol}_{start_str}_to_{end_str}_intraday.csv"
+        csv_filename = f"debug_data_{sanitized_symbol}_{start_str}_to_{end_str}_intraday.csv"
         csv_file_path = os.path.join(debug_data_dir, csv_filename)
-        # For CSV, it's often fine to leave timestamps as objects, but for consistency let's format them
-        df_to_save.to_csv(csv_file_path, index=False)
-        print(f"Data saved to {csv_file_path}")
+        try:
+            df_to_save.to_csv(csv_file_path, index=False)
+            print(f"Data saved to {csv_file_path}")
+        except Exception as csv_error:
+            print(f"WARNING: Failed to save CSV file: {csv_error}")
 
         # --- Save to JSON with local timezone ---
-        json_filename = f"debug_data_{symbol}_{start_str}_to_{end_str}_intraday.json"
+        json_filename = f"debug_data_{sanitized_symbol}_{start_str}_to_{end_str}_intraday.json"
         json_file_path = os.path.join(debug_data_dir, json_filename)
         
-        # Create a separate copy for JSON to handle specific formatting like ISO strings for dates
-        df_for_json = df_to_save.copy()
-        df_for_json['time'] = df_for_json['time'].apply(lambda x: x.isoformat())
-        
-        df_for_json.to_json(json_file_path, orient='records', indent=4)
-        print(f"Data saved to {json_file_path}")
+        try:
+            # Create a separate copy for JSON to handle specific formatting like ISO strings for dates
+            df_for_json = df_to_save.copy()
+            df_for_json['time'] = df_for_json['time'].apply(lambda x: x.isoformat())
+            
+            df_for_json.to_json(json_file_path, orient='records', indent=4)
+            print(f"Data saved to {json_file_path}")
+        except Exception as json_error:
+            print(f"WARNING: Failed to save JSON file: {json_error}")
+            json_file_path = None
 
     except Exception as e:
         print(f"ERROR: An error occurred during data saving: {e}")
+        json_file_path = None
     
     return json_file_path
