@@ -178,3 +178,29 @@ class ResolutionCoordinator:
             f"Configuration validation complete - "
             f"{len(self._config)} approaches validated against Approach class"
         )
+
+
+# Lazy Singleton Instance
+_coordinator_instance = None
+
+
+def get_coordinator() -> ResolutionCoordinator:
+    """
+    Get or create ResolutionCoordinator singleton instance (lazy initialization).
+
+    Ensures only one instance is created and reused across the application.
+    Configuration validation happens only on first call.
+
+    Returns:
+        ResolutionCoordinator singleton instance
+
+    Example:
+        coordinator = get_coordinator()
+        resolution = coordinator.get_resolutions(Approach.ICHIMOKU)  # 15
+    """
+    global _coordinator_instance
+    
+    if _coordinator_instance is None:
+        _coordinator_instance = ResolutionCoordinator()
+    
+    return _coordinator_instance

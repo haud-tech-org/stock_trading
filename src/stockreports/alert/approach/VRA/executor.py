@@ -20,10 +20,9 @@ from src.stockreports.utils import window_utils, candle_utils
 class VraExecutor(Executor):
     LATEST_ALERT: Optional[AlertData] = None
 
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, approach: Approach, resolution: int):
         self.settings = VraSettings(symbol)
-        approach_name = Approach.VRA
-        super().__init__(symbol, approach_name, self.settings)
+        super().__init__(symbol, approach, resolution, self.settings)
         self.logger = logging.getLogger(__name__)
         self.analyzer = VraAnalyzer()
         self.validator = VraValidator()

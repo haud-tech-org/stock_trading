@@ -27,12 +27,11 @@ class VolumeSpikeConfirmationExecutor(Executor):
     # APPROACH_NAME = Approach.VOLUME_SPIKE_CONFIRMATION
     LATEST_ALERT: Optional[AlertData] = None
 
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, approach: Approach, resolution: int):
         self.settings = VolumeSpikeConfirmationSettings(symbol)
         self.analyzer = VolumeSpikeConfirmationAnalyzer()
         self.validator = VolumeSpikeConfirmationValidator()
-        approach_name = Approach.VOLUME_SPIKE_CONFIRMATION
-        super().__init__(symbol, approach_name, self.settings)
+        super().__init__(symbol, approach, resolution, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def _find_alerts(self, df: pd.DataFrame, new_candle_count: int) -> List[AlertData]:
