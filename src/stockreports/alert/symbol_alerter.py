@@ -7,7 +7,6 @@ import pytz
 from tabulate import tabulate
 import sys
 from datetime import datetime, timedelta
-import importlib
 from typing import Optional, cast, Dict
 import time
 
@@ -32,7 +31,7 @@ data_provider_settings = loader.get_data_provider_settings()
 
 # --- Project Imports ---
 from src.stockreports.notification.notification_manager import NotificationManager
-from src.stockreports.coordination.resolution_coordinator import ResolutionCoordinator
+from src.stockreports.coordination import get_coordinator
 from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.utils.data_utils import (
     fetch_intraday_data, 
@@ -40,11 +39,13 @@ from src.stockreports.utils.data_utils import (
 )
 from src.stockreports.utils.time_utils import is_trading_hours, SESSIONS, TimeSimulator, TIMEZONE
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
+from src.stockreports.alert.common.constants import Approach
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
 from src.stockreports.alert.common.validation.price_adjustment import adjust_prices_by_symbol
 from src.stockreports.alert.common.profitability_simulator import simulate_profitability
 from src.stockreports.utils.report_utils import save_profitability_report, save_alert_report, update_alert_summary
 from src.stockreports.utils.alert_utils import calculate_suggested_prices
+from src.stockreports.utils.approach_utils import get_approaches_for_symbol, get_approach_executor
 from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
 
 # --- Constants & Configuration ---
@@ -96,7 +97,7 @@ class SymbolAlerter:
         self._setup_logging()
         
         # Now initialize resolution coordinator and dataframes
-        self.resolution_coordinator = ResolutionCoordinator()
+        self.resolution_coordinator = get_coordinator()
         self._init_resolution_dataframes()
 
     def _init_resolution_dataframes(self) -> None:
@@ -253,59 +254,7 @@ class SymbolAlerter:
         else:
             self.logger.debug("Scheduler: No scheduled notifications to send at this time.")
 
-    def _get_approach_executor(self, approach_name: str):
-        try:
-            module_path = f"src.stockreports.alert.approach.{approach_name.upper()}.executor"
-            executor_module = importlib.import_module(module_path)
-            # Convert approach_name (e.g., 'CONSECUTIVE_POWER_CANDLES') to a class name (e.g., 'ConsecutivePowerCandlesExecutor')
-            class_name_parts = [part.capitalize() for part in approach_name.split('_')]
-            executor_class_name = "".join(class_name_parts) + "Executor"
-            executor_class = getattr(executor_module, executor_class_name)
-            # Instantiate the executor with the symbol
-            return executor_class(self.symbol)
-        except (ImportError, AttributeError) as e:
-            self.logger.error(f"Could not load approach '{approach_name}'. Error: {e}")
-            return None
 
-    def _get_approaches_for_symbol(self) -> list:
-        """
-        Gets the list of approaches to run for this symbol.
-        
-        Priority order:
-        1. Symbol-specific approaches from SYMBOL_ALERT_APPROACHES
-        2. Default approaches from ALERT_APPROACHES_DEFAULT
-        3. Legacy approaches from ALERT_APPROACHES (backward compatibility)
-        4. Hard fallback: [DEFAULT_APPROACH]
-        
-        This allows different symbols to have different alert strategies,
-        with sensible fallbacks for backward compatibility.
-        
-        Returns:
-            list: List of approach names to run for this symbol
-        """
-        # Priority 1: Symbol-specific configuration
-        symbol_config = getattr(settings, 'SYMBOL_ALERT_APPROACHES', {})
-        if isinstance(symbol_config, dict) and self.symbol in symbol_config:
-            approaches = symbol_config[self.symbol]
-            self.logger.info(f"Symbol-specific approaches for '{self.symbol}': {approaches}")
-            return approaches
-        
-        # Priority 2: Default approaches for undefined symbols
-        default_approaches = getattr(settings, 'ALERT_APPROACHES_DEFAULT', None)
-        if default_approaches:
-            self.logger.info(f"Using default approaches for '{self.symbol}': {default_approaches}")
-            return default_approaches
-        
-        # Priority 3: Legacy global approaches (backward compatibility)
-        legacy_approaches = getattr(settings, 'ALERT_APPROACHES', None)
-        if legacy_approaches:
-            self.logger.info(f"Using legacy ALERT_APPROACHES for '{self.symbol}': {legacy_approaches}")
-            return legacy_approaches
-        
-        # Priority 4: Hard fallback
-        fallback = [DEFAULT_APPROACH]
-        self.logger.warning(f"No approaches configured for symbol '{self.symbol}'. Using fallback: {fallback}")
-        return fallback
 
     def execute(self):
         self.logger.info(f"Executing alerter for symbol: {self.symbol}...")
@@ -378,7 +327,7 @@ class SymbolAlerter:
             bool: True if the session completed without error, signaling a clean exit.
         """
         # Guard: Check if this symbol has any approaches configured
-        approaches_to_run = self._get_approaches_for_symbol()
+        approaches_to_run = get_approaches_for_symbol(self.symbol)
         if not approaches_to_run:
             self.logger.error(
                 f"Symbol {self.symbol} has no approaches configured in SYMBOL_ALERT_APPROACHES. "
@@ -479,43 +428,44 @@ class SymbolAlerter:
 
             # --- Standard Approach Alerter ---
             # Each approach gets data for its configured resolution
-            approaches_to_run = self._get_approaches_for_symbol()
-            for approach_name in approaches_to_run:
-                self.logger.info(f"--- Running Approach: {approach_name} for {self.symbol} ---")
+            approaches_to_run = get_approaches_for_symbol(self.symbol)
+            if approaches_to_run:  # Only run if symbol is configured
+                for approach_name in approaches_to_run:
+                    self.logger.info(f"--- Running Approach: {approach_name} for {self.symbol} ---")
 
-                # Get resolution for this approach
-                try:
-                    resolution = self.resolution_coordinator.get_resolutions(approach_name)
-                except KeyError:
-                    self.logger.error(f"Cannot get resolution for {approach_name}")
-                    continue
-                
-                # Get data for this resolution from storage (symbol is already self.symbol, key is resolution int)
-                approach_df = self._resolution_dataframes.get(resolution)
-                
-                if approach_df is None or approach_df.empty:
-                    self.logger.warning(f"No data for {approach_name} (resolution {resolution}-min)")
-                    continue
-                
-                # Run executor on correct resolution data
-                executor = self._get_approach_executor(approach_name)
-                if not executor:
-                    continue
-                
-                # Pass resolution-specific data to executor
-                new_candle_count = len(approach_df)
-                result: AlertResult = ensure_alert_result(
-                    executor.run(df=approach_df.copy(), new_candle_count=new_candle_count)
-                )
-                if result.has_alerts:
-                    # Alerts are already enriched with suggested prices from base Executor.update_alert_suggestions()
-                    # (called during alert creation in Executor._create_alert_with_details)
+                    # Get resolution for this approach
+                    try:
+                        resolution = self.resolution_coordinator.get_resolutions(approach_name)
+                    except KeyError:
+                        self.logger.error(f"Cannot get resolution for {approach_name}")
+                        continue
                     
-                    # Send notification with enriched data
-                    self.notification_manager.process_and_notify(result, self.symbol)
+                    # Get data for this resolution from storage (symbol is already self.symbol, key is resolution int)
+                    approach_df = self._resolution_dataframes.get(resolution)
                     
-                    # Save the enriched report
-                    self._enrich_and_save_reports(result, time_simulator.processing_date)
+                    if approach_df is None or approach_df.empty:
+                        self.logger.warning(f"No data for {approach_name} (resolution {resolution}-min)")
+                        continue
+                    
+                    # Run executor on correct resolution data
+                    executor = get_approach_executor(self.symbol, approach_name, resolution)
+                    if not executor:
+                        continue
+                    
+                    # Pass resolution-specific data to executor
+                    new_candle_count = len(approach_df)
+                    result: AlertResult = ensure_alert_result(
+                        executor.run(df=approach_df.copy(), new_candle_count=new_candle_count)
+                    )
+                    if result.has_alerts:
+                        # Alerts are already enriched with suggested prices from base Executor.update_alert_suggestions()
+                        # (called during alert creation in Executor._create_alert_with_details)
+                        
+                        # Send notification with enriched data
+                        self.notification_manager.process_and_notify(result, self.symbol)
+                        
+                        # Save the enriched report
+                        self._enrich_and_save_reports(result, time_simulator.processing_date)
             
             self.logger.info(f"Interval finished. Advancing time...")
             time_simulator.advance()
@@ -557,11 +507,26 @@ class SymbolAlerter:
         self.logger.info(f"Loaded {len(daily_df)} data points for {self.symbol} on {processing_date}.")
         
         all_alerts_for_day = []
-        approaches_to_run = self._get_approaches_for_symbol()
+        approaches_to_run = get_approaches_for_symbol(self.symbol)
+        
+        if not approaches_to_run:
+            self.logger.warning(
+                f"Symbol {self.symbol} has no approaches configured in SYMBOL_ALERT_APPROACHES. "
+                f"Skipping analysis for {processing_date}."
+            )
+            return
         
         for approach_name in approaches_to_run:
             self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} on {processing_date} ---")
-            executor = self._get_approach_executor(approach_name)
+            
+            # In development mode, get the resolution for this approach (for consistency)
+            try:
+                resolution = self.resolution_coordinator.get_resolutions(approach_name)
+            except KeyError:
+                self.logger.warning(f"Cannot get resolution for {approach_name}, using None")
+                resolution = None
+            
+            executor = get_approach_executor(self.symbol, approach_name, resolution)
             if not executor: continue
             
             # Pass the full length of the daily dataframe as new_candle_count in development mode

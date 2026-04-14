@@ -173,12 +173,12 @@ ALERT_APPROACHES = [
 #   }
 SYMBOL_ALERT_APPROACHES = {
     "VN30F1M": [
-        #"CONSISTENT_MOMENTUM",
-        #"STRONG_CANDLE",
-        #"VOLUME_SPIKE_CONFIRMATION",
-        #"VRA",
-        #"CONSISTENT_VOLUME_ANCHOR", 
-        #"ICHIMOKU"
+        "CONSISTENT_MOMENTUM",
+        "STRONG_CANDLE",
+        "VOLUME_SPIKE_CONFIRMATION",
+        "VRA",
+        "CONSISTENT_VOLUME_ANCHOR", 
+        "ICHIMOKU"
     ],
     "VN30": [
     ],

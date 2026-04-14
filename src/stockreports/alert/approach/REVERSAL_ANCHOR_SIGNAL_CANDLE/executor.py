@@ -36,18 +36,18 @@ class ReversalAnchorSignalCandleExecutor(Executor):
 
     LATEST_ALERT: Optional[AlertData] = None
 
-    def __init__(self, symbol: str) -> None:
+    def __init__(self, symbol: str, approach: Approach, resolution: int) -> None:
         """Initialize REVERSAL_ANCHOR_SIGNAL_CANDLE executor.
         
         Args:
             symbol: Trading symbol (e.g., 'BTC/USDT:USDT')
+            approach: Approach constant (Approach.REVERSAL_ANCHOR_SIGNAL_CANDLE)
+            resolution: Data resolution in minutes
         """
         self.settings = ReversalAnchorSignalCandleSettings(symbol)
         self.analyzer = ReversalAnchorSignalCandleAnalyzer()
         self.validator = ReversalAnchorSignalCandleValidator()
-        
-        approach_name = Approach.REVERSAL_ANCHOR_SIGNAL_CANDLE
-        super().__init__(symbol, approach_name, self.settings)
+        super().__init__(symbol, approach, resolution, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def _find_alerts(
