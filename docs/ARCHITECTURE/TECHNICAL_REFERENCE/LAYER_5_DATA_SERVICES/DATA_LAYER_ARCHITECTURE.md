@@ -197,26 +197,48 @@ get_market_timezone(symbol) → str  # 'UTC+7' for Vietnam
 ### Component 4: Data Providers (3 Implementations)
 **Purpose:** Fetch raw OHLCV data from external APIs
 
+**CRITICAL REQUIREMENT - Timezone Consistency:**
+
+All providers MUST convert data to market timezone (NOT UTC). This is enforced in the normalizer:
+
+```python
+# All normalizers follow this pattern:
+datetimes = pd.to_datetime(timestamps, unit='s', utc=True)
+datetimes = datetimes.tz_convert(self.market_tz)  # Convert to MARKET TIMEZONE
+
+# All normalizers validate like this:
+market_tz_str = get_market_timezone_str()
+if str(df.index.tz) != market_tz_str:
+    raise ValueError(
+        f"Index timezone must be {market_tz_str}, got {df.index.tz}"
+    )
+```
+
+**Why This Matters:** Inconsistent timezone handling (e.g., one provider in UTC, another in market timezone) causes cascading failures downstream with cryptic TypeErrors. This was discovered during debugging when Binance provider was missing the `tz_convert()` call.
+
 **Provider 1: VietstockProvider**
 - **Data Source:** Vietstock API (Vietnam Stock Exchange)
 - **Symbols:** Vietnamese stocks (VCB, ACB, VN30, VN30F1M, etc.)
 - **Count:** 50+ symbols
 - **Resolutions:** 1, 5, 15, 30, 60, 240, 1440 minutes
-- **Location:** `src/stockreports/data_provider/vietstock/provider.py`
+- **Location:** `src/stockreports/data_services/_internal/providing/vietstock/provider.py`
+- **Normalizer:** Correctly converts to market timezone (lines 104-106)
 
 **Provider 2: BinanceAPIProvider**
 - **Data Source:** Binance REST API
 - **Symbols:** Cryptocurrency pairs (BTCUSDT, ETHUSDT, etc.)
 - **Count:** 100+ symbols
 - **Resolutions:** 1, 5, 15, 30, 60, 240, 1440 minutes
-- **Location:** `src/stockreports/data_provider/binance/api_provider.py`
+- **Location:** `src/stockreports/data_services/_internal/providing/binance/api_provider.py`
+- **Normalizer:** Correctly converts to market timezone (includes `tz_convert()` fix on line 87)
 
 **Provider 3: BinanceCCXTProvider**
 - **Data Source:** Binance via CCXT library (unified crypto interface)
-- **Symbols:** Cryptocurrency pairs (BTC/USDT, ETH/USDT, etc.)
+- **Symbols:** Cryptocurrency pairs (BTCUSDT, ETH/USDT, etc.)
 - **Count:** 100+ symbols (same assets as API provider, different format)
 - **Resolutions:** Same as API provider
-- **Location:** `src/stockreports/data_provider/binance/ccxt_provider.py`
+- **Location:** `src/stockreports/data_services/_internal/providing/binance/ccxt_provider.py`
+- **Normalizer:** Uses same BinanceNormalizer with correct timezone handling
 
 **Provider Interface (BaseDataProvider):**
 ```python
@@ -259,7 +281,7 @@ ENABLED_DATA_PROVIDERS = ["vietstock", "binance_ccxt"]
     },
     "binance_ccxt": {
         "name": "binance_ccxt",
-        "supported_symbols": ["BTC/USDT", "ETH/USDT", ...],  # 100+ symbols
+        "supported_symbols": ["BTCUSDT", "ETH/USDT", ...],  # 100+ symbols
         "description": "Binance via CCXT"
     }
 }
@@ -279,6 +301,126 @@ ENABLED_DATA_PROVIDERS = ["vietstock", "binance_ccxt"]
     # Similar configs for binance, binance_ccxt
 }
 ```
+
+---
+
+## 🔧 Resource Management & Context Managers
+
+### Problem Solved: Connection Timeout Issues
+
+**The Challenge:** When the monitoring loop reused connections indefinitely:
+```
+Cycle 1 (57 sec): Open connection → stays open
+Cycle 2 (57 sec): Reuse connection → stays open  
+Cycle 3 (57 sec): Reuse connection → stays open
+... 1.5 hours later ...
+TIMEOUT ❌ Connection dies from inactivity
+```
+
+**The Solution:** Context managers guarantee fresh connections every cycle:
+```
+Cycle 1: with provider: → open connection → fetch data → close ✅
+Cycle 2: with provider: → open connection → fetch data → close ✅
+Cycle 3: with provider: → open connection → fetch data → close ✅
+... 24+ hours later ...
+Still running ✅ No timeouts!
+```
+
+### Implementation Pattern
+
+All data providers implement Python's context manager protocol for guaranteed resource cleanup:
+
+**Base Implementation (BaseDataProvider - lines 157-217):**
+```python
+class BaseDataProvider:
+    def close(self):
+        """Close any open connections (default: no-op)"""
+        pass
+    
+    def __enter__(self):
+        """Enter context - return self"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context - always calls close() for cleanup"""
+        self.close()
+        return False
+```
+
+**Usage in Coordinator (lines 168-174):**
+```python
+def fetch_ohlcv(self, symbol, from_ts, to_ts, resolution):
+    provider = self._get_provider(symbol)
+    with provider:
+        # Fresh connection on entry
+        ohlcv = provider.fetch_ohlcv(symbol, from_ts, to_ts, resolution)
+        # Connection cleaned up on exit, guaranteed
+    return ohlcv
+```
+
+**Provider-Specific Overrides:**
+- **VietstockProvider:** Uses default close() (no special cleanup needed)
+- **BinanceAPIProvider:** Overrides close() to cleanup HTTP session (lines 70-82)
+- **BinanceCCXTProvider:** Overrides close() to cleanup exchange connection
+
+### Resource Cleanup Details
+
+**BinanceAPIProvider - HTTP Session Cleanup:**
+```python
+def close(self):
+    """Clean up HTTP session"""
+    try:
+        if hasattr(self, '_session') and self._session:
+            self._session.close()
+    except Exception as e:
+        logger.error(f"Error closing session: {e}")
+```
+
+**BinanceCCXTProvider - Exchange Connection Cleanup:**
+```python
+def close(self):
+    """Clean up CCXT exchange connection"""
+    if hasattr(self, '_exchange'):
+        # Provider-specific cleanup logic
+        pass
+```
+
+### Monitoring Loop Integration
+
+The 57-second monitoring cycle in `_coordinator.py` uses context managers:
+
+**Before (problematic):**
+```python
+# Connection stayed open, caused timeouts
+provider = self._get_provider(symbol)
+ohlcv = provider.fetch_ohlcv(symbol, from_ts, to_ts, resolution)
+# Connection never closed!
+```
+
+**After (fixed):**
+```python
+# Fresh connection every cycle, no timeouts
+provider = self._get_provider(symbol)
+with provider:
+    ohlcv = provider.fetch_ohlcv(symbol, from_ts, to_ts, resolution)
+# Connection automatically cleaned up on exit
+```
+
+### Benefits of Context Managers
+
+1. **Guaranteed Cleanup:** Even if exception occurs, `__exit__()` still called
+2. **Fresh Connections:** Every cycle gets a new connection (no stale connections)
+3. **Memory Safety:** No accumulating open connections (no memory leaks)
+4. **Simple Interface:** `with` statement is Pythonic and readable
+5. **Consistent Across Providers:** All providers follow same pattern
+
+### Testing Resource Cleanup
+
+To verify context managers are working:
+1. Check HTTP connections close after each cycle
+2. Verify exchange connections are cleaned up
+3. Monitor memory usage (should be constant, not growing)
+4. Run for 24+ hours without timeout (validates 1-2 hr problem is solved)
 
 ---
 
@@ -322,11 +464,13 @@ ENABLED_DATA_PROVIDERS = ["vietstock", "binance_ccxt"]
 **Required Structure:**
 ```python
 pd.DataFrame with:
-  Index:     pd.DatetimeIndex named 'time' (with timezone)
+  Index:     pd.DatetimeIndex named 'time' (with market timezone)
   Columns:   ['open', 'high', 'low', 'close', 'volume']
   Dtypes:    open/high/low/close/volume = float64
-  Timezone:  UTC or market-specific timezone
+  Timezone:  Market timezone (e.g., Asia/Ho_Chi_Minh) - NOT UTC
 ```
+
+**⚠️ CRITICAL:** Timezone MUST be market timezone, NOT UTC. Using UTC causes downstream TypeErrors.
 
 **Example:**
 ```python
@@ -335,6 +479,9 @@ time
 2026-04-07 09:00:00+07:00  1768.49 1768.85 1768.30 1768.65  1000000
 2026-04-07 09:01:00+07:00  1768.65 1769.20 1768.40 1768.99  1200000
 2026-04-07 09:02:00+07:00  1768.99 1769.50 1768.80 1769.20   900000
+
+# Note: Timezone is Asia/Ho_Chi_Minh (+07:00), NOT UTC
+# This ensures all providers return identical data structures
 ```
 
 ### Cache Key Format
@@ -344,8 +491,8 @@ time
 Examples:
   ('VCB', None)           # VCB with default resolution
   ('VCB', 1)              # VCB with 1-minute candles
-  ('BTCUSDT', 5)          # BTC/USDT with 5-minute candles
-  ('BTC/USDT', 60)        # BTC/USDT with 1-hour candles
+  ('BTCUSDT', 5)          # BTCUSDT with 5-minute candles
+  ('BTCUSDT', 60)        # BTCUSDT with 1-hour candles
 ```
 
 ---
@@ -419,12 +566,16 @@ SymbolAlerter (Alert System)
 - ✅ Complete data pipeline (7 steps: request → cache → fetch → process → return)
 - ✅ Intelligent caching with miss detection
 - ✅ Multi-provider support (3 providers: Vietstock, Binance API, Binance CCXT)
+- ✅ **Timezone consistency enforcement** (all providers use market timezone, not UTC)
 - ✅ Format standardization (time as DatetimeIndex, OHLCV columns)
 - ✅ Type compatibility validation (coordinator validates dtypes)
+- ✅ **Timezone validation in all normalizers** (critical for preventing cascading errors)
 - ✅ Data processing pipeline (timezone conversion, price adjustments)
 - ✅ Configuration-driven provider management (single source of truth)
 - ✅ Graceful error handling with detailed messages (returns None on failure)
 - ✅ Performance optimization (singleton providers, cached instances)
+- ✅ **Context manager resource management** (guaranteed connection cleanup, prevents timeouts)
+- ✅ **Fresh connections every 57-second cycle** (solves 1-2 hour timeout problem)
 - ✅ Full test coverage (27+ integration tests, validated)
 
 ---

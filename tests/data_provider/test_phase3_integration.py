@@ -389,14 +389,14 @@ class TestPartialRangeRetrieval:
 
 
 class TestBTCUSDTRealDataFetching:
-    """Test real data fetching for BTC/USDT cryptocurrency pair."""
+    """Test real data fetching for BTCUSDT cryptocurrency pair."""
     
     def test_get_with_resolution_btcusdt_realtime(self):
         """
-        Test fetching real BTC/USDT data with 1-minute resolution.
+        Test fetching real BTCUSDT data with 1-minute resolution.
         
         Scenario:
-        - Symbol: BTC/USDT
+        - Symbol: BTCUSDT
         - Time Range: 2026-04-07 20:00:00 to 21:00:00 GMT+7
         - Resolution: 1 minute
         
@@ -417,9 +417,9 @@ class TestBTCUSDTRealDataFetching:
         end_time_utc = end_time_gmt7.tz_convert('UTC')
         
         print("\n" + "=" * 70)
-        print("BTC/USDT Real Data Fetching Test")
+        print("BTCUSDT Real Data Fetching Test")
         print("=" * 70)
-        print(f"Symbol: BTC/USDT")
+        print(f"Symbol: BTCUSDT")
         print(f"Time Range (GMT+7): {start_time_gmt7} to {end_time_gmt7}")
         print(f"Time Range (UTC): {start_time_utc} to {end_time_utc}")
         print(f"Resolution: 1 minute")
@@ -427,7 +427,7 @@ class TestBTCUSDTRealDataFetching:
         
         # Fetch data with resolution
         processed_df = manager.get_with_resolution(
-            symbol='BTC/USDT',
+            symbol='BTCUSDT',
             start_time=start_time_utc,
             end_time=end_time_utc,
             resolution=1

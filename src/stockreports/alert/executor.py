@@ -9,7 +9,7 @@ from src.stockreports.utils.log_factory import log
 from varname import nameof
 from src.stockreports.utils.conversion_data_utils import make_json_safe
 from src.stockreports.alert.model.models import AlertResult, AlertData, Validation
-from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceColumn, LogLevel, Trend, Status
+from src.stockreports.alert.common.constants import Signal, PeakTrough, PriceColumn, LogLevel, Trend, Status, Approach
 from src.stockreports.alert.common.base_settings import BaseSettings
 from src.stockreports.utils import candle_utils
 from src.stockreports.alert.common.constants import ValidationStatus, Mode  # Add this import
@@ -18,9 +18,10 @@ from src.stockreports.alert.analyzer import Analyzer
 
 class Executor(ABC):
 
-    def __init__(self, symbol: str, approach: str, settings: Optional[BaseSettings] = None):
+    def __init__(self, symbol: str, approach: Approach, resolution: int, settings: Optional[BaseSettings] = None):
         self.symbol = symbol
         self.APPROACH_NAME = approach
+        self.resolution = resolution
         self.settings = settings
 
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -131,7 +132,9 @@ class Executor(ABC):
         performance_suggested_price, structural_suggested_price = calculate_suggested_prices(
             alert.signal,
             alert.alert_time,
-            alert.approach
+            alert.approach,
+            symbol=alert.symbol,
+            resolution=self.resolution
         )
         suggested_profit_threshold = get_suggested_take_profit(alert.magnitude)
         alert.structural_suggested_price = structural_suggested_price

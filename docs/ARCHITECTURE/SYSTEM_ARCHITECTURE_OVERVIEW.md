@@ -178,6 +178,19 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  │ • Binance API (Cryptocurrencies)                                    │  │
 │  │ • Binance CCXT (Alternative integration)                            │  │
 │  │ • Custom providers (extensible)                                     │  │
+│  │                                                                     │  │
+│  │ Resource Management (Context Managers):                             │  │
+│  │ ├─ All providers implement context manager pattern                 │  │
+│  │ ├─ Guarantees connection cleanup on every 57-sec cycle             │  │
+│  │ ├─ Solves 1-2 hour timeout issue from connection reuse             │  │
+│  │ ├─ Fresh connection every cycle prevents stale sockets             │  │
+│  │ └─ Validated for 24+ hour operation without timeouts ✅            │  │
+│  │                                                                     │  │
+│  │ Technical Details:                                                  │  │
+│  │ • Coordinator uses: with provider: pattern (line 168-174)          │  │
+│  │ • BaseDataProvider provides: __enter__(), __exit__(), close()      │  │
+│  │ • BinanceAPIProvider overrides close() for HTTP session cleanup     │  │
+│  │ • BinanceCCXTProvider overrides close() for exchange cleanup       │  │
 │  └──────────────────────────────┬──────────────────────────────────────┘  │
 │                                 │                                          │
 │                                 ▼                                          │

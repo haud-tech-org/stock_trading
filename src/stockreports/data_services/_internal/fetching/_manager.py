@@ -95,7 +95,7 @@ class HistoricalDataManager:
         the default resolution (None).
         
         Args:
-            symbol: Stock symbol (e.g., 'VCB', 'BTC/USDT')
+            symbol: Stock symbol (e.g., 'VCB', 'BTCUSDT')
             start_time: Start of time range
             end_time: End of time range
             
@@ -122,7 +122,7 @@ class HistoricalDataManager:
         3. Merge new data with cache and return
         
         Args:
-            symbol: Stock symbol (e.g., 'VCB', 'BTC/USDT')
+            symbol: Stock symbol (e.g., 'VCB', 'BTCUSDT')
             start_time: Start of time range
             end_time: End of time range
             resolution: Optional resolution (1, 5, 15, 60 min etc)
@@ -287,23 +287,47 @@ class HistoricalDataManager:
     # ============================================================================
     
     def clear_cache(self) -> None:
-        """Clear entire cache and reset statistics."""
+        """
+        Clear entire cache and reset statistics.
+        
+        ⚠️  WARNING: This will clear ALL cached data for ALL symbols and resolutions!
+        
+        Use with caution - should only be called:
+        - During testing (to reset state between tests)
+        - During application shutdown (clean restart)
+        - Explicitly by admin/monitoring tools
+        
+        NOT recommended during normal operation as it will force re-fetching
+        of all historical data from the API, potentially causing:
+        - API rate limit issues
+        - Performance degradation
+        - Unnecessary network traffic
+        
+        For selective clearing, use clear_symbol(symbol) instead.
+        """
         self._data_cache.clear()
         if self._enable_monitoring:
             self._cache_stats['last_cleared'] = datetime.now()
-        self.logger.info("Cache cleared")
+        self.logger.warning("⚠️  CACHE CLEARED - All data purged, will require re-fetching")
     
     def clear_symbol(self, symbol: str) -> None:
         """
         Clear cache for a specific symbol (all resolutions).
         
+        Use this instead of clear_cache() when you only need to refresh
+        data for one symbol, preserving cache for other symbols.
+        
         Args:
-            symbol: Stock symbol to clear
+            symbol: Stock symbol to clear (e.g., 'VCB', 'BTCUSDT')
+            
+        Example:
+            >>> manager = get_manager()
+            >>> manager.clear_symbol('VCB')  # Refresh only VCB, keep others cached
         """
         keys_to_remove = [k for k in self._data_cache.keys() if k[0] == symbol]
         for key in keys_to_remove:
             del self._data_cache[key]
-        self.logger.info(f"Cache cleared for symbol '{symbol}'")
+        self.logger.info(f"Cache cleared for symbol '{symbol}' ({len(keys_to_remove)} resolution(s))")
     
     def get_cache_size(self) -> Dict:
         """
@@ -494,7 +518,32 @@ class HistoricalDataManager:
 # MODULE-LEVEL SINGLETON FOR BACKWARD COMPATIBILITY
 # ============================================================================
 
-# Single instance to maintain backward compatibility with existing code
+# Single instance to maintain backward compatibility with existing code.
+#
+# IMPORTANT: This singleton is the SINGLE SOURCE OF TRUTH for all cached data
+# across the entire application. All components must use this same instance
+# to ensure data consistency:
+#
+#   ✅ CORRECT - All components share same cache:
+#      manager = get_manager()
+#      manager.get(...)          # Uses singleton
+#
+#   ❌ WRONG - Creates separate cache (data not shared):
+#      manager = HistoricalDataManager()
+#      manager.get(...)          # Own isolated cache!
+#
+# This is critical because multiple components access data:
+# - DataServiceOrchestrator (main flow)
+# - Executors (trading decisions)
+# - Symbol alerts (monitoring)
+# - Analysis tools (backtesting)
+# - Other services (reporting)
+#
+# They ALL must share the SAME cache to avoid:
+# - Duplicate API requests
+# - Data inconsistency
+# - Memory bloat
+# - Performance issues
 _manager = HistoricalDataManager()
 
 
@@ -539,12 +588,32 @@ def get_manager() -> HistoricalDataManager:
     """
     Get the module-level singleton manager instance.
     
-    This allows code to access the manager directly if needed:
+    IMPORTANT: Always use this function to access the cache. Never create
+    a new HistoricalDataManager() instance directly, as that would create
+    a separate isolated cache.
+    
+    The singleton ensures:
+    - ✅ All components share the SAME cache
+    - ✅ Data consistency across the application
+    - ✅ No duplicate API requests
+    - ✅ Minimal memory usage
+    - ✅ Proper data persistence
+    
+    Usage Examples:
+        # From DataServiceOrchestrator
         manager = get_manager()
-        manager.clear_symbol('VCB')
+        data = manager.get_with_resolution(symbol, start_time, end_time)
+        
+        # From alert system
+        manager = get_manager()
+        manager.update(symbol, new_data)
+        
+        # From monitoring/admin
+        manager = get_manager()
         stats = manager.get_cache_stats()
+        manager.clear_symbol('VCB')  # Refresh only this symbol
     
     Returns:
-        The HistoricalDataManager singleton instance
+        The HistoricalDataManager singleton instance (persistent, shared)
     """
     return _manager

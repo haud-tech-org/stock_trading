@@ -82,7 +82,7 @@ def get_execution_symbol() -> str:
     """
     return settings.SYMBOLS[0]
 
-def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: Optional[str] = None) -> Tuple[Optional[float], Optional[float]]:
+def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: Optional[str] = None, symbol: Optional[str] = None, resolution: Optional[int] = None) -> Tuple[Optional[float], Optional[float]]:
     """
     Calculates both performance-based and structural suggested prices.
 
@@ -90,13 +90,18 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
         signal (str): The alert signal ('BUY' or 'SELL').
         alert_time (pd.Timestamp): The timestamp of the alert.
         approach (Optional[str]): The name of the alert approach.
+        symbol (Optional[str]): The trading symbol. If provided, overrides the default execution symbol.
+                               If None, uses the primary execution symbol from settings.
+        resolution (Optional[int]): The data resolution in minutes. If None, uses MONITORING_DATA_RESOLUTION_MINUTES.
 
     Returns:
         Tuple[Optional[float], Optional[float]]: A tuple containing:
             - performance_suggested_price
             - structural_suggested_price
     """
-    execution_symbol = get_execution_symbol()
+    execution_symbol = symbol if symbol is not None else get_execution_symbol()
+    if resolution is None:
+        resolution = data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
     performance_price = None
     structural_price = None
 
@@ -121,16 +126,29 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
             return None, None
 
     # --- Unified Data Fetch ---
-    # Fetch a single, wider window that covers both performance (T) and structural (T, T-1) needs.
-    start_fetch_time = alert_time - pd.Timedelta(minutes=5)
-    end_fetch_time = alert_time + pd.Timedelta(minutes=2)
+    # Buffer times scale with resolution to ensure we have enough historical context
+    # For structural price: we need at least 3 candles (T-2, T-1, T)
+    # For performance price: we need current candle (T)
+    # Buffer: 3x resolution before (to ensure 3+ candles), 1x resolution after (safety margin)
+    buffer_before = pd.Timedelta(minutes=resolution * 3)
+    buffer_after = pd.Timedelta(minutes=resolution * 1)
+    
+    start_fetch_time = alert_time - buffer_before
+    end_fetch_time = alert_time + buffer_after
+    
+    logger.debug(
+        f"Fetching data for price calculation: "
+        f"symbol={execution_symbol}, "
+        f"resolution={resolution}min, "
+        f"time_range=[{start_fetch_time}, {end_fetch_time}]"
+    )
     
     orchestrator = DataServiceOrchestrator()
     market_data = orchestrator.fetch_and_process(
         symbol=execution_symbol,
         start_time=start_fetch_time,
         end_time=end_fetch_time,
-        resolution=data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
+        resolution=resolution
     )
 
     # If no data is fetched, we can't proceed with either calculation.

@@ -40,6 +40,9 @@ if project_root not in sys.path:
 from src.stockreports.config import loader
 from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.alert.common.constants import Approach
+from src.stockreports.coordination import get_coordinator
+from src.stockreports.utils.approach_utils import get_approach_executor
+from src.stockreports.alert.model.models import AlertResult
 from tests.debug.common.charts.visibility_chart import generate_alert_chart
 from tests.debug.common.utils.debug_utils import save_debug_data
 
@@ -50,97 +53,137 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def run_debug_analysis(approach, symbol, start_time_str, end_time_str, save_to_file, generate_chart):
     """
     Sets up the environment and runs the debug analysis for the selected approach.
+    
+    This mirrors the executor initialization used in symbol_alerter._perform_monitoring_session:
+    1. Get resolution from resolution_coordinator
+    2. Use get_approach_executor(symbol, approach, resolution) to instantiate
+    3. Run executor.run(df=data, new_candle_count=len(data))
     """
     # --- 1. Load Configuration & Set Mode ---
     importlib.reload(loader)
+    settings = loader.get_settings()
+    settings.MODE = 'DEPLOYMENT'  # Use DEPLOYMENT mode to bypass load_data_for_development() bug
+    
+    # Normalize approach name to uppercase with underscores
+    # E.g., "VRA" → "VRA", "reversal-anchor-signal-candle" → "REVERSAL_ANCHOR_SIGNAL_CANDLE"
+    approach_normalized = approach.upper().replace('-', '_')
+    
+    print(f"--- Starting Debug Analysis for {approach_normalized} on {symbol} from {start_time_str} to {end_time_str} (Mode: {settings.MODE}) ---")
 
-    # Dynamically import the executor AFTER reloading the configuration
-    # Use the approach argument as-is for the module path (case-sensitive)
-    executor_module_path = f"src.stockreports.alert.approach.{approach}.executor"
+    # --- 2. Get Resolution from Coordinator ---
     try:
-        executor_module = importlib.import_module(executor_module_path)
-        # Try to get the executor class by convention: e.g., VraExecutor, TrendReversalExecutor
-        class_name = f"{''.join([part.capitalize() for part in approach.lower().split('_')])}Executor"
-        ExecutorClass = getattr(executor_module, class_name)
-    except (ModuleNotFoundError, AttributeError) as e:
-        print(f"ERROR: Could not import executor for approach '{approach}'. Error: {e}")
+        resolution_coordinator = get_coordinator()
+        resolution = resolution_coordinator.get_resolutions(approach_normalized)
+        print(f"Resolution for {approach_normalized}: {resolution} minutes")
+    except KeyError as e:
+        print(f"ERROR: Cannot get resolution for approach '{approach_normalized}'. Error: {e}")
+        return
+    except Exception as e:
+        print(f"ERROR: An error occurred while getting resolution: {e}")
         return
 
-    settings = loader.get_settings()
-    settings.MODE = 'DEVELOPMENT' # Use DEVELOPMENT mode for debugging
-    approach_name = getattr(Approach, approach.upper(), approach)
-
-    print(f"--- Starting Debug Analysis for {approach_name} on {symbol} from {start_time_str} to {end_time_str} (Mode: {settings.MODE}) ---")
-
-    # --- 2. Fetch Data ---
+    # --- 3. Fetch Data ---
     timezone = settings.TRADING_HOURS[settings.MARKET_COUNTRY_CODE]['timezone']
     start_time = pd.to_datetime(start_time_str).tz_localize(timezone)
     end_time = pd.to_datetime(end_time_str).tz_localize(timezone)
 
-    print(f"\n--- Fetching data for {symbol} from {start_time} to {end_time} ---")
+    print(f"\n--- Fetching {resolution}-minute data for {symbol} from {start_time} to {end_time} ---")
     json_file_path = None
     try:
-        from_timestamp = int(start_time.timestamp())
-        to_timestamp = int(end_time.timestamp())
-        
         # ✅ USE CENTRALIZED DATA SERVICES ORCHESTRATOR
         orchestrator = DataServiceOrchestrator()
-        data_provider_settings = loader.get_data_provider_settings()
+        
+        print(f"DEBUG: Calling orchestrator.fetch_and_process with resolution={resolution}")
         df_for_analysis = orchestrator.fetch_and_process(
             symbol=symbol,
             start_time=start_time,
             end_time=end_time,
-            resolution=data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
+            resolution=resolution  # Use approach-specific resolution
         )
 
-        if df_for_analysis is None or df_for_analysis.empty:
-            print(f"ERROR: Could not retrieve data for '{symbol}'.")
+        # More explicit type checking to avoid ambiguous DataFrame truth value
+        if df_for_analysis is None:
+            print(f"ERROR: orchestrator returned None")
             return
         
-        print("Data successfully fetched.")
+        if not isinstance(df_for_analysis, pd.DataFrame):
+            print(f"ERROR: orchestrator did not return a DataFrame, got {type(df_for_analysis)}")
+            return
+        
+        if len(df_for_analysis) == 0:
+            print(f"ERROR: DataFrame is empty")
+            return
+        
+        print(f"Data successfully fetched: {len(df_for_analysis)} rows")
 
         if save_to_file:
             json_file_path = save_debug_data(df_for_analysis, symbol, start_time, end_time, project_root)
 
     except Exception as e:
         print(f"ERROR: An error occurred during data fetching: {e}")
+        logging.error("Data fetching failed", exc_info=True)
         return
 
-    # --- 3. Run the Executor ---
-    print(f"\n--- Running {approach_name} Executor ---")
+    # --- 4. Initialize Executor (Same as symbol_alerter) ---
+    print(f"\n--- Initializing {approach_normalized} Executor ---")
     try:
-        executor = ExecutorClass(symbol)
-        # In development mode, the executor should process the entire DataFrame
-        alert_result = executor.run(df_for_analysis, new_candle_count=len(df_for_analysis))
-        alerts_df = alert_result.alerts
-        if not alerts_df.empty:
-            print(f"\n--- Found {len(alerts_df)} {approach_name} Alerts ---")
-            print(alerts_df.to_string())
-        else:
-            print(f"\n--- No {approach_name} Alerts Found ---")
+        executor = get_approach_executor(symbol, approach_normalized, resolution)
+        if not executor:
+            print(f"ERROR: Could not instantiate executor for '{approach_normalized}'")
+            return
+        print(f"Executor initialized successfully")
     except Exception as e:
-        print(f"ERROR: An error occurred during {approach_name} execution: {e}")
+        print(f"ERROR: An error occurred while initializing executor: {e}")
+        logging.error("Executor initialization failed", exc_info=True)
+        return
+
+    # --- 5. Run the Executor ---
+    print(f"\n--- Running {approach_normalized} Executor ---")
+    try:
+        # In development mode, process the entire DataFrame
+        print(f"DEBUG: Calling executor.run with df shape={df_for_analysis.shape}, new_candle_count={len(df_for_analysis)}")
+        alert_result: AlertResult = executor.run(df=df_for_analysis.copy(), new_candle_count=len(df_for_analysis))
+        
+        # Verify AlertResult structure
+        if not isinstance(alert_result, AlertResult):
+            print(f"ERROR: executor.run() did not return AlertResult, got {type(alert_result)}")
+            return
+        
+        # Use confirmed_alerts (List[AlertData]) instead of deprecated alerts property
+        if not hasattr(alert_result, 'confirmed_alerts'):
+            print(f"ERROR: AlertResult has no 'confirmed_alerts' attribute")
+            return
+        
+        confirmed_alerts = alert_result.confirmed_alerts
+        
+        # Use len() instead of .empty to avoid ambiguous truth value
+        if len(confirmed_alerts) == 0:
+            print(f"\n--- No {approach_normalized} Alerts Found ---")
+        else:
+            print(f"\n--- Found {len(confirmed_alerts)} {approach_normalized} Alerts ---")
+    except Exception as e:
+        print(f"ERROR: An error occurred during {approach_normalized} execution: {e}")
         logging.error("Executor failed", exc_info=True)
         return
 
-    # --- 4. Generate Chart (Optional, Standardized) ---
-    if generate_chart and json_file_path and not alerts_df.empty:
+    # --- 6. Generate Chart (Optional, Standardized) ---
+    if generate_chart and json_file_path and len(confirmed_alerts) > 0:
         print("\n--- Generating Chart ---")
         try:
             chart_output_dir = os.path.join(project_root, 'tests', 'debug', 'charts')
-            alert_time = alerts_df.iloc[0]['alert_time'] if not alerts_df.empty else None
+            # Use the first confirmed alert with full data
+            first_alert = confirmed_alerts[0]
             generate_alert_chart(
                 input_file=json_file_path,
                 output_dir=chart_output_dir,
-                approach_name=approach_name,
-                alerts_df=alerts_df,
-                alert_time=alert_time
+                approach_name=approach_normalized,
+                alert=first_alert
             )
             print("Chart generation complete.")
         except Exception as e:
             print(f"ERROR: An error occurred during chart generation: {e}")
 
-    print(f"\n--- Debug Analysis for {approach_name} on {symbol} Finished ---")
+    print(f"\n--- Debug Analysis for {approach_normalized} on {symbol} Finished ---")
 
 
 if __name__ == "__main__":

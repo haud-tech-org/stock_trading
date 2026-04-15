@@ -31,13 +31,61 @@
 - TECHNICAL_REFERENCE: `/docs/ARCHITECTURE/TECHNICAL_REFERENCE/LAYER_4_APPROACH_EXECUTION/`
 - IMPLEMENTATION_GUIDES: `/docs/ARCHITECTURE/IMPLEMENTATION_GUIDES/LAYER_4_APPROACH_EXECUTION/`
 
-**Key Documents**:
-- ✅ EXECUTOR_ANALYZER_VALIDATOR_PATTERN.md (Understanding patterns)
-- ✅ EAV_PATTERN_STEP_BY_STEP.md (Step-by-step guide)
-- ✅ ABSTRACT_BASE_CLASSES_ARCHITECTURE.md (Inheritance)
-- ✅ EXECUTOR_IMPLEMENTATION_GUIDE.md (Complete guide)
+**Key Documents** (Read in this order):
+- ✅ EXECUTOR_PATTERN_OVERVIEW.md - High-level architecture (START HERE)
+- ✅ ABSTRACT_BASE_CLASSES_ARCHITECTURE.md - Inheritance design
+- ✅ EXECUTOR_ANALYZER_VALIDATOR_PATTERN.md - Technical patterns
+- ✅ EAV_PATTERN_STEP_BY_STEP.md - Step-by-step implementation
+- ✅ EXECUTOR_IMPLEMENTATION_GUIDE.md - Complete how-to guide
+- ✅ ANALYZER_VALIDATOR_QUICK_REFERENCE.md - Method library
+- ✅ DEEP_DIVE_FINDINGS.md - System integration (SymbolAlerter, multi-resolution, Mode system)
 
-**Critical**: Your approach code MUST NOT contradict these architectural decisions.
+**Critical Patterns From Architecture** (Must follow exactly):
+
+**a) @staticmethod Pattern for Analyzer & Validator** (from ABSTRACT_BASE_CLASSES_ARCHITECTURE.md)
+- ALL methods in Analyzer MUST be @staticmethod
+- ALL methods in Validator MUST be @staticmethod
+- Static methods have NO instance state, NO self references (except in decorators)
+- Pure functions - identical input always produces identical output
+- Makes methods testable in isolation and reusable
+
+**b) Validation Tracking with Step/Validation Counters** (from EXECUTOR_IMPLEMENTATION_GUIDE.md)
+- Use `self.current_step` to track major validation steps (1, 2, 3, ...)
+- Use `self.validation_step` to track sub-validations within a step (0-based)
+- Call `self.next_step()` in MAIN LOOP before calling private method
+- Call `self.next_validation()` in PRIVATE METHOD at the start
+- Append Validation objects to `self.validations` list for complete audit trail
+- Base class automatically includes validations in alert details
+
+**c) Multi-Resolution Architecture - NOT YOUR CONCERN** (from DEEP_DIVE_FINDINGS.md)
+- ⚠️ **SymbolAlerter handles all multi-resolution data management, NOT Executor**
+- Your executor receives pre-processed DataFrame for your configured resolution ONLY
+- You don't fetch data, manage resolutions, or coordinate with ResolutionCoordinator
+- Just analyze the DataFrame you receive and generate alerts
+- Resolution is configured in `APPROACH_RESOLUTION_MAPPING` (system handles it)
+
+**d) Mode System: LIVE vs REPLAY** (from DEEP_DIVE_FINDINGS.md)
+- LIVE Mode: Real-time indefinite monitoring (`DEBUG_REPLAY_START_TIME = None`)
+- REPLAY Mode: Historical simulation with bounded loop (`DEBUG_REPLAY_START_TIME = "timestamp"`)
+- Both modes use Mode.DEPLOYMENT for data access
+- Your executor code works identically in both modes
+- Return immediately on first alert in DEPLOYMENT mode (`if not self.is_development_mode: return`)
+
+**e) Private Step Methods Pattern** (from EXECUTOR_IMPLEMENTATION_GUIDE.md)
+- Each validation step gets its own `_step_validate_*()` private method
+- Methods return specific value/tuple on success, None on failure
+- Use type hints to specify return type: `Optional[ReturnType]`
+- Wrap logic in try/except that catches exceptions and returns None
+- Handle errors gracefully with logging, never raise exceptions up
+
+**f) Base Class Helper Methods** (from EXECUTOR_IMPLEMENTATION_GUIDE.md)
+- `get_loop_setup(df, mode, min_scan_index, new_candle_count)` - Returns loop boundaries
+- `set_window_context(i, df_indexed, lookback_period)` - Sets window variables
+- `_step_cooldown_check(last_alert, signal, cooldown_window)` - Checks cooldown (base class)
+- `_add_details_for_alert(**kwargs)` - Builds details dict (base class)
+- `_create_alert_with_details(signal, trend, candle, magnitude, details)` - Creates alert (base class)
+
+**Your approach code MUST NOT contradict these architectural decisions.**
 
 ---
 
@@ -48,10 +96,59 @@ Before starting implementation, verify you have read and understand:
 - [ ] CODE_QUALITY_STANDARDS.md (quality requirements)
 - [ ] LAYER_4 TECHNICAL_REFERENCE/README.md (theory)
 - [ ] LAYER_4 IMPLEMENTATION_GUIDES/README.md (practical examples)
+- [ ] **MANDATORY: settings.py must NOT have default values in `self.get()` calls** - Configuration is mandatory in signal_settings.py, not optional
+- [ ] **MANDATORY: Use `Approach` constant (not literal string) in settings.py** - Import `Approach` from `src.stockreports.alert.common.constants` and use `Approach.YOUR_APPROACH_NAME` in `super().__init__()`
 - [ ] EXECUTOR_ANALYZER_VALIDATOR_PATTERN.md (pattern details)
 - [ ] EAV_PATTERN_STEP_BY_STEP.md (step-by-step walkthrough)
 
 **Do NOT proceed unless all items are checked.**
+
+---
+
+## ⭐ MANDATORY - Configuration Setup (PREREQUISITE)
+
+**CRITICAL**: Before code generation begins, configurations MUST be added to the project configuration files. This is a **mandatory prerequisite step** that must be completed FIRST.
+
+**Files to Update**:
+
+1. **`src/stockreports/config/signal_settings.py`** - Three updates required:
+
+   **a) Add approach to `APPROACH_RESOLUTION_MAPPING` dictionary**
+   - Specifies the resolution (in minutes) for this approach (typically 1, 5, 15, or 60)
+   - Example:
+     ```python
+     APPROACH_RESOLUTION_MAPPING = {
+         # ... existing approaches ...
+         "REVERSAL_ANCHOR_SIGNAL_CANDLE": 1,  # 1-minute resolution
+     }
+     ```
+
+   **b) Add approach configuration to `APPROACH_CONFIG` dictionary**
+   - All configuration parameters must use UPPERCASED keys
+   - Add configuration block following existing approach patterns (e.g., VRA, STRONG_CANDLE)
+   - Example:
+     ```python
+     "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
+         "LOOKBACK_WINDOW": 50,
+         "MIN_SIZE_PRICE_WINDOW": 0.5,
+         # ... additional parameters ...
+     },
+     ```
+
+2. **`src/stockreports/alert/common/constants.py`** - Register approach in `Approach` class
+   - Add constant with exact same name as configuration key
+   - Example: `REVERSAL_ANCHOR_SIGNAL_CANDLE = "REVERSAL_ANCHOR_SIGNAL_CANDLE"`
+   - This enables recognition throughout the pipeline
+
+**Verification Checklist**:
+- [ ] Approach added to `APPROACH_RESOLUTION_MAPPING` with target resolution in signal_settings.py
+- [ ] Configuration block added to `APPROACH_CONFIG` in signal_settings.py
+- [ ] Approach constant added to `Approach` class in constants.py
+- [ ] Configuration key matches Approach constant value exactly
+- [ ] All parameter keys are UPPERCASED
+- [ ] Configuration follows existing approach patterns (indentation, comment style)
+
+**Do NOT proceed to implementation until all three configuration updates have been completed and verified.**
 
 ---
 
@@ -125,6 +222,7 @@ When implementing and documenting a new approach, you must strictly follow these
 2. **Centralized Settings and Configuration:**
     - All approach parameters must be defined in a dedicated `settings.py` and registered in the centralized config files (e.g., `signal_settings.py`).
     - No hardcoded default values in the executor; all values must come from config/settings.
+    - **MANDATORY: `settings.py` MUST NOT have fallback defaults in `self.get()` calls.** Use `self.get("CONFIG_KEY")` without a second parameter. This forces configuration to be mandatory in `signal_settings.py` and prevents silent failures from missing config.
 
 3. **Logging and Validation Objects:**
     - Every validation step must log failures and passes using the `log_factory.log` utility and append a `Validation` object to the executor's `self.validations` list.
@@ -311,19 +409,21 @@ Create a settings class that inherits from `BaseSettings`. This provides automat
 ```python
 # src/stockreports/alert/approach/CONSOLIDATION_BREAKOUT/settings.py
 from src.stockreports.alert.common.base_settings import BaseSettings
+from src.stockreports.alert.common.constants import Approach
 
 class ConsolidationBreakoutSettings(BaseSettings):
     def __init__(self, symbol: str):
-        # Initialize BaseSettings with the symbol and the approach name (key in signal_settings.py)
-        super().__init__(symbol, "CONSOLIDATION_BREAKOUT")
+        # Initialize BaseSettings with the symbol and the approach name from Approach constants
+        super().__init__(symbol, Approach.CONSOLIDATION_BREAKOUT)
         
         # --- Core Logic Parameters ---
-        # Use self.get(key, default) to access settings safely
-        self.lookback_period = self.get("LOOKBACK_PERIOD", 25)
-        self.min_clustered_candle_ratio = self.get("MIN_CLUSTERED_CANDLE_RATIO", 0.8)
+        # IMPORTANT: Do NOT use default values here. Use self.get(key) without a second parameter.
+        # This forces configuration to be mandatory in signal_settings.py
+        self.lookback_period = self.get("LOOKBACK_PERIOD")
+        self.min_clustered_candle_ratio = self.get("MIN_CLUSTERED_CANDLE_RATIO")
         
         # --- Standard Optional Filter Flags ---
-        self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION", True)
+        self.use_volume_confirmation = self.get("USE_VOLUME_CONFIRMATION")
 ```
 
 ### Step 4: Configure the Approach in `signal_settings.py`
@@ -352,29 +452,271 @@ class ConsolidationBreakoutSettings(BaseSettings):
 
 ### Step 5: Implement the Executor Class
 
-This is the core of the work. Follow the template below, ensuring you adhere to the principles outlined in Section 2.
+This is the core of the work. Follow the CURRENT WORKING PATTERN shown below (from STRONG_CANDLE, VRA, CONSISTENT_MOMENTUM), ensuring you adhere to the principles outlined in Section 2.
+
+#### 5.1 Executor Class Structure (CURRENT WORKING PATTERN)
 
 ```python
-# src/stockreports/alert/approach/CONSOLIDATION_BREAKOUT/executor.py
+# src/stockreports/alert/approach/YOUR_APPROACH_NAME/executor.py
 import pandas as pd
 import logging
-from typing import Optional
+from typing import Optional, Tuple
+from varname import nameof
 
-# --- Project Imports ---
 from src.stockreports.alert.executor import Executor
-from src.stockreports.config import loader
-from src.stockreports.alert.common.constants import Approach, Mode, Signal
-from src.stockreports.alert.model.models import AlertResult, AlertData
-from .settings import ConsolidationBreakoutSettings
+from src.stockreports.alert.common.constants import (
+    Approach,
+    Signal,
+    Trend,
+    ValidationStatus,
+    LogLevel,
+)
+from src.stockreports.alert.model.models import AlertData, Validation
+from src.stockreports.utils.log_factory import log
+from .settings import YourApproachSettings
+from .analyzer import YourApproachAnalyzer
+from .validator import YourApproachValidator
 
-class ConsolidationBreakoutExecutor(Executor):
-    APPROACH_NAME = Approach.CONSOLIDATION_BREAKOUT
-    LATEST_ACCEPTED_ALERT: Optional[AlertData] = None
 
-    def __init__(self, symbol: str):
-        super().__init__(symbol)
-        self.settings = ConsolidationBreakoutSettings(symbol)
+class YourApproachExecutor(Executor):
+    """Executor for YOUR_APPROACH_NAME approach.
+    
+    [2-3 sentence description of what this approach detects]
+    """
+
+    LATEST_ALERT: Optional[AlertData] = None
+
+    def __init__(self, symbol: str) -> None:
+        """Initialize executor.
+        
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+        """
+        self.settings = YourApproachSettings(symbol)
+        self.analyzer = YourApproachAnalyzer()
+        self.validator = YourApproachValidator()
+        
+        approach_name = Approach.YOUR_APPROACH_NAME
+        super().__init__(symbol, approach_name, self.settings)
         self.logger = logging.getLogger(__name__)
+
+    def _find_alerts(
+        self,
+        df: pd.DataFrame,
+        new_candle_count: int = 0,
+    ) -> list[AlertData]:
+        """Find all alerts in price data.
+        
+        Main entry point for alert detection.
+        
+        Args:
+            df: OHLCV DataFrame
+            new_candle_count: Number of new candles since last run
+            
+        Returns:
+            List of AlertData objects
+        """
+        lookback_window_size = self.settings.lookback_window
+
+        if len(df) < lookback_window_size:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time="N/A",
+                step=0,
+                message=f"Not enough data for {self.APPROACH_NAME}: requires {lookback_window_size}, have {len(df)}.",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
+            )
+            return self.alerts
+
+        # --- Standardized loop setup ---
+        df_indexed, loop_start, loop_end = self.get_loop_setup(
+            df=df,
+            new_candle_count=new_candle_count,
+            lookback_window_size=lookback_window_size
+        )
+
+        for i in range(loop_end, loop_start - 1, -1):
+            # --- Standardized window context extraction ---
+            self.set_window_context(i, df_indexed, lookback_window_size)
+            if self.lookback_window_df is None or self.last_candle is None:
+                continue
+
+            # Step 1: [First validation]
+            self.next_step()
+            result1 = self._step_validate_condition_1()
+            if result1 is None:
+                continue
+
+            # Step 2: [Second validation]
+            self.next_step()
+            result2 = self._step_validate_condition_2()
+            if result2 is None:
+                continue
+
+            # Step 3: [Third validation]
+            self.next_step()
+            signal = self._step_determine_signal()
+            if signal is None:
+                continue
+
+            # Step 4: Cooldown check (use base class method)
+            self.next_step()
+            if not self._step_cooldown_check(
+                last_alert=YourApproachExecutor.LATEST_ALERT,
+                signal=signal,
+                cooldown_window=self.settings.cooldown_window
+            ):
+                continue
+
+            # Step 5: Alert creation (use base class helpers)
+            self.next_step()
+            details_dict = self._add_details_for_alert(
+                field1=result1,
+                field2=result2,
+                signal=str(signal),
+            )
+
+            alert_data = self._create_alert_with_details(
+                final_signal=signal,
+                final_trend=Trend.UPTREND,  # or calculate from your logic
+                final_alert_candle=self.last_candle,
+                final_magnitude=some_magnitude,
+                details=details_dict
+            )
+
+            if alert_data is not None:
+                self.alerts.append(alert_data)
+                YourApproachExecutor.LATEST_ALERT = alert_data
+
+                if not self.is_development_mode:
+                    return self.alerts
+
+        return self.alerts
+
+    def _step_validate_condition_1(self) -> Optional[SomeType]:
+        """Step 1: [Validation description].
+        
+        Returns:
+            Value if valid, None otherwise
+        """
+        self.next_validation()
+        try:
+            # Your analysis/validation logic
+            result = self.analyzer.calculate_something(self.lookback_window_df)
+            is_valid = self.validator.validate_something(result, self.settings.param1)
+            
+            if not is_valid:
+                log(
+                    logger=self.logger,
+                    status=ValidationStatus.FAILED,
+                    name=self.__class__.__name__,
+                    alert_time=self.current_window_end_time,
+                    step=self.current_step,
+                    validation=self.validation_step,
+                    message=f"Condition 1 failed: {reason}",
+                    log_level=LogLevel.DEBUG,
+                    execution_symbol=self.symbol,
+                    approach=self.APPROACH_NAME
+                )
+                return None
+            
+            self.validations.append(Validation(
+                name=nameof(self.settings.param1),
+                step=self.current_step,
+                validation=self.validation_step,
+                message="Condition 1 validation passed",
+                status=ValidationStatus.PASSED
+            ))
+            
+            return result
+            
+        except Exception as e:
+            log(
+                logger=self.logger,
+                status=ValidationStatus.FAILED,
+                name=self.__class__.__name__,
+                alert_time=self.current_window_end_time,
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Condition 1 check failed - {str(e)}",
+                log_level=LogLevel.DEBUG,
+                execution_symbol=self.symbol,
+                approach=self.APPROACH_NAME
+            )
+            return None
+
+    def _step_validate_condition_2(self) -> Optional[AnotherType]:
+        """Step 2: [Validation description]."""
+        self.next_validation()
+        try:
+            # Your validation logic
+            result = self.analyzer.calculate_something_else(self.last_candle)
+            is_valid = self.validator.validate_something_else(result, self.settings.param2)
+            
+            if not is_valid:
+                log(...)
+                return None
+            
+            self.validations.append(Validation(...))
+            return result
+            
+        except Exception as e:
+            log(...)
+            return None
+
+    def _step_determine_signal(self) -> Optional[Signal]:
+        """Step 3: Determine the signal (BUY or SELL).
+        
+        Returns:
+            Signal.BUY, Signal.SELL, or None if pattern doesn't match
+        """
+        self.next_validation()
+        try:
+            # Your logic to determine signal
+            signal = Signal.BUY  # or Signal.SELL
+            
+            self.validations.append(Validation(
+                name="signal_determination",
+                step=self.current_step,
+                validation=self.validation_step,
+                message=f"Signal determined: {signal}",
+                status=ValidationStatus.PASSED
+            ))
+            
+            return signal
+            
+        except Exception as e:
+            log(...)
+            return None
+```
+
+#### 5.2 Key Implementation Points
+
+**MANDATORY PATTERNS** (verified in all 6 working executors):
+
+1. **Call `self.next_step()` in main loop BEFORE calling private method**
+2. **Call `self.next_validation()` in private method AT THE START**
+3. **Private methods return value on success, None on failure**
+4. **Each validation appends Validation object with tracking**
+5. **Use `_step_cooldown_check(last_alert, signal, cooldown_window)` from base class**
+6. **Use `_add_details_for_alert()` and `_create_alert_with_details()` from base class**
+7. **Return immediately in DEPLOYMENT mode** after first alert
+
+#### 5.3 DO NOT
+
+❌ **Do NOT**:
+- Implement your own `_step_cooldown_check()` method - use base class
+- Manually create `AlertData(...)` - use `_create_alert_with_details()`
+- Build details dict manually - use `_add_details_for_alert()`
+- Use outdated parameters: `symbol=`, `time=`, `close=`, `approach=`
+- Override `run()` method - implement `_find_alerts()` instead
+- Use magic strings anywhere - use constants and enums
+
+
 
     def run(self, df: pd.DataFrame, new_candle_count: int = 0) -> AlertResult:
         # ... (try/except block) ...

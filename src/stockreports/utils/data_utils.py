@@ -272,7 +272,7 @@ def load_live_data(symbol: str, from_timestamp: int, to_timestamp: int) -> pd.Da
     Provider is automatically detected based on the symbol from PROVIDER_SYMBOLS_CONFIG.
     
     Args:
-        symbol: Stock/crypto symbol (e.g., 'VCB', 'BTC/USDT')
+        symbol: Stock/crypto symbol (e.g., 'VCB', 'BTC/USDT:USDT')
         from_timestamp: Start time (Unix timestamp in seconds)
         to_timestamp: End time (Unix timestamp in seconds)
         

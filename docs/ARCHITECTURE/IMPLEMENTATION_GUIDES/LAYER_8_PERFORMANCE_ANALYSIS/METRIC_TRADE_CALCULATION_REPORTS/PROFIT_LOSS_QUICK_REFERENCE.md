@@ -204,7 +204,7 @@ VALIDATION_DATE_FILTER = None            # None = all dates
 PRICE_ADJUSTMENT_EXCLUSION_LIST = [
     "VN30",
     "VN30F1M",
-    "BTC/USDT"
+    "BTCUSDT"
 ]  # Don't divide by 1000
 ```
 

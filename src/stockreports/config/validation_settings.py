@@ -111,4 +111,4 @@ MIN_EXPECTED_PROFIT_LOSS = 2.0
 # This is typically used for indices or other symbols with a different price scale than individual stocks.
 # Guidance: Add any symbol (e.g., "VN30", "VNINDEX") that should be exempt from the standard price adjustment logic.
 # Example: `PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30"]`
-PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30", "VN30F1M", "BTC/USDT"]
+PRICE_ADJUSTMENT_EXCLUSION_LIST = ["VN30", "VN30F1M", "BTC/USDT:USDT"]

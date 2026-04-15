@@ -59,7 +59,7 @@ class DataProviderCoordinator:
         4. Raise error if symbol not supported by any enabled provider
         
         Args:
-            symbol: Stock/crypto symbol (e.g., 'VCB', 'BTCUSDT', 'BTC/USDT')
+            symbol: Stock/crypto symbol (e.g., 'VCB', 'BTCUSDT', 'BTCUSDT')
         
         Returns:
             Provider enum indicating which provider handles this symbol
@@ -128,7 +128,7 @@ class DataProviderCoordinator:
         Fetch OHLCV data for a symbol. Provider is auto-detected if not specified.
         
         Args:
-            symbol (str): Stock/crypto symbol (e.g., 'VCB', 'BTC/USDT')
+            symbol (str): Stock/crypto symbol (e.g., 'VCB', 'BTCUSDT')
             from_timestamp (int): Start time as Unix timestamp
             to_timestamp (int): End time as Unix timestamp
             provider (Provider): Specific provider to use (as Provider enum).
@@ -167,8 +167,11 @@ class DataProviderCoordinator:
             # Get provider instance
             prov = self._get_provider(provider)
             
-            # Fetch data - provider internally converts resolution to its format
-            df = prov.fetch_ohlcv(symbol, from_timestamp, to_timestamp, resolution)
+            # Use context manager for guaranteed connection cleanup
+            # Ensures connection is closed after fetch completes
+            with prov:
+                # Fetch data - provider internally converts resolution to its format
+                df = prov.fetch_ohlcv(symbol, from_timestamp, to_timestamp, resolution)
             
             # *** STANDARDIZATION POINT ***
             # Ensure 'time' is the index (not a column) for consistency

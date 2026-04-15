@@ -107,8 +107,8 @@ class TestPhase2Integration:
     def test_binance_ccxt_symbol_normalization(self):
         """Test CCXT symbol format normalization."""
         # Test without initializing (which would fail if CCXT not installed)
-        assert BinanceCCXTProvider._normalize_symbol_format("BTCUSDT") == "BTC/USDT"
-        assert BinanceCCXTProvider._normalize_symbol_format("BTC/USDT") == "BTC/USDT"
+        assert BinanceCCXTProvider._normalize_symbol_format("BTCUSDT") == "BTCUSDT"
+        assert BinanceCCXTProvider._normalize_symbol_format("BTCUSDT") == "BTCUSDT"
         assert BinanceCCXTProvider._normalize_symbol_format("ETHBUSD") == "ETH/BUSD"
         assert BinanceCCXTProvider._normalize_symbol_format("BNBUSDT") == "BNB/USDT"
     

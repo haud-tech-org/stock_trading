@@ -66,6 +66,8 @@ Each layer contains theory and reference materials:
 
 ### Data Architecture (Layer 5)
 - **[DATA_LAYER_ARCHITECTURE.md](./LAYER_5_DATA_SERVICES/DATA_LAYER_ARCHITECTURE.md)** - Complete data design and services
+- **[PROVIDER_RESOURCE_LIFECYCLE.md](./LAYER_5_DATA_SERVICES/PROVIDER_RESOURCE_LIFECYCLE.md)** - Resource management, context managers, connection lifecycle
+- **[CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md](./LAYER_5_DATA_SERVICES/CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md)** - Implementation guide for context managers
 
 ---
 

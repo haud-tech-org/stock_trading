@@ -25,12 +25,11 @@ class ConsistentMomentumExecutor(Executor):
     """
     LATEST_ALERT: Optional[AlertData] = None
 
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, approach: Approach, resolution: int):
         self.settings = ConsistentMomentumSettings(symbol)
         self.analyzer = ConsistentMomentumAnalyzer()
         self.validator = ConsistentMomentumValidator()
-        approach_name = Approach.CONSISTENT_MOMENTUM
-        super().__init__(symbol, approach_name, self.settings)
+        super().__init__(symbol, approach, resolution, self.settings)
         self.logger = logging.getLogger(__name__)
 
     def _find_alerts(self, df: pd.DataFrame, new_candle_count: int = 0) -> list[AlertData]:

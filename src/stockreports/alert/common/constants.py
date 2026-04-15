@@ -5,6 +5,7 @@ class Approach:
     VOLUME_SPIKE_CONFIRMATION = "VOLUME_SPIKE_CONFIRMATION"
     VRA = "VRA"
     CONSISTENT_VOLUME_ANCHOR = "CONSISTENT_VOLUME_ANCHOR"
+    REVERSAL_ANCHOR_SIGNAL_CANDLE = "REVERSAL_ANCHOR_SIGNAL_CANDLE"
     PRICE_MOVEMENT = "PRICE_MOVEMENT"  # Price level crossing alerts
 
     @staticmethod
@@ -23,6 +24,32 @@ class Approach:
             getattr(Approach, attr) for attr in dir(Approach)
             if not attr.startswith('_') and isinstance(getattr(Approach, attr), str)
         }
+
+    @staticmethod
+    def from_string(approach_str: str) -> str:
+        """
+        Convert a string to an Approach constant.
+        
+        Args:
+            approach_str: String representation of approach (e.g., "VRA", "STRONG_CANDLE")
+            
+        Returns:
+            str: The corresponding Approach constant string
+            
+        Raises:
+            ValueError: If the approach string is not a valid Approach constant
+            
+        Example:
+            approach = Approach.from_string("VRA")
+            # Returns: "VRA"
+        """
+        try:
+            return getattr(Approach, approach_str.upper())
+        except AttributeError:
+            raise ValueError(
+                f"Invalid approach: '{approach_str}'. "
+                f"Valid approaches: {Approach.get_all_approaches()}"
+            )
 
 class Mode:
     DEVELOPMENT = "DEVELOPMENT"

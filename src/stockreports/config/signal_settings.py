@@ -76,7 +76,8 @@ APPROACH_RESOLUTION_MAPPING = {
     "STRONG_CANDLE": 1,            # 1-minute resolution
     "VRA": 1,                      # 1-minute resolution
     "VOLUME_SPIKE_CONFIRMATION": 1,  # 1-minute resolution
-    "CONSISTENT_VOLUME_ANCHOR": 1   # 1-minute resolution
+    "CONSISTENT_VOLUME_ANCHOR": 1,   # 1-minute resolution
+    "REVERSAL_ANCHOR_SIGNAL_CANDLE": 15  # 15-minute resolution
 }
 
 
@@ -174,6 +175,29 @@ APPROACH_CONFIG = {
         # Alert magnitude
         "MIN_ALERT_MAGNITUDE": 2.5,  # Minimum window size (price range) for alert
         
+        "COOLDOWN_WINDOW": 3
+    },
+    # --- REVERSAL ANCHOR-SIGNAL-CANDLE (REVERSAL-ASC) ---
+    "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
+        # Lookback window size
+        "LOOKBACK_WINDOW": 11,
+        
+        # Validation 1: Window size threshold
+        "MIN_SIZE_PRICE_WINDOW": 750,
+        
+        # Validation 2: Anchor candle thresholds
+        "MIN_SIZE_CANDLE": 150,
+        "MULTIPLIER_SIZE": 1.3,
+        
+        # Validation 3: Signal candle thresholds
+        "MIN_VOLUME": 1500,
+        "MULTIPLIER_VOLUME": 2.5,
+
+        # Validation 4: Alert candle wick thresholds
+        "MIN_PERCENTAGE": 0.01,
+        "MAX_PERCENTAGE": 0.4,
+        
+        # Cooldown validation
         "COOLDOWN_WINDOW": 3
     },
 }

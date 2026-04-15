@@ -56,7 +56,7 @@ class BaseDataProvider(ABC):
         
         Args:
             symbol (str): Symbol identifier (format depends on provider)
-                         Examples: "VN30" (Vietstock), "BTC/USDT" (Binance)
+                         Examples: "VN30" (Vietstock), "BTCUSDT" (Binance)
             from_timestamp (int): Start time as Unix timestamp in seconds
             to_timestamp (int): End time as Unix timestamp in seconds
             resolution (int): Candle resolution in minutes (default: 1).
@@ -91,8 +91,8 @@ class BaseDataProvider(ABC):
             bool: True if symbol format is valid, False otherwise
         
         Examples:
-            VietstockProvider: "VN30", "VN30F1M" → True, "BTC/USDT" → False
-            BinanceProvider: "BTC/USDT", "ETH/USDT" → True, "VN30" → False
+            VietstockProvider: "VN30", "VN30F1M" → True, "BTCUSDT" → False
+            BinanceProvider: "BTCUSDT", "ETH/USDT" → True, "VN30" → False
         """
         pass
     
@@ -154,6 +154,59 @@ class BaseDataProvider(ABC):
         Default implementation returns True (no validation).
         """
         return True
+    
+    def close(self):
+        """
+        Close any persistent resources held by this provider.
+        
+        Override this method in subclasses if resources need cleanup.
+        Default implementation does nothing (no-op).
+        
+        Examples:
+            - BinanceAPIProvider: Closes HTTP session
+            - BinanceCCXTProvider: Closes CCXT exchange connection
+            - VietstockProvider: No resources to close (but can override for consistency)
+        """
+        pass
+    
+    def __enter__(self):
+        """
+        Enter context manager - return self for use in 'with' block.
+        
+        This is called automatically when entering a 'with' statement:
+            with provider:
+                df = provider.fetch_ohlcv(...)
+        
+        Returns:
+            BaseDataProvider: self (the provider instance)
+        """
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Exit context manager - guaranteed cleanup on exit.
+        
+        This is called automatically when exiting a 'with' statement,
+        even if an exception occurs inside the block.
+        
+        Args:
+            exc_type: Exception type if an exception occurred, None otherwise
+            exc_val: Exception value if an exception occurred, None otherwise
+            exc_tb: Exception traceback if an exception occurred, None otherwise
+        
+        Returns:
+            bool: False (do not suppress exceptions)
+        
+        The cleanup flow:
+            1. with provider: block entered → __enter__() called
+            2. Code inside block executes
+            3. Block exits (normally or via exception)
+            4. __exit__() automatically called
+            5. self.close() called → connection/resources closed
+            6. Exception propagates if one occurred
+        """
+        self.close()
+        return False
     
     def _validate_symbol_common(self, symbol: str) -> bool:
         """

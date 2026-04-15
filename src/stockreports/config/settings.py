@@ -13,7 +13,7 @@ notifications, and market-specific details.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
 # Always include the derivative symbol is the FIRST symbol
-SYMBOLS = ["VN30F1M", "VN30"]
+SYMBOLS = ["VN30F1M", "VN30", "BTC/USDT:USDT"]
 
 # List of symbols that have a significant impact on the market.
 IMPACT_SYMBOLS = ["VIC", "VHM"]
@@ -72,7 +72,7 @@ DATA_PROCESSING = {
 # Guidance: A shorter interval (e.g., 5-10 seconds) provides more real-time data but increases API usage. A longer interval (e.g., 60 seconds) is less resource-intensive. Do not set this lower than the data resolution (e.g., don't check every 5 seconds for 1-minute data).
 # Range: Integer > 0.
 # Example: `MONITORING_INTERVAL_SECONDS = 5`
-MONITORING_INTERVAL_SECONDS = 27
+MONITORING_INTERVAL_SECONDS = 57
 
 
 # --- General Alerting & Reporting ---
@@ -101,7 +101,7 @@ LOGS_DIR = "logs"
 # Guidance: "INFO" provides a good balance of detail. "DEBUG" is very verbose and useful for troubleshooting. "WARNING" will only show potential problems.
 # Range: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL".
 # Example: `LOG_LEVEL = "INFO"`
-LOG_LEVEL = "WARNING"
+LOG_LEVEL = "DEBUG"
 
 
 # --- Data Source & Operational Mode ---
@@ -182,6 +182,9 @@ SYMBOL_ALERT_APPROACHES = {
     ],
     "VN30": [
     ],
+    "BTC/USDT:USDT": [
+        "REVERSAL_ANCHOR_SIGNAL_CANDLE"
+    ]
 }
 
 # Default Alert Approaches (Fallback)
@@ -213,8 +216,8 @@ TRADING_HOURS = {
         "name": "Vietnam",
         "timezone": "Asia/Ho_Chi_Minh",
         "sessions": {
-            "morning": {"start": "09:00", "end": "11:30"},
-            "afternoon": {"start": "13:00", "end": "14:27"},
+            "morning": {"start": "05:00", "end": "12:00"},
+            "afternoon": {"start": "12:01", "end": "22:30"},
         }
     },
     # Example for another market:

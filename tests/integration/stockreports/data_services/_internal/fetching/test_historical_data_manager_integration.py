@@ -385,10 +385,10 @@ class TestRealDataFetchingBinance:
     
     def test_get_with_resolution_btcusdt_gmt7_time_range(self, manager):
         """
-        Test fetching real BTC/USDT data with specific time range and resolution.
+        Test fetching real BTCUSDT data with specific time range and resolution.
         
         Scenario:
-        - Symbol: BTC/USDT
+        - Symbol: BTCUSDT
         - Time: 20:00:00 GMT+7 to 21:00:00 GMT+7
         - Resolution: 1 minute
         
@@ -409,9 +409,9 @@ class TestRealDataFetchingBinance:
         end_time = pd.Timestamp('2024-01-15 14:00:00', tz='UTC')
         
         print("\n" + "=" * 70)
-        print("TEST: Real Data Fetching - BTC/USDT (20:00-21:00 GMT+7)")
+        print("TEST: Real Data Fetching - BTCUSDT (20:00-21:00 GMT+7)")
         print("=" * 70)
-        print(f"Symbol: BTC/USDT")
+        print(f"Symbol: BTCUSDT")
         print(f"Start Time (GMT+7): 20:00:00 → {start_time} UTC")
         print(f"End Time (GMT+7): 21:00:00 → {end_time} UTC")
         print(f"Resolution: 1 minute")
@@ -419,7 +419,7 @@ class TestRealDataFetchingBinance:
         
         # Fetch data with resolution
         result = test_manager.get_with_resolution(
-            symbol='BTC/USDT',
+            symbol='BTCUSDT',
             start_time=start_time,
             end_time=end_time,
             resolution=1
@@ -439,7 +439,7 @@ class TestRealDataFetchingBinance:
         # Validation 3: Display processed data in console
         print(f"\n✓ Validation 3: Display Processed Data")
         print("\n" + "-" * 70)
-        print("PROCESSED DATA (BTC/USDT 1-minute candles):")
+        print("PROCESSED DATA (BTCUSDT 1-minute candles):")
         print("-" * 70)
         
         # Display data information

@@ -25,16 +25,17 @@ class IchimokuExecutor(Executor):
     3. Chikou span (26-period lag) confirmation - strength confirmation
     """
     
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, approach: Approach, resolution: int):
         """
         Initialize Ichimoku executor.
         
         Args:
             symbol (str): Trading symbol (e.g., 'VN30F1M', 'AAPL')
+            approach (Approach): Approach constant (Approach.ICHIMOKU)
+            resolution (int): Data resolution in minutes
         """
         self.settings = IchimokuSettings(symbol)
-        approach_name = Approach.ICHIMOKU
-        super().__init__(symbol, approach_name, self.settings)
+        super().__init__(symbol, approach, resolution, self.settings)
         self.logger = logging.getLogger(__name__)
     
     def _build_alert_from_signal(self, candle: pd.Series, signal: Signal) -> AlertData:

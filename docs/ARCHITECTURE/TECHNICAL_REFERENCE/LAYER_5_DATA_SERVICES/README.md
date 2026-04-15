@@ -20,6 +20,9 @@ Layer 5 provides **market data infrastructure** - OHLCV candles, technical indic
 | File | Purpose | Read Time | Audience |
 |------|---------|-----------|----------|
 | **DATA_LAYER_ARCHITECTURE.md** | Complete data services design and architecture | 25 min | Developers, architects |
+| **DATA_PROVIDER_TIMEZONE_CONSISTENCY_REFERENCE.md** | ⭐ Technical reference for timezone handling | 15 min | Provider developers |
+| **PROVIDER_RESOURCE_LIFECYCLE.md** | Comprehensive guide on context managers and resource management | 20 min | Provider developers, operators |
+| **CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md** | Step-by-step implementation guide for adding context managers | 15 min | Developer extending providers |
 
 ---
 
@@ -77,6 +80,37 @@ Abstracts away exchange differences:
 - Custom provider interface
 - Unified error handling
 
+### Context Manager Support (Resource Management)
+
+All data providers implement Python's context manager pattern for guaranteed resource cleanup:
+
+```python
+# Usage pattern - guarantees cleanup
+with provider:
+    data = provider.fetch_ohlcv(symbol, resolution)
+# On exit: __exit__() automatically calls close() → connections cleaned up ✅
+
+# Inside coordinator's 57-second monitoring loop
+with provider:
+    ohlcv = provider.fetch_ohlcv(symbol, resolution)
+    # Process data...
+# Fresh connection every 57 seconds → no timeouts ✅
+```
+
+**All 3 Providers Support Context Managers:**
+- **VietstockProvider**: Default behavior (no special cleanup)
+- **BinanceAPIProvider**: Overrides to cleanup HTTP session
+- **BinanceCCXTProvider**: Overrides to cleanup exchange connection
+
+**Benefits:**
+- Automatic resource cleanup (no memory leaks)
+- Fresh connections every cycle (prevents timeouts)
+- Exception-safe (cleanup happens even if error occurs)
+- Consistent interface across all providers
+
+**Monitoring Loop Integration:**
+The 57-second monitoring cycle uses context managers to ensure fresh connections, solving the 1-2 hour timeout problem that occurred when connections were reused indefinitely.
+
 ---
 
 ## 🔗 Layer Connections
@@ -121,10 +155,22 @@ Abstracts away exchange differences:
 → See DATA_LAYER_ARCHITECTURE.md for provider list
 
 ### **"How do I handle data from a new exchange?"**
-→ Follow IMPLEMENTATION_GUIDES/LAYER_5/DATA_PROVIDER_EXTENSION_GUIDE.md
+→ ⭐ **Start with:** DATA_PROVIDER_TIMEZONE_CONSISTENCY_REFERENCE.md (critical timezone requirement)
+→ **Then follow:** IMPLEMENTATION_GUIDES/LAYER_5/DATA_PROVIDER_EXTENSION_GUIDE.md
 
 ### **"What's the performance impact of each resolution?"**
 → Check caching strategy in DATA_LAYER_ARCHITECTURE.md
+
+### **"How do I handle timezones in a data provider?"**
+→ ⭐ **See:** DATA_PROVIDER_TIMEZONE_CONSISTENCY_REFERENCE.md (technical reference)
+
+### **"How do I implement resource cleanup for a new provider?"**
+→ **See:** CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md (step-by-step)
+→ **Reference:** PROVIDER_RESOURCE_LIFECYCLE.md (comprehensive guide)
+
+### **"Why do providers use context managers?"**
+→ **Read:** PROVIDER_RESOURCE_LIFECYCLE.md (resource management benefits)
+→ **Problem Solved:** Fresh connections in 57-second cycles prevent 1-2 hour timeouts
 
 ---
 
@@ -159,17 +205,30 @@ Complete data services documentation:
 - Performance characteristics
 - Integration points with strategies
 
+### DATA_PROVIDER_TIMEZONE_CONSISTENCY_REFERENCE.md
+⭐ **Technical reference for timezone handling in data providers:**
+- Standard pattern for timezone conversion
+- Live implementation examples (Vietstock, Binance)
+- Common mistakes with solutions
+- Verification steps and checklist
+- Why timezone consistency is critical
+- Troubleshooting guide
+
+**Critical Requirement:** All data providers MUST return market-timezone-indexed DataFrames (Asia/Ho_Chi_Minh), NOT UTC.
+
 ---
 
 ## 📞 Need More Information?
 
 - **How to add new indicator**: See IMPLEMENTATION_GUIDES/LAYER_5
 - **How to add new data provider**: See IMPLEMENTATION_GUIDES/LAYER_5
+- **Timezone requirement**: ⭐ See DATA_PROVIDER_TIMEZONE_CONSISTENCY_REFERENCE.md (critical!)
 - **Using data in strategies**: See LAYER_4
 - **Monitoring data services**: See LAYER_9
 - **Back to beginning**: [Root README](../../README.md)
 
 ---
 
-*Last Updated: April 10, 2026*  
+*Last Updated: April 11, 2026*  
 *Part of Tier 2 Documentation - Reference & Theory*
+*Note: Added DATA_PROVIDER_TIMEZONE_CONSISTENCY_REFERENCE.md for critical timezone requirements*

@@ -113,13 +113,19 @@ PROVIDER_SYMBOLS_CONFIG = {
     "binance_ccxt": {
         "name": "binance_ccxt",
         "supported_symbols": [
-            "BTC/USDT",  # Bitcoin - Tether
-            "ETH/USDT",  # Ethereum - Tether
-            "BNB/USDT",  # Binance Coin - Tether
-            "ADA/USDT",  # Cardano - Tether
-            "DOG/USDT",  # Dogecoin - Tether (note: may vary)
+            # Spot trading pairs
+            "BTCUSDT",  # Bitcoin - Tether (Spot)
+            "ETH/USDT",  # Ethereum - Tether (Spot)
+            "BNB/USDT",  # Binance Coin - Tether (Spot)
+            "ADA/USDT",  # Cardano - Tether (Spot)
+            "DOG/USDT",  # Dogecoin - Tether (Spot, note: may vary)
+            # Perpetual Futures (Linear - USDT margined)
+            "BTC/USDT:USDT",  # Bitcoin Perpetual Futures
+            "ETH/USDT:USDT",  # Ethereum Perpetual Futures
+            "BNB/USDT:USDT",  # Binance Coin Perpetual Futures
+            "ADA/USDT:USDT",  # Cardano Perpetual Futures
         ],
-        "description": "Binance CCXT unified library trading pairs (crypto)",
+        "description": "Binance CCXT unified library trading pairs (crypto spot + perpetual futures)",
         "reference": "https://docs.ccxt.com/en/latest/manual/trading-pairs.html"
     }
 }
