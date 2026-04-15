@@ -161,23 +161,6 @@ def run_debug_analysis(approach, symbol, start_time_str, end_time_str, save_to_f
             print(f"\n--- No {approach_normalized} Alerts Found ---")
         else:
             print(f"\n--- Found {len(confirmed_alerts)} {approach_normalized} Alerts ---")
-            # Convert AlertData list to DataFrame for display
-            alerts_data = [
-                {
-                    'symbol': alert.symbol,
-                    'approach': alert.approach,
-                    'alert_time': alert.alert_time,
-                    'start_time': alert.start_time,
-                    'signal': alert.signal,
-                    'alert_price': alert.alert_price,
-                    'start_price': alert.start_price,
-                    'confidence': getattr(alert, 'confidence', 'N/A'),
-                    'details': getattr(alert, 'details', 'N/A')
-                }
-                for alert in confirmed_alerts
-            ]
-            alerts_df = pd.DataFrame(alerts_data)
-            print(alerts_df.to_string())
     except Exception as e:
         print(f"ERROR: An error occurred during {approach_normalized} execution: {e}")
         logging.error("Executor failed", exc_info=True)
@@ -188,13 +171,13 @@ def run_debug_analysis(approach, symbol, start_time_str, end_time_str, save_to_f
         print("\n--- Generating Chart ---")
         try:
             chart_output_dir = os.path.join(project_root, 'tests', 'debug', 'charts')
-            alert_time = alerts_df.iloc[0]['alert_time'] if len(alerts_df) > 0 else None
+            # Use the first confirmed alert with full data
+            first_alert = confirmed_alerts[0]
             generate_alert_chart(
                 input_file=json_file_path,
                 output_dir=chart_output_dir,
                 approach_name=approach_normalized,
-                alerts_df=alerts_df,
-                alert_time=alert_time
+                alert=first_alert
             )
             print("Chart generation complete.")
         except Exception as e:
