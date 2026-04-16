@@ -190,83 +190,6 @@ class TimeSimulator:
         return False
 
 
-def _get_session_minutes(sessions=SESSIONS) -> List[Tuple[int, int]]:
-    """
-    Parses session start/end times from settings and converts them to minutes from midnight.
-    Returns a list of tuples, where each tuple is a (start_minute, end_minute) pair.
-    """
-    session_minutes = []
-    for session_name, times in sessions.items():
-        try:
-            start_h, start_m = map(int, times['start'].split(':'))
-            end_h, end_m = map(int, times['end'].split(':'))
-            session_minutes.append((start_h * 60 + start_m, end_h * 60 + end_m))
-        except (KeyError, ValueError) as e:
-            logging.error(f"Could not parse session '{session_name}': {e}. Check settings.py format.")
-    return session_minutes
-
-SESSION_MINUTES = _get_session_minutes()  # Uses default SESSIONS from settings
-
-
-def is_trading_hours(dt_object: Optional[datetime] = None, 
-                      sessions=SESSIONS,
-                      timezone_str: str = TIMEZONE_STR) -> bool:
-    """
-    Check if the given datetime is within any of the market's trading sessions.
-    
-    This is a module-level utility function for general use. For use with TimeSimulator,
-    prefer calling simulator.is_trading_hours() instead, which uses the simulator's
-    configured sessions and timezone directly.
-    
-    If no datetime is provided, it checks the current time in the market's timezone.
-    
-    Args:
-        dt_object: The datetime to check. If None, uses current time.
-        sessions: Dict of session objects with start_time/end_time attributes.
-                 Defaults to global SESSIONS from settings.
-        timezone_str: IANA timezone string (e.g., "Asia/Ho_Chi_Minh").
-                     Defaults to global TIMEZONE_STR from settings.
-
-    Returns:
-        True if within trading hours, False otherwise.
-        
-    Example:
-        # Prefer this when using TimeSimulator
-        simulator = TimeSimulator(None, 60, trading_hours)
-        is_trading = simulator.is_trading_hours()
-        
-        # Use this for arbitrary sessions without TimeSimulator
-        is_trading = is_trading_hours(dt, sessions=custom_sessions, timezone_str="UTC")
-    """
-    market_tz = pytz.timezone(timezone_str)
-    
-    session_minutes = _get_session_minutes(sessions)
-    
-    if not session_minutes:
-        logging.warning("No trading sessions defined. Cannot check trading hours.")
-        return False
-
-    if dt_object is None:
-        check_time = datetime.now(pytz.utc).astimezone(market_tz)
-    elif dt_object.tzinfo is None:
-        check_time = market_tz.localize(dt_object)
-    else:
-        check_time = dt_object.astimezone(market_tz)
-
-    # Check if the day is a weekday (Monday=0, Sunday=6)
-    if check_time.weekday() >= 5:
-        return False
-
-    current_minute = check_time.hour * 60 + check_time.minute
-
-    # Check if the current time falls within any session
-    for start_minute, end_minute in session_minutes:
-        if start_minute <= current_minute <= end_minute:
-            return True
-
-    return False
-
-
 def get_market_timezone_str(timezone_str: str = TIMEZONE_STR) -> str:
     """
     Get the market's timezone string from settings.
@@ -291,19 +214,6 @@ def get_market_timezone(timezone_str: str = TIMEZONE_STR) -> pytz.BaseTzInfo:
         A pytz timezone object.
     """
     return pytz.timezone(timezone_str)
-
-# Utility to convert pandas Timestamp or datetime to ISO 8601 string with configured timezone
-def to_iso8601_with_tz(ts, timezone_str: str = TIMEZONE_STR):
-    import pandas as pd
-    tz = pytz.timezone(timezone_str)
-    if isinstance(ts, pd.Timestamp):
-        if ts.tzinfo is None:
-            ts = ts.tz_localize(tz)
-        else:
-            ts = ts.tz_convert(tz)
-        return ts.isoformat()
-    return str(ts)
-
 
 def convert_dataframe_to_market_timezone(df: pd.DataFrame, timezone_str: str = TIMEZONE_STR) -> pd.DataFrame:
     """
