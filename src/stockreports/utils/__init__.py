@@ -16,7 +16,6 @@ from .data_utils import (
 
 from .time_utils import (
     TIME_FORMATS,
-    is_trading_hours,
     get_market_timezone_str,
     TIMEZONE_STR,
     SESSIONS,
@@ -41,7 +40,6 @@ __all__ = [
     'load_live_data',
     # from time_utils
     'TIME_FORMATS',
-    'is_trading_hours',
     'get_market_timezone_str',
     'TIMEZONE_STR',
     'SESSIONS',
