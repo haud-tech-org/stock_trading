@@ -10,9 +10,20 @@ import json
 from typing import Any, Optional
 import pandas as pd
 
+
 # Add the project root to the Python path to ensure consistent imports
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
+
+# Utility to get the project root directory
+def get_project_root() -> str:
+    """
+    Returns the absolute path to the project root directory (one level up from 'src').
+    """
+    # If project_root ends with '/src', return its parent
+    if project_root.endswith(os.sep + "src"):
+        return os.path.dirname(project_root)
+    return project_root
 
 
 def clear_files_in_directory(directory: str, filename_pattern: Optional[str] = None):

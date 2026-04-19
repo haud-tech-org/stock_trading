@@ -29,3 +29,14 @@ git diff in staged and provide a short description of changes into a new markdow
 Reference
 docs/references/COMMIT_SUMMARY_CVA.md
 ```
+
+### Description for a new PR
+
+```txt
+git diff between the 2 commits
+commit 1: 77d715fa4e5b164b3ea58fe169636e33fe688897
+
+commit 2: cd7c7e6e0c821fb866556e480f29275781eeb56e
+
+review and re-analyze deep dive the code changes. Then, propose a summary in details of the code changes for a new PR created from the code changes.
+```

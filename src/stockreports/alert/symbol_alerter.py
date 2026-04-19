@@ -37,7 +37,7 @@ from src.stockreports.utils.data_utils import (
     fetch_intraday_data, 
     load_data_for_development,
 )
-from src.stockreports.utils.time_utils import is_trading_hours, SESSIONS, TimeSimulator, TIMEZONE
+from src.stockreports.utils.time_utils import SESSIONS, TimeSimulator, TIMEZONE
 from src.stockreports.alert.model.models import AlertNotification, AlertResult, AlertData, AlertSummary
 from src.stockreports.alert.common.constants import Approach
 from src.stockreports.alert.common.validation.validation import calculate_alert_performance
@@ -45,8 +45,9 @@ from src.stockreports.alert.common.validation.price_adjustment import adjust_pri
 from src.stockreports.alert.common.profitability_simulator import simulate_profitability
 from src.stockreports.utils.report_utils import save_profitability_report, save_alert_report, update_alert_summary
 from src.stockreports.utils.alert_utils import calculate_suggested_prices
-from src.stockreports.utils.approach_utils import get_approaches_for_symbol, get_approach_executor
+from src.stockreports.utils.approach_utils import get_approach_executor
 from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
+from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
 
 # --- Constants & Configuration ---
 DEFAULT_APPROACH = "VRA"
@@ -321,26 +322,113 @@ class SymbolAlerter:
     def _perform_monitoring_session(self) -> bool:
         """
         Executes a single, continuous monitoring session for the symbol.
-        This function runs until the time simulator indicates it should stop.
+        
+        Orchestrates three main monitoring tasks:
+        1. Scheduled close position notifications (symbol-only)
+        2. Price movement alerter (symbol + fixed resolution=1)
+        3. Approach executors (symbol + approach + resolution from config)
+        
+        All time management (timezone, trading hours) depends on symbol configuration only.
+        Data is fetched for all required resolutions in one batch.
 
         Returns:
             bool: True if the session completed without error, signaling a clean exit.
         """
-        # Guard: Check if this symbol has any approaches configured
-        approaches_to_run = get_approaches_for_symbol(self.symbol)
-        if not approaches_to_run:
+        # ════════════════════════════════════════════════════════════════
+        # INITIALIZATION PHASE
+        # ════════════════════════════════════════════════════════════════
+        
+        # [1] Validate symbol has approaches configured
+        self.logger.info(f"[INIT] Validating symbol {self.symbol} has approaches configured...")
+        
+        approaches_to_run = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
+        if approaches_to_run is None or not approaches_to_run:
             self.logger.error(
-                f"Symbol {self.symbol} has no approaches configured in SYMBOL_ALERT_APPROACHES. "
+                f"Symbol {self.symbol} has no approaches configured. "
                 f"Cannot run monitoring session. Skipping..."
             )
             return True  # Return True to signal clean exit (not an error)
         
-        time_simulator = TimeSimulator(
-            replay_start_str=settings.DEBUG_REPLAY_START_TIME,
-            interval_seconds=settings.MONITORING_INTERVAL_SECONDS
+        self.logger.info(f"[INIT] Found {len(approaches_to_run)} approaches for {self.symbol}: {approaches_to_run}")
+        
+        # [2] Load symbol-level trading hours (ONCE - trading hours are symbol-dependent)
+        # Trading hours and timezone are symbol-level properties, not approach-level
+        # All approaches for same symbol share same trading hours
+        self.logger.info(f"[INIT] Loading symbol-level trading hours for {self.symbol}...")
+        
+        try:
+            # Get trading hours directly from orchestrator (symbol-dependent, not approach-dependent)
+            symbol_trading_hours = ExecutorConfigurationOrchestrator.get_symbol_trading_hours(self.symbol)
+            self.logger.info(
+                f"[INIT] Loaded trading hours: {symbol_trading_hours.get_sessions_summary()}"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"[INIT] Failed to load trading hours for {self.symbol}. "
+                f"Cannot proceed without trading hours definition. Error: {e}"
+            )
+            return True  # Clean exit (not an error)
+        
+        # [3] Collect all required resolutions upfront
+        # - Price alerter always needs resolution 1
+        # - Each approach needs its configured resolution
+        self.logger.debug("[INIT] Collecting required data resolutions...")
+        
+        required_resolutions = set([1])  # Price alerter always uses 1-min
+        approach_resolutions = {}  # Map approach -> resolution
+        
+        for approach_name in approaches_to_run:
+            try:
+                approach_config = ExecutorConfigurationOrchestrator.get(self.symbol, approach_name)
+                resolution = approach_config.resolution
+                required_resolutions.add(resolution)
+                approach_resolutions[approach_name] = resolution
+                self.logger.debug(f"[INIT]   {approach_name}: requires {resolution}-min resolution")
+            except Exception as e:
+                self.logger.warning(
+                    f"[INIT] Could not load config for {approach_name}. "
+                    f"Skipping this approach. Error: {e}"
+                )
+                approaches_to_run = [a for a in approaches_to_run if a != approach_name]
+                continue
+        
+        self.logger.info(
+            f"[INIT] Required resolutions: {sorted(required_resolutions)} "
+            f"(total: {len(required_resolutions)})"
         )
         
-        self.logger.info(f"Starting new monitoring session for {self.symbol} on {time_simulator.processing_date}")
+        # [4] Initialize resolution-keyed data storage
+        # Key: resolution (int), Value: DataFrame or None
+        self._resolution_dataframes = {res: None for res in sorted(required_resolutions)}
+        self.logger.debug(f"[INIT] Initialized resolution storage for: {list(self._resolution_dataframes.keys())}")
+        
+        # [5] Initialize time simulator with symbol-level trading hours
+        # TimeSimulator now receives TradingHoursConfig (contains timezone + sessions only)
+        self.logger.info("[INIT] Initializing TimeSimulator with symbol trading hours...")
+        
+        time_simulator = TimeSimulator(
+            replay_start_str=settings.DEBUG_REPLAY_START_TIME,
+            interval_seconds=settings.MONITORING_INTERVAL_SECONDS,
+            trading_hours=symbol_trading_hours  # Pass trading hours for timezone + sessions
+        )
+        
+        self.logger.info(
+            f"[INIT] TimeSimulator ready - Mode: {'REPLAY' if time_simulator.is_replay_mode() else 'LIVE'}, "
+            f"Timezone: {symbol_trading_hours.timezone}, "
+            f"Processing Date: {time_simulator.processing_date}"
+        )
+        
+        self.logger.info(
+            f"[INIT] Session initialization complete. "
+            f"Resolutions={list(self._resolution_dataframes.keys())}, "
+            f"Approaches={approaches_to_run}"
+        )
+        
+        # ════════════════════════════════════════════════════════════════
+        # MAIN MONITORING LOOP
+        # ════════════════════════════════════════════════════════════════
+        
+        self.logger.info(f"[LOOP] Starting main monitoring loop for {self.symbol}...")
         
         master_df = pd.DataFrame()
 
@@ -350,18 +438,23 @@ class SymbolAlerter:
             current_time = time_simulator.get_current_time()
             
             # --- Check for scheduled 'Close Position' notifications ---
-            self.logger.debug("Scheduler: Triggering check for scheduled notifications.")
+            # Task 1: Symbol-only dependency
+            self.logger.debug("[TASK-1] Scheduler: Checking for scheduled notifications...")
             scheduled_notification = check_and_notify(current_time)
             self._send_scheduled_notification(scheduled_notification)
 
             # Check if within trading hours before fetching data and processing
-            if not is_trading_hours(current_time):
-                self.logger.info(f"Outside trading hours ({current_time.strftime('%H:%M:%S')}). Waiting for next interval.")
+            # Uses symbol-level trading hours configuration (not approach-level)
+            if not time_simulator.is_trading_hours(current_time):
+                self.logger.debug(
+                    f"[LOOP] Outside trading hours ({current_time.strftime('%H:%M:%S')}). "
+                    f"Waiting for next interval..."
+                )
                 if time_simulator.is_replay_mode():
-                    time_simulator.advance() # Move time forward to find the next trading window
+                    time_simulator.advance()  # Move time forward to find next trading window
                     continue
                 else:
-                    time.sleep(900) # In live mode, wait 15 minutes
+                    time.sleep(900)  # In live mode, wait 15 minutes
                     continue
             
             self.logger.info(f"\n--- New Interval for {self.symbol}: Analyzing at {current_time.strftime('%Y-%m-%d %H:%M:%S')} ---")
@@ -370,7 +463,8 @@ class SymbolAlerter:
             to_dt: pd.Timestamp = current_time
             if self._resolution_dataframes[1] is None:  # Use resolution 1 as indicator of first run
                 # First run: fetch all data from the start of the day
-                all_starts = [times['start'] for times in SESSIONS.values()]
+                # Use symbol-level trading hours sessions
+                all_starts = [session.start_time for session in symbol_trading_hours.sessions]
                 start_time_str = min(all_starts)
                 start_h, start_m = map(int, start_time_str.split(':'))
                 from_dt: pd.Timestamp = to_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
@@ -382,7 +476,7 @@ class SymbolAlerter:
             from_timestamp = int(from_dt.timestamp())
             to_timestamp = int(to_dt.timestamp())
 
-            # ✅ UPDATE ALL RESOLUTION DATAFRAMES (instead of single master_df fetch)
+            # ✅ UPDATE ALL RESOLUTION DATAFRAMES
             has_data = self._update_resolution_dataframes(from_dt, to_dt)
             
             # ✅ Handle no data available
@@ -401,79 +495,90 @@ class SymbolAlerter:
                 continue
 
             # --- Price Movement Alerter ---
-            # Price alerter always uses 1-minute resolution
+            # Task 2: Symbol-only with fixed resolution=1
+            # Price alerter always uses 1-minute resolution (fixed)
+            self.logger.debug("[TASK-2] Price Movement Alerter: Starting analysis...")
+            
             price_df = self._resolution_dataframes.get(1)
             if price_df is not None and not price_df.empty:
                 price_alerter = PriceMovementAlerter(self.symbol)
                 price_alert_result: AlertResult = price_alerter.execute(price_df)
                 
                 if price_alert_result.has_alerts:
-                    self.logger.info(f"Found {len(price_alert_result.confirmed_alerts)} price movement alerts.")
-                    
-                    # Note: Price movement alerts typically don't have suggested entry points
-                    # These remain None, which is acceptable for informational price alerts
-                    for alert in price_alert_result.confirmed_alerts:
-                        # Optional: Apply suggested prices if needed for consistency
-                        # perf_price, struct_price = calculate_suggested_prices(
-                        #     signal=alert.signal,
-                        #     alert_time=alert.alert_time,
-                        #     approach=alert.approach
-                        # )
-                        # alert.performance_suggested_price = perf_price
-                        # alert.structural_suggested_price = struct_price
-                        pass
-                    
+                    self.logger.info(f"[TASK-2] Found {len(price_alert_result.confirmed_alerts)} price movement alerts.")
                     self.notification_manager.process_and_notify(price_alert_result, self.symbol)
+                else:
+                    self.logger.debug("[TASK-2] No price movement alerts detected.")
+            else:
+                self.logger.debug("[TASK-2] Price data not available, skipping price alerter.")
 
 
-            # --- Standard Approach Alerter ---
-            # Each approach gets data for its configured resolution
-            approaches_to_run = get_approaches_for_symbol(self.symbol)
+            # --- Standard Approach Alerters ---
+            # Task 3: Symbol + Approach + Resolution from config
+            # Each approach is configured with its specific resolution at symbol level
+            self.logger.debug(f"[TASK-3] Approach Executors: Starting {len(approaches_to_run)} approaches...")
+            
             if approaches_to_run:  # Only run if symbol is configured
                 for approach_name in approaches_to_run:
-                    self.logger.info(f"--- Running Approach: {approach_name} for {self.symbol} ---")
+                    self.logger.info(f"[TASK-3] --- Running Approach: {approach_name} for {self.symbol} ---")
 
-                    # Get resolution for this approach
-                    try:
-                        resolution = self.resolution_coordinator.get_resolutions(approach_name)
-                    except KeyError:
-                        self.logger.error(f"Cannot get resolution for {approach_name}")
+                    # Get resolution for this approach (extracted during initialization)
+                    resolution = approach_resolutions.get(approach_name)
+                    
+                    if resolution is None:
+                        self.logger.error(
+                            f"[TASK-3] No resolution found for {approach_name}. "
+                            f"Should have been validated during initialization."
+                        )
                         continue
+                    
+                    self.logger.debug(f"[TASK-3]   {approach_name}: using {resolution}-min resolution")
                     
                     # Get data for this resolution from storage (symbol is already self.symbol, key is resolution int)
                     approach_df = self._resolution_dataframes.get(resolution)
                     
                     if approach_df is None or approach_df.empty:
-                        self.logger.warning(f"No data for {approach_name} (resolution {resolution}-min)")
+                        self.logger.warning(
+                            f"[TASK-3] No data for {approach_name} at {resolution}-min resolution"
+                        )
                         continue
                     
                     # Run executor on correct resolution data
                     executor = get_approach_executor(self.symbol, approach_name, resolution)
                     if not executor:
+                        self.logger.error(
+                            f"[TASK-3] Could not instantiate executor for {approach_name}"
+                        )
                         continue
                     
                     # Pass resolution-specific data to executor
                     new_candle_count = len(approach_df)
+                    self.logger.debug(
+                        f"[TASK-3] Executing {approach_name} with {new_candle_count} candles "
+                        f"at {resolution}-min resolution"
+                    )
+                    
                     result: AlertResult = ensure_alert_result(
                         executor.run(df=approach_df.copy(), new_candle_count=new_candle_count)
                     )
+                    
                     if result.has_alerts:
+                        self.logger.info(
+                            f"[TASK-3] Found {len(result.confirmed_alerts)} alerts from {approach_name}"
+                        )
                         # Alerts are already enriched with suggested prices from base Executor.update_alert_suggestions()
-                        # (called during alert creation in Executor._create_alert_with_details)
-                        
-                        # Send notification with enriched data
                         self.notification_manager.process_and_notify(result, self.symbol)
-                        
-                        # Save the enriched report
                         self._enrich_and_save_reports(result, time_simulator.processing_date)
+                    else:
+                        self.logger.debug(f"[TASK-3] No alerts from {approach_name}")
             
-            self.logger.info(f"Interval finished. Advancing time...")
+            self.logger.info(f"[LOOP] Interval finished. Advancing time...")
             time_simulator.advance()
             # In live mode, we still need to wait for the actual interval time to pass.
             if not time_simulator.is_replay_mode():
                 time.sleep(settings.MONITORING_INTERVAL_SECONDS)
 
-        self.logger.info(f"Monitoring session for {self.symbol} has concluded.")
+        self.logger.info(f"[LOOP] Monitoring session for {self.symbol} has concluded.")
         # The session finished cleanly, return True to stop the supervisor loop.
         return True
 
@@ -489,8 +594,33 @@ class SymbolAlerter:
             self.logger.warning(f"No data found for {self.symbol} on {processing_date}.")
             return
 
-                        # Filter by trading hours
-        if SESSIONS:
+        # Load symbol configuration for trading hours (symbol-level, not approach-level)
+        try:
+            symbol_config = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
+            if not symbol_config:
+                self.logger.warning(f"No configuration found for {self.symbol}. Using global trading hours.")
+                symbol_trading_hours_for_filter = None
+            else:
+                first_approach = symbol_config[0]
+                config = ExecutorConfigurationOrchestrator.get(self.symbol, first_approach)
+                symbol_trading_hours_for_filter = config.trading_hours
+        except Exception as e:
+            self.logger.warning(f"Could not load symbol trading hours. Using global settings. Error: {e}")
+            symbol_trading_hours_for_filter = None
+
+        # Filter by trading hours (use symbol-level trading hours if available)
+        if symbol_trading_hours_for_filter:
+            # Use symbol-level trading hours
+            combined_mask = pd.Series([False] * len(daily_df), index=daily_df.index)
+            time_col = daily_df.index.time
+            for session in symbol_trading_hours_for_filter.sessions:
+                start_time = datetime.strptime(session.start_time, '%H:%M').time()
+                end_time = datetime.strptime(session.end_time, '%H:%M').time()
+                session_mask = (time_col >= start_time) & (time_col <= end_time)
+                combined_mask = combined_mask | session_mask
+            daily_df = daily_df[combined_mask]
+        elif SESSIONS:
+            # Fallback to global SESSIONS
             combined_mask = pd.Series([False] * len(daily_df), index=daily_df.index)
             time_col = daily_df.index.time
             for session_name, hours in SESSIONS.items():
@@ -507,27 +637,39 @@ class SymbolAlerter:
         self.logger.info(f"Loaded {len(daily_df)} data points for {self.symbol} on {processing_date}.")
         
         all_alerts_for_day = []
-        approaches_to_run = get_approaches_for_symbol(self.symbol)
+        
+        # Get approaches for this symbol
+        approaches_to_run = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
         
         if not approaches_to_run:
             self.logger.warning(
-                f"Symbol {self.symbol} has no approaches configured in SYMBOL_ALERT_APPROACHES. "
+                f"Symbol {self.symbol} has no approaches configured. "
                 f"Skipping analysis for {processing_date}."
             )
             return
         
+        # Collect resolutions for each approach
+        approach_resolutions = {}
+        for approach_name in approaches_to_run:
+            try:
+                config = ExecutorConfigurationOrchestrator.get(self.symbol, approach_name)
+                approach_resolutions[approach_name] = config.resolution
+            except Exception as e:
+                self.logger.warning(f"Could not load resolution for {approach_name}: {e}")
+                continue
+        
         for approach_name in approaches_to_run:
             self.logger.info(f"\n--- Running Approach: {approach_name} for {self.symbol} on {processing_date} ---")
             
-            # In development mode, get the resolution for this approach (for consistency)
-            try:
-                resolution = self.resolution_coordinator.get_resolutions(approach_name)
-            except KeyError:
-                self.logger.warning(f"Cannot get resolution for {approach_name}, using None")
-                resolution = None
+            # Get resolution for this approach (from config, not coordinator)
+            resolution = approach_resolutions.get(approach_name)
+            if resolution is None:
+                self.logger.warning(f"No resolution configured for {approach_name}. Skipping.")
+                continue
             
             executor = get_approach_executor(self.symbol, approach_name, resolution)
-            if not executor: continue
+            if not executor:
+                continue
             
             # Pass the full length of the daily dataframe as new_candle_count in development mode
             result: AlertResult = ensure_alert_result(

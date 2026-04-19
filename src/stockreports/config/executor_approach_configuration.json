@@ -1,0 +1,232 @@
+{
+  "version": "2.0",
+  "last_updated": "2026-04-16T00:00:00Z",
+  "description": "Executor approach configurations - symbol-centric with symbol-level trading hours",
+  
+  "symbols": {
+    "BTC/USDT:USDT": {
+      "display_name": "Bitcoin",
+      "description": "Bitcoin to USDT trading pair",
+      "trading_hours": "CRYPTO_24H",
+      
+      "approaches": {
+        "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
+          "enabled": true,
+          "resolution": 15,
+          "description": "15-minute reversal anchor signal candle approach",
+          
+          "approach_config": {
+            "LOOKBACK_WINDOW": 11,
+            "MIN_SIZE_PRICE_WINDOW": 750,
+            "MIN_SIZE_CANDLE": 150,
+            "MULTIPLIER_SIZE": 1.3,
+            "MIN_VOLUME": 1500,
+            "MULTIPLIER_VOLUME": 2.5,
+            "MIN_PERCENTAGE": 0.01,
+            "MAX_PERCENTAGE": 0.4,
+            "COOLDOWN_WINDOW": 3
+          },        
+          
+          "validation": {
+            "enabled": true,
+            "validation_period_minutes": 30
+          },
+          
+          "notification": {
+            "enabled": true,
+            "channels": ["EMAIL", "CONSOLE"],
+            "reminder_delays": {
+              "order_delay_minutes": 4,
+              "close_delay_minutes": 8
+            }
+          }
+        }
+      }
+    },
+    
+    "VN30F1M": {
+      "display_name": "VN30 Futures",
+      "description": "VN30 Index Futures 1-month contract",
+      "trading_hours": "VIETNAM_STOCK",
+      
+      "approaches": {
+        "CONSISTENT_MOMENTUM": {
+          "enabled": true,
+          "resolution": 1,
+          "description": "Consistent momentum strategy",
+          
+          "approach_config": {
+            "LOOKBACK_WINDOW": 5,
+            "MIN_CONSISTENT_CANDLES": 3,
+            "MAGNITUDE_THRESHOLD": 6.5,
+            "COOLDOWN_WINDOW": 5,
+            "MAX_MULTIPLIER_DIFFERENCE_VOLUME_THRESHOLD": 1.5,
+            "MIN_CONFIRMATION_WINDOW_PRICE_THRESHOLD": 1.0,
+            "MAX_CONFIRMATION_WINDOW_PRICE_THRESHOLD": 4.0,
+            "MAX_CONFIRMATION_GAP_THRESHOLD": 0.5
+          }
+        },
+        
+        "STRONG_CANDLE": {
+          "enabled": true,
+          "resolution": 1,
+          "description": "Strong candle strategy",
+          
+          "approach_config": {
+            "LOOKBACK_WINDOW": 6,
+            "MIN_BODY_RATIO": 0.7,
+            "MIN_BODY_SIZE": 2.1,
+            "MAX_OPPOSITE_COLOR_CANDLE_BODY_SIZE": 1.0,
+            "MIN_DIFFERENCE_PRICE_THRESHOLD": 3.0,
+            "MAX_DIFFERENCE_PRICE_THRESHOLD": 5.5,
+            "MAX_VOLUME_MULTIPLIER": 1.5,
+            "MAGNITUDE_THRESHOLD": 6.5,
+            "COOLDOWN_WINDOW": 10
+          }
+        },
+        
+        "VOLUME_SPIKE_CONFIRMATION": {
+          "enabled": false,
+          "resolution": 1,
+          "description": "Volume spike confirmation strategy",
+          
+          "approach_config": {
+            "LOOKBACK_WINDOW": 5,
+            "COOLDOWN_WINDOW": 3,
+            "MIN_TREND_WINDOW_SIZE": 6.5,
+            "MIN_TREND_CANDLE_SLICE": 3,
+            "TREND_VOLUME_MULTIPLIER": 5.0
+          }
+        },
+        
+        "VRA": {
+          "enabled": true,
+          "resolution": 1,
+          "description": "Volume-Reversal-Anchor strategy",
+          
+          "approach_config": {
+            "LOOKBACK_WINDOW": 15,
+            "VOLUME_MULTIPLIER": 6.0,
+            "MIN_TREND_MAGNITUDE": 9.5,
+            "TREND_WINDOW_EDGE_SLICE": 3,
+            "MIN_CONFIRMATION_WINDOW_CANDLES": 3,
+            "VOLUME_MULTIPLIER_BY_REVERSAL_TREND": 2.0,
+            "MIN_PEAK_TROUGH_PROMINENCE": 1.5,
+            "MAX_PEAK_TROUGH_PROMINENCE": 3.0,
+            "COOLDOWN_WINDOW": 3
+          }
+        },
+        
+        "CONSISTENT_VOLUME_ANCHOR": {
+          "enabled": false,
+          "resolution": 1,
+          "description": "Consistent volume anchor strategy",
+          
+          "approach_config": {
+            "LOOKBACK_WINDOW": 10,
+            "MAX_CONSISTENT_VOLUME_MULTIPLIER": 1.3,
+            "CONSISTENT_CANDLE_PERCENTAGE": 0.7,
+            "MAX_CONSISTENT_WINDOW_SIZE": 1.5,
+            "MAX_CONSISTENT_BODY_SIZE_CANDLE": 0.5,
+            "MIN_VOLUME_CONFIRMATION_MULTIPLIER": 1.5,
+            "MIN_BODY_SIZE_ALERT_CANDLE": 0.3,
+            "MIN_BODY_RATIO": 0.6,
+            "MIN_ALERT_MAGNITUDE": 2.5,
+            "COOLDOWN_WINDOW": 3
+          }
+        },
+        
+        "ICHIMOKU": {
+          "enabled": true,
+          "resolution": 1,
+          "description": "Ichimoku cloud strategy",
+          
+          "approach_config": {
+            "TENKAN_PERIOD": 9,
+            "KIJUN_PERIOD": 26,
+            "SENKOU_B_PERIOD": 52,
+            "CHIKOU_PERIOD": 26,
+            "SENKOU_SHIFT_PERIOD": 26,
+            "SKIP_CHIKOU_CONFIRMATION": false,
+            "SKIP_CLOUD_VALIDATION": false,
+            "MAGNITUDE_THRESHOLD": 8.5
+          }
+        }
+      }
+    },
+    
+    "VN30": {
+      "display_name": "VN30 Index",
+      "trading_hours": "VIETNAM_STOCK",
+      "description": "VN30 Stock Index",
+      
+      "approaches": {}
+    }
+  },
+  
+  "trading_hours_definitions": {
+    "CRYPTO_24H": {
+      "name": "24-Hour Crypto Markets",
+      "timezone": "Asia/Ho_Chi_Minh",
+      "description": "Cryptocurrency markets operating 24/7",
+      "sessions": [
+        {
+          "name": "24h",
+          "start": "00:00",
+          "end": "23:59"
+        }
+      ],
+      "trading_days": [0, 1, 2, 3, 4, 5, 6]
+    },
+    
+    "VIETNAM_STOCK": {
+      "name": "Vietnam Stock Exchange",
+      "timezone": "Asia/Ho_Chi_Minh",
+      "description": "Vietnam Stock Exchange regular trading hours",
+      "sessions": [
+        {
+          "name": "morning",
+          "start": "09:00",
+          "end": "11:10"
+        },
+        {
+          "name": "afternoon",
+          "start": "13:10",
+          "end": "14:10"
+        }
+      ],
+      "trading_days": [0, 1, 2, 3, 4]
+    },
+    
+    "US_STOCK": {
+      "name": "US Stock Markets (NYSE/NASDAQ)",
+      "timezone": "America/New_York",
+      "description": "US equity market trading hours",
+      "sessions": [
+        {
+          "name": "premarket",
+          "start": "04:00",
+          "end": "09:30"
+        },
+        {
+          "name": "regular",
+          "start": "09:30",
+          "end": "16:00"
+        },
+        {
+          "name": "afterhours",
+          "start": "16:00",
+          "end": "20:00"
+        }
+      ],
+      "trading_days": [0, 1, 2, 3, 4]
+    }
+  },
+  
+  "global_settings": {
+    "mode": "DEPLOYMENT",
+    "monitoring_interval_seconds": 57,
+    "log_level": "DEBUG",
+    "description": "Global system settings"
+  }
+}

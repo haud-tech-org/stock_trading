@@ -186,12 +186,12 @@ APPROACH_CONFIG = {
         "MIN_SIZE_PRICE_WINDOW": 750,
         
         # Validation 2: Anchor candle thresholds
-        "MIN_SIZE_CANDLE": 150,
+        "MIN_SIZE_CANDLE": 300,
         "MULTIPLIER_SIZE": 1.3,
         
         # Validation 3: Signal candle thresholds
-        "MIN_VOLUME": 1500,
-        "MULTIPLIER_VOLUME": 2.5,
+        "MIN_VOLUME": 5000,
+        "MULTIPLIER_VOLUME": 4.0,
 
         # Validation 4: Alert candle wick thresholds
         "MIN_PERCENTAGE": 0.01,

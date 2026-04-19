@@ -15,32 +15,38 @@ Layer 2 handles **per-symbol monitoring orchestration**. Each symbol gets its ow
 
 ---
 
-## 📖 Contents at This Layer
 
-Currently, this layer has **no reference documentation files**. Theory and patterns for symbol-level coordination can be found in the parent Tier 2 directory.
+---
 
-| File | Purpose | Status |
-|------|---------|--------|
-| (No files) | Symbol coordination theory | Ready for documentation |
+## � Layer 2 Documentation Map
+
+This README provides a high-level summary and navigation for Layer 2 (Symbol Coordination). For all technical and implementation details, see:
+
+- **Architecture Transformation & Model**
+  - `ARCHITECTURE_TRANSFORMATION.md` — Symbol-centric, DRY configuration and orchestration
+- **TimeSimulator & Session Model**
+  - `TIME_SIMULATOR_AND_SESSIONS.md` — Session model integration, type safety, and usage
+- **Session Structure Optimization**
+  - `LIST_SESSIONS_OPTIMIZATION.md` — Why and how List[Session] replaced dict, performance and clarity
+- **Executor Pattern (Technical Reference)**
+  - `EXECUTOR_PATTERN_REFERENCE.md`
+- **Executor Implementation Guide**
+  - `../../IMPLEMENTATION_GUIDES/LAYER_2_SYMBOL_COORDINATION/EXECUTOR_IMPLEMENTATION_GUIDE.md`
+- **Configuration & Multi-Approach Execution**
+  - `../../CONFIGURATION_SERVICE/TRADING_HOURS_AND_MULTI_APPROACH_EXECUTION.md`
+- **System Overview**
+  - `../../SYSTEM_ARCHITECTURE_OVERVIEW.md`
+
+All deep-dive and implementation details are in the above docs. This README is for orientation and quick navigation only.
+
+---
 
 ---
 
 ## 🏗️ How This Layer Works
 
-### Symbol Monitoring Loop
-Each `SymbolAlerter` maintains an independent monitoring cycle:
 
-```
-For SYMBOL in monitored_symbols:
-  ├─ CYCLE START
-  ├─ Fetch latest OHLCV candle
-  ├─ Get resolution list from ResolutionCoordinator
-  ├─ For each resolution: run configured approaches
-  ├─ Aggregate results from all resolutions
-  ├─ Store alerts to report files
-  ├─ Sleep until next interval
-  └─ CYCLE REPEAT (or EXIT if REPLAY and end-of-day)
-```
+---
 
 ### Per-Symbol Isolation
 - **Independent Thread**: Each symbol runs in separate ThreadPoolExecutor thread

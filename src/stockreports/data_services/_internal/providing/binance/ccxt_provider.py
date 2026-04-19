@@ -165,7 +165,7 @@ class BinanceCCXTProvider(BaseDataProvider):
                 # This is a dummy dict that makes load_markets(reload=False) return immediately
                 if not self.exchange.markets:
                     # Populate common trading pairs that will be used  
-                    common_symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT']  
+                    common_symbols = ['BTC/USDT:USDT']  
                     self.exchange.markets = {
                         sym: _create_minimal_market(sym) for sym in common_symbols
                     }
@@ -285,7 +285,6 @@ class BinanceCCXTProvider(BaseDataProvider):
         
         # Convert symbol format if needed (add "/" if not present)
         ccxt_symbol = self._normalize_symbol_format(symbol)
-        
         self.logger.info(
             f"Fetching {ccxt_symbol} {timeframe} data from {from_timestamp} to {to_timestamp}"
         )
