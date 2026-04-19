@@ -23,6 +23,7 @@ class TradingHoursConfig:
         name: Trading hours identifier (e.g., "VIETNAM_STOCK", "CRYPTO_24H")
         timezone: IANA timezone string (e.g., "Asia/Ho_Chi_Minh", "UTC")
         sessions: List of trading sessions within a day
+        trading_days: List of integers representing trading days (Monday=0, ..., Sunday=6)
     
     Example:
         vn_hours = TradingHoursConfig(
@@ -31,23 +32,29 @@ class TradingHoursConfig:
             sessions=[
                 Session("morning", "03:00", "12:00"),
                 Session("afternoon", "12:10", "22:30")
-            ]
+            ],
+            trading_days=[0, 1, 2, 3, 4]
         )
     """
     name: str
     timezone: str
     sessions: List[Session]
+    trading_days: List[int]
     
     def __post_init__(self):
         """Validate trading hours structure"""
         if not self.name:
             raise ValueError("Trading hours name is required")
-        
         if not self.timezone:
             raise ValueError("Timezone is required")
-        
         if not self.sessions or len(self.sessions) == 0:
             raise ValueError("At least one trading session is required")
+        if not hasattr(self, 'trading_days') or self.trading_days is None:
+            raise ValueError("trading_days is required (list of integers, Monday=0 ... Sunday=6)")
+        if not isinstance(self.trading_days, list) or not all(isinstance(d, int) for d in self.trading_days):
+            raise ValueError("trading_days must be a list of integers")
+        if not all(0 <= d <= 6 for d in self.trading_days):
+            raise ValueError("trading_days values must be in range 0 (Monday) to 6 (Sunday)")
     
     def get_sessions_summary(self) -> str:
         """

@@ -77,18 +77,18 @@ class TimeSimulator:
         self._interval = timedelta(seconds=interval_seconds)
         self._trading_hours = trading_hours
         
-        # Use trading_hours's timezone/sessions if available, otherwise use global settings
+        # Use trading_hours's timezone/sessions and trading_days if available, otherwise use global settings
         if trading_hours:
             self.timezone = pytz.timezone(trading_hours.timezone)
-            # Use trading_hours.sessions directly (already List[Session] model objects)
             self.sessions = trading_hours.sessions
+            self.trading_days: List[int] = trading_hours.trading_days
         else:
             self.timezone = TIMEZONE
-            # Convert global SESSIONS dict to List[Session] model objects
             self.sessions = [
                 Session.from_any({"name": name, **times_dict})
                 for name, times_dict in SESSIONS.items()
             ]
+            self.trading_days: List[int] = [0, 1, 2, 3, 4]
         
         if self._is_replay:
             # Use pandas for robust datetime parsing
@@ -177,8 +177,8 @@ class TimeSimulator:
         else:
             check_time = dt_object.astimezone(market_tz)
         
-        # Check if the day is a weekday (Monday=0, Sunday=6)
-        if check_time.weekday() >= 5:
+        # Check if the day is a valid trading day for this market
+        if check_time.weekday() not in self.trading_days:
             return False
         
         # Check if time falls within any session

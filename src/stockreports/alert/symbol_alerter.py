@@ -342,7 +342,7 @@ class SymbolAlerter:
         self.logger.info(f"[INIT] Validating symbol {self.symbol} has approaches configured...")
         
         approaches_to_run = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
-        if not approaches_to_run:
+        if approaches_to_run is None or not approaches_to_run:
             self.logger.error(
                 f"Symbol {self.symbol} has no approaches configured. "
                 f"Cannot run monitoring session. Skipping..."

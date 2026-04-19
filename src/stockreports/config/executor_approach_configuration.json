@@ -25,7 +25,7 @@
             "MIN_PERCENTAGE": 0.01,
             "MAX_PERCENTAGE": 0.4,
             "COOLDOWN_WINDOW": 3
-          },
+          },        
           
           "validation": {
             "enabled": true,
@@ -86,7 +86,7 @@
         },
         
         "VOLUME_SPIKE_CONFIRMATION": {
-          "enabled": true,
+          "enabled": false,
           "resolution": 1,
           "description": "Volume spike confirmation strategy",
           
@@ -118,7 +118,7 @@
         },
         
         "CONSISTENT_VOLUME_ANCHOR": {
-          "enabled": true,
+          "enabled": false,
           "resolution": 1,
           "description": "Consistent volume anchor strategy",
           
@@ -175,7 +175,8 @@
           "start": "00:00",
           "end": "23:59"
         }
-      ]
+      ],
+      "trading_days": [0, 1, 2, 3, 4, 5, 6]
     },
     
     "VIETNAM_STOCK": {
@@ -185,15 +186,16 @@
       "sessions": [
         {
           "name": "morning",
-          "start": "03:00",
-          "end": "12:00"
+          "start": "09:00",
+          "end": "11:10"
         },
         {
           "name": "afternoon",
-          "start": "12:10",
-          "end": "22:30"
+          "start": "13:10",
+          "end": "14:10"
         }
-      ]
+      ],
+      "trading_days": [0, 1, 2, 3, 4]
     },
     
     "US_STOCK": {
@@ -216,7 +218,8 @@
           "start": "16:00",
           "end": "20:00"
         }
-      ]
+      ],
+      "trading_days": [0, 1, 2, 3, 4]
     }
   },
   

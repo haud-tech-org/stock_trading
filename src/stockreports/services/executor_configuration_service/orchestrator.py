@@ -13,12 +13,14 @@ Key Responsibilities:
 5. Validate executor configurations
 """
 
+
 import json
 import logging
 import threading
 import os
 from typing import Dict, Optional, List, Any
 from pathlib import Path
+from src.stockreports.utils.file_utils import get_project_root
 
 from ...model import (
     Session,
@@ -98,46 +100,47 @@ class ExecutorConfigurationOrchestrator:
         """
         try:
             config_path = self._get_config_path()
-            
             if not os.path.exists(config_path):
-                raise ExecutorConfigurationFileError(
-                    f"Configuration file not found at {config_path}"
-                )
+                self.logger.debug(f"Attempting to load configuration from: {config_path}")
+                if not os.path.exists(config_path):
+                    self.logger.error(f"Configuration file does not exist at: {config_path}")
+                    raise ExecutorConfigurationFileError(
+                        f"Configuration file not found at {config_path}"
+                    )
             
             with open(config_path, 'r') as f:
-                self._config_tree = json.load(f)
-            
+                self.logger.debug(f"Opened configuration file: {config_path}")
+                try:
+                    self._config_tree = json.load(f)
+                    self.logger.debug(f"Successfully parsed JSON configuration file.")
+                except Exception as e:
+                    self.logger.error(f"Exception while parsing JSON: {e}")
+                    raise
             self.logger.info(
                 f"Configuration loaded from {config_path}. "
                 f"Symbols: {list(self._config_tree.get('symbols', {}).keys())}"
             )
         
         except json.JSONDecodeError as e:
-            raise ExecutorConfigurationFileError(
-                f"Configuration file is not valid JSON: {e}"
-            )
+                self.logger.error(f"Configuration file is not valid JSON: {e}")
+                raise ExecutorConfigurationFileError(
+                    f"Configuration file is not valid JSON: {e}"
+                )
         except IOError as e:
-            raise ExecutorConfigurationFileError(
-                f"Cannot read configuration file: {e}"
-            )
+                self.logger.error(f"Cannot read configuration file: {e}")
+                raise ExecutorConfigurationFileError(
+                    f"Cannot read configuration file: {e}"
+                )
     
     def _get_config_path(self) -> str:
         """
-        Get path to executor_approach_configuration JSON file.
-        
+        Get path to executor_approach_configuration JSON file, always relative to project root.
         Returns:
             Absolute path to executor_approach_configuration.json
         """
-        # Get the directory where this file is located
-        current_dir = Path(__file__).parent.parent.parent.parent
-        config_path = current_dir / "src" / "stockreports" / "config" / "executor_approach_configuration.json"
-        
-        # Fallback: try relative to workspace root
-        if not config_path.exists():
-            workspace_root = Path.cwd()
-            config_path = workspace_root / "src" / "stockreports" / "config" / "executor_approach_configuration.json"
-        
-        return str(config_path)
+        project_root = get_project_root()
+        config_path = os.path.join(project_root, "src", "stockreports", "config", "executor_approach_configuration.json")
+        return config_path
     
     @classmethod
     def get(cls,
@@ -284,11 +287,15 @@ class ExecutorConfigurationOrchestrator:
             )
             for session in trading_hours_def.get("sessions", [])
         ]
-        
+
+        # Get trading_days from config, default to Mon-Fri if missing
+        trading_days = trading_hours_def.get("trading_days", [0, 1, 2, 3, 4])
+
         return TradingHoursConfig(
             name=trading_hours_def.get("name", "unknown"),
             timezone=trading_hours_def.get("timezone", "UTC"),
-            sessions=sessions
+            sessions=sessions,
+            trading_days=trading_days
         )
     
     def _validate_configuration(self, config: ApproachSymbolConfiguration) -> None:
@@ -364,30 +371,35 @@ class ExecutorConfigurationOrchestrator:
     def get_supported_approaches(cls, symbol: str) -> List[str]:
         """
         Get all supported approaches for a symbol.
-        
+        Ensures singleton orchestrator is lazily initialized and configuration is loaded.
         Args:
             symbol: Symbol name
-        
         Returns:
             List of enabled approach names for this symbol
         """
         orchestrator = cls()
-        try:
-            approaches_dict = orchestrator._config_tree["symbols"][symbol]["approaches"]
-            
-            # Filter to only enabled approaches
-            enabled = [
-                approach
-                for approach, config in approaches_dict.items()
-                if config.get("enabled", True)
-            ]
-            
-            return sorted(enabled)
-        except KeyError:
-            orchestrator.logger.warning(
-                f"Symbol not found: {symbol}"
-            )
+        # Ensure configuration is loaded (lazy singleton)
+        if orchestrator._config_tree is None:
+            orchestrator.logger.info("Configuration tree not loaded, attempting to load now (lazy init)...")
+            orchestrator._load_configuration()
+        if orchestrator._config_tree is None:
+            orchestrator.logger.error("Configuration tree is still not loaded. Returning no approaches.")
             return []
+        symbols_dict = orchestrator._config_tree.get("symbols")
+        if not symbols_dict or symbol not in symbols_dict:
+            orchestrator.logger.warning(f"Symbol not found: {symbol}")
+            return []
+        approaches_dict = symbols_dict[symbol].get("approaches")
+        if not approaches_dict:
+            orchestrator.logger.warning(f"No approaches configured for symbol: {symbol}")
+            return []
+        # Filter to only enabled approaches
+        enabled = [
+            approach
+            for approach, config in approaches_dict.items()
+            if config.get("enabled", True)
+        ]
+        return sorted(enabled)
     
     @classmethod
     def get_symbol_trading_hours(cls, symbol: str) -> TradingHoursConfig:
