@@ -72,7 +72,7 @@ DATA_PROCESSING = {
 # Guidance: A shorter interval (e.g., 5-10 seconds) provides more real-time data but increases API usage. A longer interval (e.g., 60 seconds) is less resource-intensive. Do not set this lower than the data resolution (e.g., don't check every 5 seconds for 1-minute data).
 # Range: Integer > 0.
 # Example: `MONITORING_INTERVAL_SECONDS = 5`
-MONITORING_INTERVAL_SECONDS = 57
+MONITORING_INTERVAL_SECONDS = 27
 
 
 # --- General Alerting & Reporting ---
@@ -216,8 +216,8 @@ TRADING_HOURS = {
         "name": "Vietnam",
         "timezone": "Asia/Ho_Chi_Minh",
         "sessions": {
-            "morning": {"start": "05:00", "end": "12:00"},
-            "afternoon": {"start": "12:01", "end": "22:30"},
+            "morning": {"start": "09:10", "end": "11:25"},
+            "afternoon": {"start": "13:10", "end": "14:10"},
         }
     },
     # Example for another market:

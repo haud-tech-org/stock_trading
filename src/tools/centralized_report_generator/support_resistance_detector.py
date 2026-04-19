@@ -117,7 +117,7 @@ def run_sr_detection_for_symbols(
     symbols: list,
     start_time: str,
     end_time: str,
-    resolution: int = 15,
+    resolution: int = 60,
     window: int = 10,
     tolerance_percent: float = 0.5,
     min_touches: int = 3,
