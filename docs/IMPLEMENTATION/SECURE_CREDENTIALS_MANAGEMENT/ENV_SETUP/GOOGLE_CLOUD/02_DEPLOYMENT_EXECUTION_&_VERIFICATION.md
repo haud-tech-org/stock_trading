@@ -40,11 +40,11 @@ gcloud run deploy stock-alerter \
   --region europe-west1 \
   --service-account stock-alerter-sa@stock-trading-489001.iam.gserviceaccount.com \
   --no-allow-unauthenticated \
-  --memory 16Gi \
+  --memory 8Gi \
   --cpu 8 \
   --no-cpu-throttling \
   --timeout 300 \
-  --max-instances 2
+  --max-instances 1
 ```
 
 ---
@@ -214,14 +214,13 @@ gcloud run deploy $SERVICE_NAME \
   --region $REGION \
   --service-account $SERVICE_ACCOUNT_EMAIL \
   --no-allow-unauthenticated \
-  --memory 16Gi \
+  --memory 8Gi \
   --cpu 8 \
   --no-cpu-throttling \
   --cpu-boost \
   --timeout 300 \
   --min-instances 1 \
-  --max-instances 2 \
-  --execution-environment gen2 \
+  --max-instances 1 \
   --add-volume=name=gcs-1,type=cloud-storage,bucket=stock-trading-2 \
   --add-volume-mount=volume=gcs-1,mount-path=/mnt \
   --set-env-vars GOOGLE_CLOUD_PROJECT=$PROJECT_ID,EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
@@ -249,9 +248,9 @@ Cloud Run automatically sets these variables:
 | `--no-cpu-throttling` | Set | Instance-based billing (always available CPU) |
 | `--cpu-boost` | Set | Faster container startup |
 | `--timeout` | 300s | 5 minutes for complete alert cycle |
-| `--max-instances` | 2 | Cost control with high-resource config |
+| `--max-instances` | 1 | Cost control with high-resource config |
 | `--no-allow-unauthenticated` | Set | Secure production (requires IAM) |
-| `--execution-environment` | gen2 | 2nd generation runtime (better performance) |
+| `--execution-environment` | gen1 (default) | Default Cloud Run runtime |
 | `--add-volume` | cloud-storage, bucket=stock-trading-2 | Mount GCS bucket for report storage |
 | `--add-volume-mount` | /mnt | Mount path for accessing bucket files |
 

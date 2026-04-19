@@ -50,7 +50,7 @@ PROFIT_THRESHOLD_BY_APPROACH = {
     'VRA': 4.5,
     'CONSISTENT_VOLUME_ANCHOR': 2.75,
     'ICHIMOKU': 3.0,
-    'REVERSAL_ANCHOR_SIGNAL_CANDLE': 250
+    'REVERSAL_ANCHOR_SIGNAL_CANDLE': 350
 }
 
 # A fixed offset added to all suggested price calculations to provide an extra buffer.

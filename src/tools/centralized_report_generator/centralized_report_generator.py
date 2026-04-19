@@ -282,8 +282,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sr-resolution",
         type=int,
-        default=15,
-        help="Data resolution for the S/R detector in minutes. Default: 15."
+        default=60,
+        help="Data resolution for the S/R detector in minutes. Default: 60."
     )
     parser.add_argument(
         "--sr-min-touches",
