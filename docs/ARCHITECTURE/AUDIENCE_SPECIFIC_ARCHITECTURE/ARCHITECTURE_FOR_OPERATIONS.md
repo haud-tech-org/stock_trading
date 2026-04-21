@@ -35,7 +35,7 @@ Both modes run on the same codebase with different configurations.
 ### ✅ Core Alert Generation
 - [ ] Multi-symbol monitoring (unlimited symbols)
 - [ ] Real-time price data fetching
-- [ ] 6 different alert detection approaches
+- [ ] 7 different alert detection approaches
 - [ ] Customizable alert thresholds
 - [ ] Time-based scheduled operations
 - [ ] Multi-threaded concurrent processing
@@ -93,7 +93,7 @@ Both modes run on the same codebase with different configurations.
    │ Service │        │ Executors│      │ Manager    │
    └─────────┘        └──────────┘      └────────────┘
         ↓                   ↓                   ↓
-   [3 Sources]    [6 Approaches]    [3 Channels]
+   [3 Sources]    [7 Approaches]    [3 Channels]
    ↓              ↓                  ↓
    Vietstock      Strong Candle      Email
    Binance API    Momentum            SMS
@@ -101,6 +101,7 @@ Both modes run on the same codebase with different configurations.
                   VRA
                   Ichimoku
                   Vol Anchor
+                  Reversal Anchor Signal Candle
         ↓
     ┌─────────────┐
     │ Reports out │
@@ -140,7 +141,7 @@ Input: Symbol list + Configuration
    ↓
 Fetch OHLCV Data (1-min, 5-min, etc.)
    ↓
-Analyze via 6+ Executors
+Analyze via 7+ Executors
    ↓
 Generate Alerts (when conditions match)
    ↓

@@ -40,5 +40,8 @@ class ReversalAnchorSignalCandleSettings(BaseSettings):
         self.min_percentage: float = self.get("MIN_PERCENTAGE")
         self.max_percentage: float = self.get("MAX_PERCENTAGE")
 
+        # Validation 5: Alert candle close-to-extreme threshold (NEW)
+        self.close_to_extreme_threshold: float = self.get("ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD")
+
         # Cooldown validation (minutes)
         self.cooldown_window: int = self.get("COOLDOWN_WINDOW")

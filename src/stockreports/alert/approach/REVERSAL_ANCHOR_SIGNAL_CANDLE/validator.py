@@ -160,48 +160,6 @@ class ReversalAnchorSignalCandleValidator:
 
         return is_doji
 
-    @staticmethod
-    def validate_alert_candle_extremes(
-        alert_candle: pd.Series,
-        trend: Trend,
-        window_df: pd.DataFrame,
-    ) -> bool:
-        """Validate alert candle has extreme values in window.
-        
-        Validation 4a: 
-        - For uptrend: alert candle must have HIGHEST high in window
-        - For downtrend: alert candle must have LOWEST low in window
-        
-        Args:
-            alert_candle: The final candle in window
-            trend: Trend instance (UPTREND or DOWNTREND)
-            window_df: Full window DataFrame
-            
-        Returns:
-            bool: True if alert candle has the required extreme
-            
-        Raises:
-            ValueError: If invalid trend or candle/window invalid
-        """
-        if trend not in (Trend.UPTREND, Trend.DOWNTREND):
-            raise ValueError(f"Invalid trend: {trend}")
-
-        if window_df.empty:
-            raise ValueError("Window cannot be empty")
-
-        if trend == Trend.UPTREND:
-            # Must have highest high in window
-            alert_high: float = alert_candle[CandleColumn.HIGH]
-            window_max_high: float = window_df[CandleColumn.HIGH].max()
-            is_extreme: bool = alert_high >= window_max_high
-
-        else:  # downtrend
-            # Must have lowest low in window
-            alert_low: float = alert_candle[CandleColumn.LOW]
-            window_min_low: float = window_df[CandleColumn.LOW].min()
-            is_extreme = alert_low <= window_min_low
-
-        return is_extreme
 
     @staticmethod
     def validate_alert_candle_wick(
@@ -248,6 +206,42 @@ class ReversalAnchorSignalCandleValidator:
             and wick_percentage <= max_percentage
         )
         return is_valid
+    
+    @staticmethod
+    def validate_alert_candle_close_to_extreme(
+        alert_candle: pd.Series,
+        trend: Trend,
+        window_df: pd.DataFrame,
+        threshold: float,
+    ) -> bool:
+        """Validate alert candle's close is within a fixed price threshold of the window extreme.
+
+        Validation: Close-to-extreme threshold (configurable, absolute price)
+        - For uptrend: close must be within `threshold` price units of window high
+        - For downtrend: close must be within `threshold` price units of window low
+
+        Args:
+            alert_candle: The final candle in window
+            trend: Trend instance (UPTREND or DOWNTREND)
+            window_df: Full window DataFrame
+            threshold: Absolute price threshold (e.g., 10.0 means within $10)
+        Returns:
+            bool: True if close is within threshold of extreme
+        Raises:
+            ValueError: If invalid trend or data
+        """
+        if trend not in (Trend.UPTREND, Trend.DOWNTREND):
+            raise ValueError(f"Invalid trend: {trend}")
+        if window_df.empty:
+            raise ValueError("Window cannot be empty")
+        close = alert_candle[CandleColumn.CLOSE]
+        if trend == Trend.UPTREND:
+            window_max_high = window_df[CandleColumn.HIGH].max()
+            distance = abs(close - window_max_high)
+        else:
+            window_min_low = window_df[CandleColumn.LOW].min()
+            distance = abs(close - window_min_low)
+        return distance <= threshold
 
     @staticmethod
     def validate_not_in_cooldown(
@@ -281,3 +275,4 @@ class ReversalAnchorSignalCandleValidator:
         minutes_elapsed: float = time_diff.total_seconds() / 60
 
         return minutes_elapsed >= cooldown_minutes
+

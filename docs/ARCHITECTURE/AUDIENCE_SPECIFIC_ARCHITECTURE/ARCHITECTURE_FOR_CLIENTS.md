@@ -28,12 +28,13 @@ Test your alert strategies against historical market data to see how they would 
 - Detect price movements 24/7
 - Instant notifications when alerts trigger
 
-✅ **5+ Different Alert Approaches**
+✅ **6+ Different Alert Approaches**
 - Strong Candle Detection
 - Consistent Momentum
 - Volume Spike Confirmation
 - VRA (Volume Reversal Analysis)
 - Ichimoku Patterns
+- Reversal Anchor Signal Candle
 - And more...
 
 ✅ **Multi-Channel Notifications**
@@ -123,6 +124,7 @@ Using the performance data:
 
 Each approach looks for different signals:
 
+
 ### 🔸 Strong Candle Detection
 - Looks for dominant candles (large bodies, small wicks)
 - Indicates strong buyer/seller commitment
@@ -152,6 +154,14 @@ Each approach looks for different signals:
 - Japanese charting technique
 - Multiple components (Kijun, Tenkan, Kumo)
 - Best for: Trend and support/resistance
+
+### 🔸 Reversal Anchor Signal Candle
+- Detects trend reversals using a 3-candle logic:
+   1. **Anchor Candle**: Largest body in lookback window
+   2. **Signal Candle**: Highest volume at/after anchor
+   3. **Alert Candle**: Final candle with extreme wick/price action
+- Designed to catch sharp reversals with volume and price confirmation
+- Best for: Early reversal entries after strong trends
 
 ---
 

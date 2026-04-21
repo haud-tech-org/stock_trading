@@ -69,6 +69,7 @@ The stock trading analysis system uses a **modular Executor → Analyzer → Val
 
 **EXECUTOR** (Orchestration)
 - Loads market data (OHLCV)
+- Loads approach configuration via ExecutorConfigurationOrchestrator (from executor_approach_configuration.json)
 - Applies settings (window sizes, thresholds)
 - Calls Analyzer for calculations
 - Calls Validator for verification
@@ -269,7 +270,7 @@ Using Python enums provides:
 │ ─────────────────────────────────────────────────────────── │
 │ • Market data (OHLCV) for current symbol                    │
 │ • Time period (lookback window)                             │
-│ • Settings (thresholds, parameters)                         │
+│ • Settings (thresholds, parameters) from orchestrator       │
 └──────────────────────────────────────────────────────────────┘
                             ↓
 ┌──────────────────────────────────────────────────────────────┐
@@ -422,21 +423,21 @@ src/stockreports/alert/
 
 ### Creating a New Approach
 
-**Step 1: Create Executor** (30 lines typical)
+**Step 1: Create Executor** (canonical pattern)
 ```python
-from src.stockreports.alert.executor_base import ExecutorBase
-from src.stockreports.alert.approach.MyApproach.analyzer import MyAnalyzer
-from src.stockreports.alert.approach.MyApproach.validator import MyValidator
+from src.stockreports.alert.executor import Executor
+from src.stockreports.alert.approach.MyApproach.settings import MyApproachSettings
+from src.stockreports.alert.approach.MyApproach.analyzer import MyApproachAnalyzer
+from src.stockreports.alert.approach.MyApproach.validator import MyApproachValidator
 
-class MyExecutor(ExecutorBase):
-    def __init__(self, settings):
-        self.settings = settings
-        self.analyzer = MyAnalyzer()
-        self.validator = MyValidator()
-    
-    def run(self, dataframe):
-        # Orchestrate analysis and validation
-        # Return signal
+class MyApproachExecutor(Executor):
+    def __init__(self, symbol: str, approach: Approach, resolution: int):
+        self.settings = MyApproachSettings(symbol)
+        self.analyzer = MyApproachAnalyzer()
+        self.validator = MyApproachValidator()
+        super().__init__(symbol, approach, resolution, self.settings)
+        self.logger = logging.getLogger(__name__)
+    # ... implement alert-finding logic ...
 ```
 
 **Step 2: Create Analyzer** (20-50 lines)

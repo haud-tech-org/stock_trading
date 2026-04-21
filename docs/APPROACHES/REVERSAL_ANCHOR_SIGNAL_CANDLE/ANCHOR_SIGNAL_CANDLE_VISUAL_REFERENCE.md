@@ -139,7 +139,7 @@ Example with multiplier_volume = 1.2:
 
 ## 📊 Validation 4: Alert Candle Confirmation
 
-### Final Candle Validation (Doji Check, Extremes & Wick Validation)
+### Final Candle Validation (Doji Check, Close-to-Extreme & Wick Validation)
 
 ```
 PRE-CHECK: Alert Candle is NOT a Doji
@@ -183,17 +183,19 @@ Window view:
 
 Price grid showing window extremes:
 
-         HIGH (window max) ─────◆─── ← ALERT has highest HIGH ✓
-                            ╱ │ ╲
-                          ╱   │   ╲
-         CLOSE (window max) ─◆─┼─◆─ ← ALERT has highest CLOSE ✓
-                              │
-                              ▼
-                        [ALERT CANDLE]
-                        
+         HIGH (window max)
+         
+         [ALERT CANDLE]
+         
          Body = CLOSE - OPEN (green/positive)
          Upper Wick = HIGH - CLOSE ← Validation target
          Candle Range = HIGH - LOW
+         
+         CLOSE-TO-EXTREME THRESHOLD (NEW):
+         ─────────────────────────────
+         For UPTREND: |CLOSE - window_max_high| <= close_to_extreme_threshold
+         For DOWNTREND: |CLOSE - window_min_low| <= close_to_extreme_threshold
+         (Alert candle close must be within a configurable price threshold of the window extreme, not exactly at the extreme)
          
          Wick Percentage Validation:
          ─────────────────────────────
@@ -238,9 +240,8 @@ Price grid showing window extremes:
          HIGH
            ▲
            │
-         CLOSE (window min) ─◆─┼─◆─ ← ALERT has lowest CLOSE ✓
-                              │
-         LOW (window min) ─────◆─── ← ALERT has lowest LOW ✓
+         CLOSE (window min)
+         LOW (window min)
                         ╱ │ ╲
                       ╱   │   ╲
          
@@ -249,6 +250,11 @@ Price grid showing window extremes:
          Body = OPEN - CLOSE (red/negative)
          Lower Wick = CLOSE - LOW ← Validation target
          Candle Range = HIGH - LOW
+         
+         CLOSE-TO-EXTREME THRESHOLD (NEW):
+         ─────────────────────────────
+         For DOWNTREND: |CLOSE - window_min_low| <= close_to_extreme_threshold
+         (Alert candle close must be within a configurable price threshold of the window extreme, not exactly at the extreme)
          
          Wick Percentage Validation:
          ─────────────────────────────
@@ -294,19 +300,14 @@ START: Extract lookback_window_df (50 candles, for example)
 │   │   ├─ Check: |CLOSE - OPEN| / (HIGH - LOW) < 0.05
 │   │   └─ If IS DOJI → FAIL → SKIP THIS WINDOW
 │   │
-│   ├─► 4b: Trend-Based Extremes
-│   │   │
-│   │   ├─► IF UPTREND:
-│   │   │   ├─ Check: alert.HIGH == MAX(all HIGH in window)
-│   │   │   ├─ Check: alert.CLOSE == MAX(all CLOSE in window)
-│   │   │   ├─ Calculate: upper_wick_percentage = (HIGH - CLOSE) / candle_range
-│   │   │   └─ Check: min_pct <= upper_wick_pct <= max_pct
-│   │   │
-│   │   └─► ELSE IF DOWNTREND:
-│   │       ├─ Check: alert.LOW == MIN(all LOW in window)
-│   │       ├─ Check: alert.CLOSE == MIN(all CLOSE in window)
-│   │       ├─ Calculate: lower_wick_percentage = (CLOSE - LOW) / candle_range
-│   │       └─ Check: min_pct <= lower_wick_pct <= max_pct
+│   ├─► 4b: Close-to-Extreme Threshold (NEW)
+│   │   ├─ For UPTREND: |alert_candle.CLOSE - window_max_high| <= close_to_extreme_threshold
+│   │   └─ For DOWNTREND: |alert_candle.CLOSE - window_min_low| <= close_to_extreme_threshold
+│   │   (Alert candle close must be within a configurable price threshold of the window extreme)
+│   │
+│   │   ├─ Calculate: upper_wick_percentage = (HIGH - CLOSE) / candle_range (uptrend)
+│   │   └─ Calculate: lower_wick_percentage = (CLOSE - LOW) / candle_range (downtrend)
+│   │   └─ Check: min_pct <= wick_pct <= max_pct
 │   │
 │   └─ Output: True or FAIL → SKIP THIS WINDOW
 │
@@ -376,46 +377,49 @@ All configuration values are stored in `src/stockreports/config/signal_settings.
 
 ```python
 REVERSAL_ANCHOR_SIGNAL_CANDLE = {
-    # Lookback window size
-    "LOOKBACK_WINDOW": 50,              # Analyze 50 candles per window
-    
-    # Validation 1: Window size threshold
-    "MIN_SIZE_PRICE_WINDOW": 0.5,       # Minimum 0.5 price units range
-    
-    # Validation 2: Anchor candle thresholds
-    "MIN_SIZE_CANDLE": 0.01,            # Anchor body must be >= 0.01 price units
-    "MULTIPLIER_SIZE": 1.5,             # Anchor >= 1.5x average body size
-    
-    # Validation 3: Signal candle thresholds
-    "MIN_VOLUME": 100000,               # Absolute minimum volume
-    "MULTIPLIER_VOLUME": 1.2,           # Signal >= 1.2x average volume
-    
-    # Validation 4: Alert candle wick thresholds
-    "MIN_PERCENTAGE": 0.2,              # Minimum wick 20% of body size
-    "MAX_PERCENTAGE": 0.6,              # Maximum wick 60% of body size
-    
-    # Cooldown validation
-    "COOLDOWN_WINDOW": 60,              # 60 minutes between alerts
+  # Lookback window size
+  "LOOKBACK_WINDOW": 11,              # Analyze 11 candles per window
+
+  # Validation 1: Window size threshold
+  "MIN_SIZE_PRICE_WINDOW": 750,       # Minimum 750 price units range
+
+  # Validation 2: Anchor candle thresholds
+  "MIN_SIZE_CANDLE": 150,             # Anchor body must be >= 150 price units
+  "MULTIPLIER_SIZE": 1.3,             # Anchor >= 1.3x average body size
+
+  # Validation 3: Signal candle thresholds
+  "MIN_VOLUME": 1500,                 # Absolute minimum volume
+  "MULTIPLIER_VOLUME": 2.5,           # Signal >= 2.5x average volume
+
+  # Validation 4: Alert candle thresholds
+  "MIN_PERCENTAGE": 0.01,             # Minimum wick 1% of body size
+  "MAX_PERCENTAGE": 0.4,              # Maximum wick 40% of body size
+  "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 150.0, # Close must be within 150 price units of window extreme
+
+  # Cooldown validation
+  "COOLDOWN_WINDOW": 3,               # 3 minutes between alerts
 }
 ```
 
-**Note**: These values are loaded from `signal_settings.py` and are UPPERCASED as required. Access them in code via:
+**Note**: These values are loaded from the orchestrator configuration (see `executor_approach_configuration.json`). Access them in code via:
 ```python
 settings = ReversalAnchorSignalCandleSettings(symbol)
-settings.lookback_window          # 50
-settings.min_size_price_window    # 0.5
-settings.min_size_candle          # 0.01
-settings.multiplier_size          # 1.5
-settings.min_volume               # 100000
-settings.multiplier_volume        # 1.2
-settings.min_percentage           # 0.2
-settings.max_percentage           # 0.6
-settings.cooldown_window          # 60
+settings.lookback_window          # 11
+settings.min_size_price_window    # 750
+settings.min_size_candle          # 150
+settings.multiplier_size          # 1.3
+settings.min_volume               # 1500
+settings.multiplier_volume        # 2.5
+settings.min_percentage           # 0.01
+settings.max_percentage           # 0.4
+settings.alert_candle_close_to_extreme_threshold  # 150.0
+settings.cooldown_window          # 3
 ```
 
 ---
 
 ## 🔍 Code Reference Mapping
+
 
 This visual reference directly corresponds to these codebase components:
 
@@ -425,7 +429,7 @@ This visual reference directly corresponds to these codebase components:
   - `validate_anchor_candle()` - Validation 2
   - `validate_signal_candle()` - Validation 3
   - `validate_alert_candle_is_doji()` - Validation 4a
-  - `validate_alert_candle_extremes()` - Validation 4b
+  - `validate_alert_candle_close_to_extreme()` - Validation 4b (NEW: close-to-extreme threshold)
   - `validate_alert_candle_wick()` - Validation 4c
   - `validate_not_in_cooldown()` - Cooldown check
 
@@ -448,7 +452,7 @@ This visual reference directly corresponds to these codebase components:
 
 **Configuration:**
 - `src/stockreports/alert/approach/REVERSAL_ANCHOR_SIGNAL_CANDLE/settings.py`
-  - Loads all parameters from `signal_settings.py`
+  - Loads all parameters from the orchestrator configuration (`executor_approach_configuration.json`)
 
 ---
 

@@ -349,13 +349,21 @@ class ReversalAnchorSignalCandleExecutor(Executor):
             return None
 
     def _step_validate_alert_candle(self, trend: Trend) -> Optional[float]:
-        """Step 4: Validate alert candle (doji, extremes, wick).
+        """Step 4: Validate alert candle (doji, extremes, wick, close-to-extreme).
         
-        Checks if alert candle is not doji, has extremes, and wick within range.
+        Checks if alert candle is not doji, has extremes, wick within range, and close is within the configured threshold of the window extreme (high or low).
+        
+        Validation steps:
+        - 4a: Not a doji
+        - 4b: Has extremes (high/low in window)
+        - 4c: Wick percentage within range
+        - 4d: Close-to-extreme threshold (NEW, configurable)
+            - For uptrend: close must be within threshold of window high
+            - For downtrend: close must be within threshold of window low
         
         Args:
             trend: The identified trend (UPTREND or DOWNTREND)
-            
+        
         Returns:
             Wick percentage if valid, None otherwise
         """
@@ -377,7 +385,6 @@ class ReversalAnchorSignalCandleExecutor(Executor):
                     approach=self.APPROACH_NAME
                 )
                 return None
-            
             self.validations.append(Validation(
                 name="alert_candle_not_doji",
                 step=self.current_step,
@@ -385,7 +392,6 @@ class ReversalAnchorSignalCandleExecutor(Executor):
                 message="Alert candle is not doji",
                 status=ValidationStatus.PASSED
             ))
-            
         except Exception as e:
             log(
                 logger=self.logger,
@@ -401,16 +407,17 @@ class ReversalAnchorSignalCandleExecutor(Executor):
             )
             return None
 
-        # Check 4b: Alert has extremes
+
+        # Check 4b: Alert candle close-to-extreme threshold (absolute price)
         self.next_validation()
         try:
-            is_extreme = self.validator.validate_alert_candle_extremes(
+            is_close_to_extreme = self.validator.validate_alert_candle_close_to_extreme(
                 self.last_candle,
                 trend,
                 self.lookback_window_df,
+                self.settings.close_to_extreme_threshold,
             )
-            
-            if not is_extreme:
+            if not is_close_to_extreme:
                 log(
                     logger=self.logger,
                     status=ValidationStatus.FAILED,
@@ -418,21 +425,19 @@ class ReversalAnchorSignalCandleExecutor(Executor):
                     alert_time=self.current_window_end_time,
                     step=self.current_step,
                     validation=self.validation_step,
-                    message=f"Alert candle not extreme for {trend}",
+                    message=f"Alert candle close not within ±{self.settings.close_to_extreme_threshold} price units of window extreme for {trend}",
                     log_level=LogLevel.DEBUG,
                     execution_symbol=self.symbol,
                     approach=self.APPROACH_NAME
                 )
                 return None
-            
             self.validations.append(Validation(
-                name="alert_candle_extreme",
+                name="alert_candle_close_to_extreme",
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Alert candle has extremes for {trend}",
+                message=f"Alert candle close within ±{self.settings.close_to_extreme_threshold} price units of window extreme for {trend}",
                 status=ValidationStatus.PASSED
             ))
-            
         except Exception as e:
             log(
                 logger=self.logger,
@@ -441,7 +446,7 @@ class ReversalAnchorSignalCandleExecutor(Executor):
                 alert_time=self.current_window_end_time,
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Extremes check failed - {str(e)}",
+                message=f"Close-to-extreme check failed - {str(e)}",
                 log_level=LogLevel.DEBUG,
                 execution_symbol=self.symbol,
                 approach=self.APPROACH_NAME
@@ -452,13 +457,11 @@ class ReversalAnchorSignalCandleExecutor(Executor):
         self.next_validation()
         try:
             wick_pct = self.analyzer.calculate_wick_percentage(self.last_candle, trend)
-            
             is_valid = self.validator.validate_alert_candle_wick(
                 wick_pct,
                 self.settings.min_percentage,
                 self.settings.max_percentage,
             )
-            
             if not is_valid:
                 log(
                     logger=self.logger,
@@ -473,7 +476,6 @@ class ReversalAnchorSignalCandleExecutor(Executor):
                     approach=self.APPROACH_NAME
                 )
                 return None
-            
             self.validations.append(Validation(
                 name=nameof(self.settings.min_percentage),
                 step=self.current_step,
