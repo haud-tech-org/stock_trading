@@ -1,4 +1,6 @@
 # src/stockreports/alert/common/base_settings.py
+
+from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
 from src.stockreports.config import loader
 
 class BaseSettings:
@@ -9,45 +11,21 @@ class BaseSettings:
     def __init__(self, symbol: str, approach_name: str):
         self.symbol = symbol
         self.approach_name = approach_name
-        
-        # Load global settings
+
+        # Load configuration via orchestrator
+        executor_config = ExecutorConfigurationOrchestrator.get(self.symbol, self.approach_name)
+        self.approach_settings = executor_config.get_approach_config()
+
+        # Restore global settings using loader for other settings
         self.global_settings = loader.get_settings()
-        self.signal_settings = loader.get_signal_settings()
-        self.validation_settings = loader.get_validation_settings()
-        
-        # Expose common properties
         self.MODE = self.global_settings.MODE
-        
-        # Load approach-specific configuration
-        # All configurations are now flat structures.
-        self.approach_settings = self.signal_settings.APPROACH_CONFIG.get(self.approach_name, {})
 
     def get(self, key: str):
         """
         Provides a generic getter to access any setting.
-        It searches for the key in the following order of priority:
-        1. Approach-specific settings (`approach_settings`)
-        2. General signal settings (`signal_settings`)
-        3. Validation settings (`validation_settings`)
-        4. Global settings (`global_settings`)
-        
-        Raises a KeyError if the setting is not found in any of the configurations.
+        Only searches approach-specific settings loaded from the orchestrator.
+        Raises a KeyError if the setting is not found.
         """
-        # 1. Check approach-specific settings
         if key in self.approach_settings:
             return self.approach_settings[key]
-
-        # 2. Check general signal settings
-        if hasattr(self.signal_settings, key):
-            return getattr(self.signal_settings, key)
-
-        # 3. Check validation settings
-        if hasattr(self.validation_settings, key):
-            return getattr(self.validation_settings, key)
-
-        # 4. Check global settings
-        if hasattr(self.global_settings, key):
-            return getattr(self.global_settings, key)
-
-        # If not found anywhere, raise an error
-        raise KeyError(f"Setting '{key}' not found for approach '{self.approach_name}' in any configuration.")
+        raise KeyError(f"Setting '{key}' not found for approach '{self.approach_name}' in approach configuration.")

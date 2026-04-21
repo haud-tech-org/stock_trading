@@ -34,6 +34,9 @@ Layer 4 contains the **trading strategy executors** - 18+ configurable approache
 ```
 EXECUTOR (Strategy Container)
   ↓
+  Loads configuration for the approach via ExecutorConfigurationOrchestrator
+  (from executor_approach_configuration.json)
+  ↓
 ANALYZER (Analyze Candle Data)
   ├─ Study price action
   ├─ Calculate indicators

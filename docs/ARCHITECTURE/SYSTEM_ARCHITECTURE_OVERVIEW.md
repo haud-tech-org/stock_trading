@@ -116,9 +116,10 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  │ Responsibility: Detect trading signals for this strategy           │  │
 │  │                                                                     │  │
 │  │ Common Executor Actions (ALL approaches follow this pattern):       │  │
-│  │ ├─ Load approach-specific configuration                           │  │
+│  │ ├─ Load approach-specific configuration via ExecutorConfigurationOrchestrator │  │
 │  │ │  ├─ Thresholds (price, volume, ratio limits)                    │  │
 │  │ │  └─ Window sizes (lookback periods)                             │  │
+│  │ │  └─ Source: executor_approach_configuration.json                │  │
 │  │ │                                                                  │  │
 │  │ ├─ Analyze market data using Analyzer                             │  │
 │  │ │  └─ Call pure calculation methods (body ratio, volume, etc.)    │  │

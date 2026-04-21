@@ -191,11 +191,14 @@ APPROACH_CONFIG = {
         
         # Validation 3: Signal candle thresholds
         "MIN_VOLUME": 5000,
-        "MULTIPLIER_VOLUME": 4.0,
+        "MULTIPLIER_VOLUME": 3.0,
 
         # Validation 4: Alert candle wick thresholds
         "MIN_PERCENTAGE": 0.01,
         "MAX_PERCENTAGE": 0.4,
+
+        # Validation 5: Alert candle close-to-extreme threshold (NEW)
+        "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 150.0,  # Absolute price difference allowed
         
         # Cooldown validation
         "COOLDOWN_WINDOW": 3

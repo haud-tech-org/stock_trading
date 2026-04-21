@@ -137,18 +137,6 @@ class ApproachSymbolConfiguration:
         """
         return self.approach_config.get(key, default)
     
-    def get_signal_setting_value(self, key: str, default: Any = None) -> Any:
-        """
-        Get a specific value from signal settings.
-        
-        Args:
-            key: Setting key to retrieve
-            default: Default value if key not found
-        
-        Returns:
-            Setting value or default if not found
-        """
-        return self.signal_settings.get(key, default)
     
     # --- Trading Context Methods ---
     
