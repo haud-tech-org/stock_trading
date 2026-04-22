@@ -237,10 +237,10 @@ class ReversalAnchorSignalCandleValidator:
         close = alert_candle[CandleColumn.CLOSE]
         if trend == Trend.UPTREND:
             window_max_high = window_df[CandleColumn.HIGH].max()
-            distance = abs(close - window_max_high)
+            distance = window_max_high - close
         else:
             window_min_low = window_df[CandleColumn.LOW].min()
-            distance = abs(close - window_min_low)
+            distance = close - window_min_low
         return distance <= threshold
 
     @staticmethod

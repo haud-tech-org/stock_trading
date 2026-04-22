@@ -193,9 +193,9 @@ Price grid showing window extremes:
          
          CLOSE-TO-EXTREME THRESHOLD (NEW):
          ─────────────────────────────
-         For UPTREND: |CLOSE - window_max_high| <= close_to_extreme_threshold
-         For DOWNTREND: |CLOSE - window_min_low| <= close_to_extreme_threshold
-         (Alert candle close must be within a configurable price threshold of the window extreme, not exactly at the extreme)
+         For UPTREND: (window_max_high - CLOSE) <= close_to_extreme_threshold
+         For DOWNTREND: (CLOSE - window_min_low) <= close_to_extreme_threshold
+         (Alert candle close must be as close as possible to the window extreme in the direction of the trend, within a configurable price threshold. For uptrend, close just below the high; for downtrend, close just above the low.)
          
          Wick Percentage Validation:
          ─────────────────────────────
@@ -253,8 +253,8 @@ Price grid showing window extremes:
          
          CLOSE-TO-EXTREME THRESHOLD (NEW):
          ─────────────────────────────
-         For DOWNTREND: |CLOSE - window_min_low| <= close_to_extreme_threshold
-         (Alert candle close must be within a configurable price threshold of the window extreme, not exactly at the extreme)
+         For DOWNTREND: (CLOSE - window_min_low) <= close_to_extreme_threshold
+         (Alert candle close must be as close as possible to the window low, within a configurable price threshold. For downtrend, close just above the low.)
          
          Wick Percentage Validation:
          ─────────────────────────────
