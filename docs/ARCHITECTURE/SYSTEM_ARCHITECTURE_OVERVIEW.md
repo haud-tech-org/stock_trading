@@ -231,45 +231,35 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 └────────────────────────────────────────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────────────────┐
+
 │ LAYER 7: NOTIFICATION DELIVERY                                             │
 ├────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
-│  │ NotificationManager (Multi-Channel Delivery)                        │  │
-│  │ Location: src/stockreports/notification/notification_manager.py     │  │
-│  │ Responsibility: Deliver alerts through configured channels          │  │
+│  │ Notification Delivery Orchestrator (Config-Driven Multi-Channel Delivery) │  │
+│  │ Responsibility: Modular, config-driven notification dispatch, deduplication, and channel orchestration │  │
 │  │                                                                     │  │
-│  │ Delivery Channels:                                                  │  │
-│  │ ├─ Email (via SMTP)                                               │  │
-│  │ │  ├─ Recipient configuration                                      │  │
-│  │ │  ├─ Template-based formatting                                   │  │
-│  │ │  ├─ Retry on failure                                            │  │
-│  │ │  └─ HTML and plain text formats                                 │  │
-│  │ │                                                                   │  │
-│  │ ├─ SMS (via Twilio or similar)                                    │  │
-│  │ │  ├─ Phone number configuration                                  │  │
-│  │ │  ├─ Character limit handling                                    │  │
-│  │ │  ├─ Delivery confirmation                                       │  │
-│  │ │  └─ Retry on failure                                            │  │
-│  │ │                                                                   │  │
-│  │ └─ Web Notifications (via ntfy.sh or similar)                      │  │
-│  │    ├─ Webhook integration                                          │  │
-│  │    ├─ Realtime push to web/mobile                                 │  │
-│  │    ├─ No phone number required                                     │  │
-│  │    └─ Retry on failure                                            │  │
+│  │ Channel System:                                                     │  │
+│  │ ├─ Modular channel factory creates/manages notification channels    │  │
+│  │ ├─ Supported channels: Email (SMTP), SMS, Ntfy (web push)           │  │
+│  │ ├─ Each channel: config-driven, pluggable, and validated            │  │
+│  │                                                                     │  │
+│  │ Scheduler Integration:                                              │  │
+│  │ ├─ Scheduler handles reminders, close position, and per-symbol/approach delays │  │
+│  │ ├─ Robust state management for scheduled notifications              │  │
+│  │                                                                     │  │
+│  │ Delivery Features:                                                  │  │
+│  │ ├─ Deduplication of notifications                                  │  │
+│  │ ├─ Configurable enablement per symbol/approach/signal/channel      │  │
+│  │ ├─ Retry on failure, channel isolation                             │  │
+│  │ ├─ Filtering by alert type, symbol, approach, resolution, confidence│  │
+│  │ └─ All logic driven by hierarchical configuration                   │  │
 │  │                                                                     │  │
 │  │ Error Handling:                                                     │  │
 │  │ ├─ Channel failure isolation (one failure ≠ system failure)        │  │
 │  │ ├─ Automatic retry with exponential backoff                        │  │
 │  │ ├─ Failed alerts logged for manual review                          │  │
 │  │ └─ Alert not lost if delivery fails                                │  │
-│  │                                                                     │  │
-│  │ Filtering:                                                          │  │
-│  │ ├─ Alert type filtering (BUY/SELL/NEUTRAL)                        │  │
-│  │ ├─ Symbol filtering                                                │  │
-│  │ ├─ Approach filtering                                              │  │
-│  │ ├─ Resolution filtering (1m/5m/15m/1h)                           │  │
-│  │ └─ Confidence level filtering                                      │  │
 │  └──────────────────────────────┬──────────────────────────────────────┘  │
 │                                 │                                          │
 │                                 ▼                                          │

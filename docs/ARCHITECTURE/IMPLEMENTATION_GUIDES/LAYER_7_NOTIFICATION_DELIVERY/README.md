@@ -15,7 +15,37 @@ Layer 7 implementation focuses on **notification delivery across multiple channe
 
 ## 📖 Contents at This Layer
 
-Currently, this layer has **no implementation guide files**. Implementation patterns can be found in the parent Tier 3 directory.
+
+## 🆕 New Implementation (2026)
+
+### [NotificationServiceOrchestrator](../../../../src/stockreports/services/external/notification_services/orchestrator.py)
+- **Location:** [`src/stockreports/services/external/notification_services/orchestrator.py`](../../../../src/stockreports/services/external/notification_services/orchestrator.py)
+- **How to Use:**
+	- Instantiate or use as singleton for all notification dispatch
+	- Configure via hierarchical JSON config (see [config loader](../../../../src/stockreports/services/external/notification_services/_internal/config/loader.py))
+	- Use `send_notification()` for all alert delivery
+
+### Adding/Modifying Channels
+- **[ChannelFactory](../../../../src/stockreports/services/external/notification_services/_internal/channel_factory.py):**
+	- Add new channel by implementing the channel interface and registering in the factory
+	- Supported: [EmailNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/email_channel.py), [SMSNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/sms_channel.py), [NtfyNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/ntfy_channel.py) (web push)
+
+### Scheduler/Reminders
+- **[NotificationScheduler](../../../../src/stockreports/services/external/notification_services/_internal/scheduler.py):**
+	- Handles scheduled reminders and close position notifications
+	- Configure delays per symbol/approach in config
+
+### Configuration
+- **[Config Loader](../../../../src/stockreports/services/external/notification_services/_internal/config/loader.py):**
+	- All enablement and routing is config-driven
+	- Validate config at startup for errors
+
+### Practical How-To
+- To add a new channel: implement channel class, register in ChannelFactory, update config
+- To change enablement: update config JSON
+- To extend scheduler: subclass or update NotificationScheduler logic
+
+---
 
 | File | Purpose | Read Time | Level |
 |------|---------|-----------|-------|

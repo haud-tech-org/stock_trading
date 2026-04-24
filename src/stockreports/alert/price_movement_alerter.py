@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from ..config.loader import get_price_alert_settings
 from ..utils.time_utils import TIMEZONE
 from .common.constants import Approach, Signal, Status
+from src.stockreports.model.signal_type import SignalType
 from .model.models import AlertResult, AlertData
 
 # Get a logger for this module
@@ -165,10 +166,13 @@ class PriceMovementAlerter:
                                    f"Current price: {curr_price:.2f}.")
                         
                         # Create AlertData object for this alert
+                        # Determine signal type based on direction
+                        signal_type = SignalType.PRICE_UP.name if curr_price > prev_price else SignalType.PRICE_DOWN.name
                         alert = AlertData(
                             approach=self.APPROACH_NAME,
+                            symbol=self.symbol,
                             id=str(uuid.uuid4()),
-                            signal=Signal.NEUTRAL,  # Price movements are neutral signals
+                            signal=signal_type,
                             alert_price=curr_price,
                             alert_time=curr_time,
                             start_price=prev_price,
@@ -209,10 +213,13 @@ class PriceMovementAlerter:
                                f"New level boundary: {crossed_boundary:.2f}. Current price: {curr_price:.2f}.")
                     
                     # Create AlertData object for this alert
+                    # Determine signal type based on direction
+                    signal_type = SignalType.PRICE_UP.name if curr_price > prev_price else SignalType.PRICE_DOWN.name
                     alert = AlertData(
                         approach=self.APPROACH_NAME,
+                        symbol=self.symbol,
                         id=str(uuid.uuid4()),
-                        signal=Signal.NEUTRAL,  # Price movements are neutral signals
+                        signal=signal_type,
                         alert_price=curr_price,
                         alert_time=curr_time,
                         start_price=prev_price,

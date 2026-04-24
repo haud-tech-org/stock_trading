@@ -9,7 +9,7 @@ from src.stockreports.config.validation_settings import VALIDATION_MIN_PROFIT_FO
 from src.stockreports.alert.common.constants import Trend, Signal
 from src.stockreports.config import price_alert_settings, settings, loader
 from src.stockreports.data_services import DataServiceOrchestrator
-from src.stockreports.alert.model.models import AlertData
+from src.stockreports.alert.model.models import AlertNotification, AlertData
 
 logger = logging.getLogger(__name__)
 data_provider_settings = loader.get_data_provider_settings()
@@ -304,3 +304,23 @@ def is_in_cooldown(
     is_same_signal = new_signal == latest_alert.signal
 
     return is_in_cooldown_period and is_same_signal
+
+def normalize_alert_notification(notification: object) -> AlertNotification:
+    """
+    Converts AlertData or AlertNotification to AlertNotification, mapping fields explicitly.
+    """
+    if isinstance(notification, AlertNotification):
+        return notification
+    elif isinstance(notification, AlertData):
+        return AlertNotification(
+            symbol=notification.symbol,
+            approach=notification.approach,
+            signal=notification.signal,
+            alert_time=notification.alert_time,
+            suggested_price=get_primary_suggested_price(notification),
+            suggested_profit_threshold=notification.suggested_profit_threshold,
+            alert_price=notification.alert_price,
+            # Add more fields here as needed, mapping AlertData -> AlertNotification
+        )
+    else:
+        raise TypeError(f"Notification must be AlertNotification or AlertData, got {type(notification).__name__}")

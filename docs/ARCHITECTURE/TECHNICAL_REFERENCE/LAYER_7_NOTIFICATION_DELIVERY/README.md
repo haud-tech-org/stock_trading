@@ -15,9 +15,23 @@ Layer 7 delivers **trading alerts to users** through multiple channels - email, 
 
 ---
 
+## 🔄 Notification Service Data Flow Diagram
+
+See [NOTIFICATION_SERVICE_DATA_FLOW_DIAGRAM.md](./NOTIFICATION_SERVICE_DATA_FLOW_DIAGRAM.md) for the complete data flow diagram reflecting the current notification service architecture.
+
+---
+
 ## 📖 Contents at This Layer
 
-Currently, this layer has **no reference documentation files**. Notification architecture can be found in the parent Tier 2 directory.
+
+
+## 🆕 New Architecture (2026)
+
+Layer 7 is powered by a modular, config-driven notification orchestrator. It supports multiple pluggable channels (Email, SMS, Ntfy/web), robust deduplication, and a scheduler for reminders and close position alerts. All logic is driven by a hierarchical configuration, with filtering and error handling built in.
+
+**For implementation details, code locations, and how-to guides, see the [Layer 7 Implementation Guide](../../../IMPLEMENTATION_GUIDES/LAYER_7_NOTIFICATION_DELIVERY/README.md).**
+
+---
 
 | File | Purpose | Status |
 |------|---------|--------|
