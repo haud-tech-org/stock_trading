@@ -10,11 +10,18 @@
       "trading_hours": "CRYPTO_24H",
       
       "approaches": {
+        "PRICE_MOVEMENT": {
+          "enabled": true,
+          "resolution": 1,
+          "description": "Detects price movement and level crossings for alerts.",
+          "approach_type": "announce",
+          "approach_config": {}
+        },
         "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
           "enabled": true,
           "resolution": 15,
           "description": "15-minute reversal anchor signal candle approach",
-          
+          "approach_type": "trade",
           "approach_config": {
             "LOOKBACK_WINDOW": 11,
             "MIN_SIZE_PRICE_WINDOW": 750,
@@ -51,11 +58,18 @@
       "trading_hours": "VIETNAM_STOCK",
       
       "approaches": {
+        "PRICE_MOVEMENT": {
+          "enabled": true,
+          "resolution": 1,
+          "description": "Detects price movement and level crossings for alerts.",
+          "approach_type": "announce",
+          "approach_config": {}
+        },
         "CONSISTENT_MOMENTUM": {
           "enabled": true,
           "resolution": 1,
           "description": "Consistent momentum strategy",
-          
+          "approach_type": "trade",
           "approach_config": {
             "LOOKBACK_WINDOW": 5,
             "MIN_CONSISTENT_CANDLES": 3,
@@ -72,7 +86,7 @@
           "enabled": true,
           "resolution": 1,
           "description": "Strong candle strategy",
-          
+          "approach_type": "trade",
           "approach_config": {
             "LOOKBACK_WINDOW": 6,
             "MIN_BODY_RATIO": 0.7,
@@ -90,7 +104,7 @@
           "enabled": false,
           "resolution": 1,
           "description": "Volume spike confirmation strategy",
-          
+          "approach_type": "trade",
           "approach_config": {
             "LOOKBACK_WINDOW": 5,
             "COOLDOWN_WINDOW": 3,
@@ -104,7 +118,7 @@
           "enabled": true,
           "resolution": 1,
           "description": "Volume-Reversal-Anchor strategy",
-          
+          "approach_type": "trade",
           "approach_config": {
             "LOOKBACK_WINDOW": 15,
             "VOLUME_MULTIPLIER": 6.0,
@@ -122,7 +136,7 @@
           "enabled": false,
           "resolution": 1,
           "description": "Consistent volume anchor strategy",
-          
+          "approach_type": "trade",
           "approach_config": {
             "LOOKBACK_WINDOW": 10,
             "MAX_CONSISTENT_VOLUME_MULTIPLIER": 1.3,
@@ -141,7 +155,7 @@
           "enabled": true,
           "resolution": 1,
           "description": "Ichimoku cloud strategy",
-          
+          "approach_type": "trade",
           "approach_config": {
             "TENKAN_PERIOD": 9,
             "KIJUN_PERIOD": 26,

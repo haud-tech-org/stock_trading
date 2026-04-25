@@ -22,11 +22,8 @@ from typing import Dict, Optional, List, Any
 from pathlib import Path
 from src.stockreports.utils.file_utils import get_project_root
 
-from ...model import (
-    Session,
-    TradingHoursConfig,
-    ApproachSymbolConfiguration,
-)
+from ...model import Session, TradingHoursConfig, ApproachSymbolConfiguration
+from ...model.approach_type import ApproachType
 from .exceptions import (
     ExecutorConfigurationNotFoundError,
     ExecutorConfigurationValidationError,
@@ -256,6 +253,7 @@ class ExecutorConfigurationOrchestrator:
         return ApproachSymbolConfiguration(
             symbol=symbol,
             approach=approach,
+            approach_type=approach_config["approach_type"],
             resolution=approach_config.get("resolution", 1),
             approach_config=approach_config.get("approach_config", {}),
             trading_hours=trading_hours,
@@ -368,14 +366,15 @@ class ExecutorConfigurationOrchestrator:
             return []
     
     @classmethod
-    def get_supported_approaches(cls, symbol: str) -> List[str]:
+    def get_supported_approaches(cls, symbol: str, approach_type: ApproachType = None) -> List[str]:
         """
-        Get all supported approaches for a symbol.
+        Get all supported approaches for a symbol, optionally filtered by approach_type.
         Ensures singleton orchestrator is lazily initialized and configuration is loaded.
         Args:
             symbol: Symbol name
+            approach_type: Optional. If provided, only return approaches of this type (e.g., "trade", "announce").
         Returns:
-            List of enabled approach names for this symbol
+            List of enabled approach names for this symbol (optionally filtered by type)
         """
         orchestrator = cls()
         # Ensure configuration is loaded (lazy singleton)
@@ -393,12 +392,15 @@ class ExecutorConfigurationOrchestrator:
         if not approaches_dict:
             orchestrator.logger.warning(f"No approaches configured for symbol: {symbol}")
             return []
-        # Filter to only enabled approaches
-        enabled = [
-            approach
-            for approach, config in approaches_dict.items()
-            if config.get("enabled", True)
-        ]
+        # Filter to only enabled approaches, and by approach_type if provided
+        enabled = []
+        for approach, config in approaches_dict.items():
+            if not config.get("enabled", True):
+                continue
+            if approach_type is not None:
+                if config.get("approach_type") != approach_type:
+                    continue
+            enabled.append(approach)
         return sorted(enabled)
     
     @classmethod
