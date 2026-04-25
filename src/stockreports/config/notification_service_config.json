@@ -38,6 +38,24 @@
             }
           }
         },
+        "LARGE_VOLUME_CANDLE": {
+          "channels": {
+            "EMAIL": {
+              "enabled": true,
+              "signals": {
+                "PRICE_UP": {"enabled": true},
+                "PRICE_DOWN": {"enabled": true}
+              }
+            },
+            "NTFY": {
+              "enabled": false,
+              "signals": {
+                "PRICE_UP": {"enabled": true},
+                "PRICE_DOWN": {"enabled": true}
+              }
+            }
+          }
+        },
         "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
           "reminder_delays": {
             "order_delay_minutes": 10,
@@ -90,6 +108,24 @@
           "channels": {
             "EMAIL": {
               "enabled": false,
+              "signals": {
+                "PRICE_UP": {"enabled": true},
+                "PRICE_DOWN": {"enabled": true}
+              }
+            },
+            "NTFY": {
+              "enabled": false,
+              "signals": {
+                "PRICE_UP": {"enabled": true},
+                "PRICE_DOWN": {"enabled": true}
+              }
+            }
+          }
+        },
+        "LARGE_VOLUME_CANDLE": {
+          "channels": {
+            "EMAIL": {
+              "enabled": true,
               "signals": {
                 "PRICE_UP": {"enabled": true},
                 "PRICE_DOWN": {"enabled": true}

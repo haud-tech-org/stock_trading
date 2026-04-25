@@ -26,6 +26,15 @@
             "BODY_THRESHOLD": 500
           }
         },
+        "LARGE_VOLUME_CANDLE": {
+          "enabled": true,
+          "resolution": 15,
+          "description": "Detects large volume spikes for alerts.",
+          "approach_type": "announce",
+          "approach_config": {
+            "MULTIPLIER_VOLUME": 3.0
+          }
+        },
         "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
           "enabled": true,
           "resolution": 15,
@@ -81,6 +90,15 @@
           "approach_type": "announce",
           "approach_config": {
             "BODY_THRESHOLD": 500
+          }
+        },
+        "LARGE_VOLUME_CANDLE": {
+          "enabled": true,
+          "resolution": 15,
+          "description": "Detects large volume spikes for alerts.",
+          "approach_type": "announce",
+          "approach_config": {
+            "MULTIPLIER_VOLUME": 3.0
           }
         },
         "CONSISTENT_MOMENTUM": {
