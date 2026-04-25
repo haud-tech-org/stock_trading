@@ -6,31 +6,35 @@ This is a core domain model used across the entire system.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Union
+
 
 from .trading_hours import TradingHoursConfig
+from .approach_type import ApproachType
 
 
 @dataclass(frozen=True)
 class ApproachSymbolConfiguration:
     """
     Immutable, complete configuration for a symbol-approach combination.
-    
+
     This object encapsulates ALL settings needed to run an executor for a given
     symbol and approach, including technical parameters, data provider, trading
     hours, and notification settings. It eliminates the need to assemble
     configurations from multiple scattered files.
-    
+
     Key Features:
         - Immutable: Cannot be modified after creation
         - Symbol-aware: Different symbols can have different thresholds
         - Complete: Contains everything needed to run an executor
         - Type-safe: All properties have type hints
         - Self-documenting: Clear property names
-    
+
     Attributes:
         symbol: Trading symbol (e.g., "BTC/USDT:USDT")
         approach: Trading approach name (e.g., "REVERSAL_ANCHOR_SIGNAL_CANDLE")
+        approach_type: Approach type as string (e.g., "trade", "announce").
+            Indicates the business intent of the approach (e.g., trading signal, announcement, etc.).
         resolution: Candle resolution in minutes (e.g., 1, 5, 15, 60)
         approach_config: Symbol-specific approach parameters (thresholds, windows)
         trading_hours: Complete trading hours definition
@@ -39,24 +43,28 @@ class ApproachSymbolConfiguration:
         enabled: Whether this configuration is active
         validation_config: Validation settings (period, thresholds)
         notification_config: Notification settings (channels, delays)
-    
+
     Usage:
         config = ConfigurationOrchestrator.get(
             provider="BINANCE",
             symbol="BTC/USDT:USDT",
             approach="REVERSAL_ANCHOR_SIGNAL_CANDLE"
         )
-        
+
         # Access configuration properties
+        approach_type = config.get_approach_type()     # 'trade' or 'announce'
         resolution = config.get_resolution()           # 15
         thresholds = config.get_approach_config()      # {...}
         trading_hours = config.get_trading_hours()     # TradingHoursConfig
     """
-    
+
     # --- Identification ---
     symbol: str
     approach: str
-    
+
+    # --- Approach Type ---
+    approach_type: str  # Always str for config compatibility
+
     # --- Core Configuration ---
     resolution: int
     approach_config: Dict[str, Any]
@@ -89,8 +97,22 @@ class ApproachSymbolConfiguration:
         if not self.trading_hours:
             errors.append("Trading hours are required")
         
+        if not self.approach_type:
+            errors.append("Approach type is required (e.g., 'trade', 'announce')")
+        else:
+            # Validate against enum values if possible
+            try:
+                _ = ApproachType(self.approach_type)
+            except ValueError:
+                errors.append(f"Invalid approach_type: {self.approach_type}")
         if errors:
             raise ValueError(f"Configuration validation errors: {'; '.join(errors)}")
+    def get_approach_type(self) -> str:
+        """
+        Get the type of approach as a string (e.g., 'trade', 'announce').
+        Use ApproachType.from_str(self.approach_type) for enum if needed.
+        """
+        return self.approach_type
     
     # --- Identification Methods ---
     
@@ -203,6 +225,7 @@ class ApproachSymbolConfiguration:
         return {
             "symbol": self.symbol,
             "approach": self.approach,
+            "approach_type": self.approach_type,
             "resolution": self.resolution,
             "approach_config": self.approach_config,
             "trading_hours_name": self.trading_hours_name,

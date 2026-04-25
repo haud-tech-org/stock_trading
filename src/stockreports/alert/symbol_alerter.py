@@ -21,8 +21,9 @@ from src.stockreports.alert.common.validation.validation import calculate_alert_
 from src.stockreports.alert.common.profitability_simulator import simulate_profitability
 from src.stockreports.utils.report_utils import save_profitability_report, save_alert_report, update_alert_summary
 from src.stockreports.utils.approach_utils import get_approach_executor
-from src.stockreports.alert.price_movement_alerter import PriceMovementAlerter
+from src.stockreports.alert.announce.orchestrator import AnnouncementAlertOrchestrator
 from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
+from src.stockreports.model.approach_type import ApproachType
 
 
 # --- Path Setup ---
@@ -306,46 +307,37 @@ class SymbolAlerter:
         # INITIALIZATION PHASE
         # ════════════════════════════════════════════════════════════════
         
+
         # [1] Validate symbol has approaches configured
         self.logger.info(f"[INIT] Validating symbol {self.symbol} has approaches configured...")
-        
-        approaches_to_run = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
-        if approaches_to_run is None or not approaches_to_run:
+        all_approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
+        if not all_approaches:
             self.logger.error(
                 f"Symbol {self.symbol} has no approaches configured. "
                 f"Cannot run monitoring session. Skipping..."
             )
             return True  # Return True to signal clean exit (not an error)
-        
-        self.logger.info(f"[INIT] Found {len(approaches_to_run)} approaches for {self.symbol}: {approaches_to_run}")
-        
+        self.logger.info(f"[INIT] Found {len(all_approaches)} approaches for {self.symbol}: {all_approaches}")
+
         # [2] Load symbol-level trading hours (ONCE - trading hours are symbol-dependent)
-        # Trading hours and timezone are symbol-level properties, not approach-level
-        # All approaches for same symbol share same trading hours
         self.logger.info(f"[INIT] Loading symbol-level trading hours for {self.symbol}...")
-        
         try:
-            # Get trading hours directly from orchestrator (symbol-dependent, not approach-dependent)
             symbol_trading_hours = ExecutorConfigurationOrchestrator.get_symbol_trading_hours(self.symbol)
-            self.logger.info(
-                f"[INIT] Loaded trading hours: {symbol_trading_hours.get_sessions_summary()}"
-            )
+            self.logger.info(f"[INIT] Loaded trading hours: {symbol_trading_hours.get_sessions_summary()}")
         except Exception as e:
             self.logger.error(
                 f"[INIT] Failed to load trading hours for {self.symbol}. "
                 f"Cannot proceed without trading hours definition. Error: {e}"
             )
             return True  # Clean exit (not an error)
-        
+
         # [3] Collect all required resolutions upfront
         # - Price alerter always needs resolution 1
         # - Each approach needs its configured resolution
         self.logger.debug("[INIT] Collecting required data resolutions...")
-        
         required_resolutions = set([1])  # Price alerter always uses 1-min
-        approach_resolutions = {}  # Map approach -> resolution
-        
-        for approach_name in approaches_to_run:
+        approach_resolutions = {}
+        for approach_name in all_approaches:
             try:
                 approach_config = ExecutorConfigurationOrchestrator.get(self.symbol, approach_name)
                 resolution = approach_config.resolution
@@ -357,39 +349,32 @@ class SymbolAlerter:
                     f"[INIT] Could not load config for {approach_name}. "
                     f"Skipping this approach. Error: {e}"
                 )
-                approaches_to_run = [a for a in approaches_to_run if a != approach_name]
                 continue
-        
         self.logger.info(
             f"[INIT] Required resolutions: {sorted(required_resolutions)} "
             f"(total: {len(required_resolutions)})"
         )
-        
+
         # [4] Initialize resolution-keyed data storage
-        # Key: resolution (int), Value: DataFrame or None
         self._resolution_dataframes = {res: None for res in sorted(required_resolutions)}
         self.logger.debug(f"[INIT] Initialized resolution storage for: {list(self._resolution_dataframes.keys())}")
-        
+
         # [5] Initialize time simulator with symbol-level trading hours
-        # TimeSimulator now receives TradingHoursConfig (contains timezone + sessions only)
         self.logger.info("[INIT] Initializing TimeSimulator with symbol trading hours...")
-        
         time_simulator = TimeSimulator(
             replay_start_str=settings.DEBUG_REPLAY_START_TIME,
             interval_seconds=settings.MONITORING_INTERVAL_SECONDS,
-            trading_hours=symbol_trading_hours  # Pass trading hours for timezone + sessions
+            trading_hours=symbol_trading_hours
         )
-        
         self.logger.info(
             f"[INIT] TimeSimulator ready - Mode: {'REPLAY' if time_simulator.is_replay_mode() else 'LIVE'}, "
             f"Timezone: {symbol_trading_hours.timezone}, "
             f"Processing Date: {time_simulator.processing_date}"
         )
-        
         self.logger.info(
             f"[INIT] Session initialization complete. "
             f"Resolutions={list(self._resolution_dataframes.keys())}, "
-            f"Approaches={approaches_to_run}"
+            f"Approaches={all_approaches}"
         )
         
         # ════════════════════════════════════════════════════════════════
@@ -461,79 +446,56 @@ class SymbolAlerter:
                 time_simulator.advance()
                 continue
 
-            # --- Price Movement Alerter ---
-            # Task 2: Symbol-only with fixed resolution=1
-            # Price alerter always uses 1-minute resolution (fixed)
-            self.logger.debug("[TASK-2] Price Movement Alerter: Starting analysis...")
-            
-            price_df = self._resolution_dataframes.get(1)
-            if price_df is not None and not price_df.empty:
-                price_alerter = PriceMovementAlerter(self.symbol)
-                price_alert_result: AlertResult = price_alerter.execute(price_df)
-                
-                if price_alert_result.has_alerts:
-                    self.logger.info(f"[TASK-2] Found {len(price_alert_result.confirmed_alerts)} price movement alerts.")
-                    for alert in price_alert_result.confirmed_alerts:
-                        self.notification_orchestrator.send_notification(alert)
+            # --- Announcement Alert Orchestrator (TASK 2: Announce approaches) ---
+            self.logger.debug("[TASK-2] Announcement Alert Orchestrator: Starting analysis...")
+            announce_approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol, ApproachType.ANNOUNCE)
+            for approach_name in announce_approaches:
+                announce_resolution = approach_resolutions.get(approach_name)
+                if announce_resolution is None:
+                    self.logger.warning(f"[TASK-2] No configured resolution for {approach_name}. Skipping analysis.")
+                    continue
+                announce_df = self._resolution_dataframes.get(announce_resolution).copy()
+                if announce_df is not None and not announce_df.empty:
+                    alert_result: AlertResult = AnnouncementAlertOrchestrator.run(
+                        approach=approach_name,
+                        symbol=self.symbol,
+                        master_df=announce_df
+                    )
+                    if alert_result.has_alerts:
+                        self.logger.info(f"[TASK-2] Found {len(alert_result.confirmed_alerts)} {approach_name} alerts.")
+                        for alert in alert_result.confirmed_alerts:
+                            self.notification_orchestrator.send_notification(alert)
+                    else:
+                        self.logger.debug(f"[TASK-2] No {approach_name} alerts detected.")
                 else:
-                    self.logger.debug("[TASK-2] No price movement alerts detected.")
-            else:
-                self.logger.debug("[TASK-2] Price data not available, skipping price alerter.")
+                    self.logger.debug(f"[TASK-2] Data not available at {announce_resolution}-min, skipping {approach_name}.")
 
-
-            # --- Standard Approach Alerters ---
-            # Task 3: Symbol + Approach + Resolution from config
-            # Each approach is configured with its specific resolution at symbol level
-            self.logger.debug(f"[TASK-3] Approach Executors: Starting {len(approaches_to_run)} approaches...")
-            
-            if approaches_to_run:  # Only run if symbol is configured
-                for approach_name in approaches_to_run:
+            # --- Standard Approach Alerters (TASK 3: Trade approaches) ---
+            trade_approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol, ApproachType.TRADE)
+            self.logger.debug(f"[TASK-3] Approach Executors: Starting {len(trade_approaches)} approaches...")
+            if trade_approaches:
+                for approach_name in trade_approaches:
                     self.logger.info(f"[TASK-3] --- Running Approach: {approach_name} for {self.symbol} ---")
-
-                    # Get resolution for this approach (extracted during initialization)
                     resolution = approach_resolutions.get(approach_name)
-                    
                     if resolution is None:
-                        self.logger.error(
-                            f"[TASK-3] No resolution found for {approach_name}. "
-                            f"Should have been validated during initialization."
-                        )
+                        self.logger.error(f"[TASK-3] No resolution found for {approach_name}. Should have been validated during initialization.")
                         continue
-                    
                     self.logger.debug(f"[TASK-3]   {approach_name}: using {resolution}-min resolution")
-                    
-                    # Get data for this resolution from storage (symbol is already self.symbol, key is resolution int)
                     approach_df = self._resolution_dataframes.get(resolution)
-                    
                     if approach_df is None or approach_df.empty:
-                        self.logger.warning(
-                            f"[TASK-3] No data for {approach_name} at {resolution}-min resolution"
-                        )
+                        self.logger.warning(f"[TASK-3] No data for {approach_name} at {resolution}-min resolution")
                         continue
-                    
-                    # Run executor on correct resolution data
                     executor = get_approach_executor(self.symbol, approach_name, resolution)
                     if not executor:
-                        self.logger.error(
-                            f"[TASK-3] Could not instantiate executor for {approach_name}"
-                        )
+                        self.logger.warning(f"[TASK-3] Could not instantiate executor for {approach_name}")
                         continue
-                    
-                    # Pass resolution-specific data to executor
                     new_candle_count = len(approach_df)
-                    self.logger.debug(
-                        f"[TASK-3] Executing {approach_name} with {new_candle_count} candles "
-                        f"at {resolution}-min resolution"
-                    )
-                    
+                    self.logger.debug(f"[TASK-3] Executing {approach_name} with {new_candle_count} candles at {resolution}-min resolution")
                     result: AlertResult = ensure_alert_result(
                         executor.run(df=approach_df.copy(), new_candle_count=new_candle_count)
                     )
-                    
                     if result.has_alerts:
-                        self.logger.info(
-                            f"[TASK-3] Found {len(result.confirmed_alerts)} alerts from {approach_name}"
-                        )
+                        self.logger.info(f"[TASK-3] Found {len(result.confirmed_alerts)} alerts from {approach_name}")
                         for alert in result.confirmed_alerts:
                             self.notification_orchestrator.send_notification(alert)
                         self._enrich_and_save_reports(result, time_simulator.processing_date)

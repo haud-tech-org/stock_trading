@@ -9,15 +9,20 @@
 
 ## 🎯 Layer Responsibility
 
-Layer 7 delivers **trading alerts to users** through multiple channels - email, SMS, and web notifications. It handles notification routing, formatting, and delivery reliability.
 
-**Key Concept**: Multi-channel notification system with flexible routing enabling users to receive trading signals through their preferred communication channels.
+Layer 7 delivers **trading alerts and announcements to users** through multiple channels (email, SMS, web push) using a modular, config-driven, and type-based architecture. Notification routing, formatting, and delivery reliability are handled by a central orchestrator, with pluggable channels and a scheduler for trade signals.
+
+**Key Concepts:**
+- Modular, type-based notification system: all approaches are classified by `approach_type` (e.g., `announce`, `trade`) using the `ApproachType` enum.
+- The orchestrator is the single entry point for all notification delivery, delegating to enabled channels and, for trade signals, the scheduler.
+- Announcement and trade approaches are processed separately: announcements are delivered immediately, while trade signals may be scheduled/reminded.
 
 ---
 
 ## 🔄 Notification Service Data Flow Diagram
 
-See [NOTIFICATION_SERVICE_DATA_FLOW_DIAGRAM.md](./NOTIFICATION_SERVICE_DATA_FLOW_DIAGRAM.md) for the complete data flow diagram reflecting the current notification service architecture.
+
+See [NOTIFICATION_SERVICE_DATA_FLOW_DIAGRAM.md](./NOTIFICATION_SERVICE_DATA_FLOW_DIAGRAM.md) for the complete data flow diagram reflecting the current modular, type-based notification service architecture, including orchestrator, channel factory, and scheduler roles.
 
 ---
 
@@ -27,15 +32,26 @@ See [NOTIFICATION_SERVICE_DATA_FLOW_DIAGRAM.md](./NOTIFICATION_SERVICE_DATA_FLOW
 
 ## 🆕 New Architecture (2026)
 
-Layer 7 is powered by a modular, config-driven notification orchestrator. It supports multiple pluggable channels (Email, SMS, Ntfy/web), robust deduplication, and a scheduler for reminders and close position alerts. All logic is driven by a hierarchical configuration, with filtering and error handling built in.
+
+Layer 7 is powered by a modular, config-driven notification orchestrator. It supports multiple pluggable channels (Email, SMS, Ntfy/web), robust deduplication, and a scheduler for reminders and close position alerts. All logic is driven by a hierarchical configuration, with type-based filtering (`announce` vs `trade`) and error handling built in. The orchestrator uses the `ApproachType` enum to route each alert to the correct delivery flow.
 
 **For implementation details, code locations, and how-to guides, see the [Layer 7 Implementation Guide](../../../IMPLEMENTATION_GUIDES/LAYER_7_NOTIFICATION_DELIVERY/README.md).**
 
 ---
 
-| File | Purpose | Status |
-|------|---------|--------|
-| (No files) | Notification delivery theory | Ready for documentation |
+
+---
+
+## Key Architectural Aspects (2026)
+
+- **Type-based Routing:** All approaches are classified by `approach_type` in config. The orchestrator uses this to separate announcement and trade flows.
+- **Orchestrator:** The only public entry point for notification delivery. Handles deduplication, config-driven enablement, and delegates to channels and scheduler.
+- **ChannelFactory:** Instantiates and manages all enabled channels per approach, as defined in config.
+- **Scheduler:** Handles reminders and close notifications for trade-type approaches only.
+- **Announcement Flow:** Announcement approaches (e.g., Price Movement) are delivered immediately via enabled channels.
+- **Trade Flow:** Trade approaches are delivered and may be scheduled for reminders/close notifications.
+
+---
 
 ---
 
