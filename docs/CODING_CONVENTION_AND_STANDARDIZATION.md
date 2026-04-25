@@ -16,6 +16,10 @@ This document defines the core coding conventions and standardization rules for 
   - Remove all unused imports.
 - **No Wildcard Imports:**
   - Do not use `from module import *`.
+- **Placement Principle Rule:**
+  - Always place all import statements at the very top of the file, before any other code (except for module-level docstrings or comments).
+  - Do not place imports inside functions, methods, or classes unless absolutely necessary (e.g., to avoid circular dependencies or for documented performance reasons).
+  - This ensures clarity, maintainability, and compliance with Python best practices.
 - **Example:**
   ```python
   # --- Standard Library Imports ---
