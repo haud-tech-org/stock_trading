@@ -27,7 +27,7 @@ docs/references/COMMIT_SUMMARY_CVA.md
 ```txt
 Run `git diff --staged` and provide a concise, technical summary of the changes. The summary should be written for development teams, focusing on code, architecture, and implementation details—not business or marketing aspects. Output the summary in a new markdown file suitable for use as a commit message or documentation for the new commit.
 
-Reference: docs/references/COMMIT_SUMMARY_CVA.md
+Reference: docs/references/COMMIT_SUMMARY_LARGE_CANDLE.md
 ```
 
 ### Description for a new PR

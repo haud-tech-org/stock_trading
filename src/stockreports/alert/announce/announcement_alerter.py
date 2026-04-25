@@ -1,16 +1,19 @@
+"""
+AnnouncementAlerterBase: Base class for all announcement alert approaches.
+Inherits from Alerter and provides the run/execute interface.
+"""
 
 # --- Standard Library Imports ---
-from abc import ABC, abstractmethod
-
-# --- Third-Party Imports ---
+from abc import abstractmethod
 import pandas as pd
 
 # --- Project Imports ---
+from src.stockreports.alert.alerter import Alerter
 from src.stockreports.alert.model.models import AlertResult
 
-class AnnouncementAlerter(ABC):
+class AnnouncementAlerterBase(Alerter):
     """
-    Abstract base class for all announcement alert approaches.
+    Base class for all announcement alert approaches (inherits Alerter).
     """
     def run(self, master_df: pd.DataFrame) -> AlertResult:
         """

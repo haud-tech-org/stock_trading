@@ -17,6 +17,15 @@
           "approach_type": "announce",
           "approach_config": {}
         },
+        "LARGE_CANDLE": {
+          "enabled": true,
+          "resolution": 15,
+          "description": "Detects large candle bodies (>= 500 points) for alerts.",
+          "approach_type": "announce",
+          "approach_config": {
+            "BODY_THRESHOLD": 500
+          }
+        },
         "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
           "enabled": true,
           "resolution": 15,
@@ -64,6 +73,15 @@
           "description": "Detects price movement and level crossings for alerts.",
           "approach_type": "announce",
           "approach_config": {}
+        },
+        "LARGE_CANDLE": {
+          "enabled": true,
+          "resolution": 1,
+          "description": "Detects large candle bodies (>= 500 points) for alerts.",
+          "approach_type": "announce",
+          "approach_config": {
+            "BODY_THRESHOLD": 500
+          }
         },
         "CONSISTENT_MOMENTUM": {
           "enabled": true,

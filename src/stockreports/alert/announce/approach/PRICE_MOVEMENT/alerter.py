@@ -18,11 +18,11 @@ from src.stockreports.utils.time_utils import TIMEZONE
 from src.stockreports.alert.common.constants import Approach, Status
 from src.stockreports.model.signal_type import SignalType
 from src.stockreports.alert.model.models import AlertResult, AlertData
-from src.stockreports.alert.announce.base import AnnouncementAlerter
+from src.stockreports.alert.announce.announcement_alerter import AnnouncementAlerterBase
 
 logger = logging.getLogger(__name__)
 
-class PriceMovementAlerter(AnnouncementAlerter):
+class PriceMovementAlerter(AnnouncementAlerterBase):
     """
     Announcement approach for detecting price movements against predefined levels.
     Implements the abstract execute method from AnnouncementAlerter.
