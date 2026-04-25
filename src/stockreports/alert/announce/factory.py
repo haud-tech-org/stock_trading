@@ -5,6 +5,7 @@ from typing import Dict, Type
 from src.stockreports.alert.announce.announcement_alerter import AnnouncementAlerterBase
 from src.stockreports.alert.announce.approach.PRICE_MOVEMENT.alerter import PriceMovementAlerter
 from src.stockreports.alert.announce.approach.LARGE_CANDLE.alerter import LargeCandleAlerter
+from src.stockreports.alert.announce.approach.LARGE_VOLUME_CANDLE.alerter import LargeVolumeCandleAlerter
 from src.stockreports.alert.common.constants import Approach
 
 class _AnnouncementAlertFactory:
@@ -17,6 +18,7 @@ class _AnnouncementAlertFactory:
     _approach_map: Dict[str, Type[AnnouncementAlerterBase]] = {
         Approach.PRICE_MOVEMENT: PriceMovementAlerter,
         Approach.LARGE_CANDLE: LargeCandleAlerter,
+        Approach.LARGE_VOLUME_CANDLE: LargeVolumeCandleAlerter,
     }
 
     def __new__(cls):
