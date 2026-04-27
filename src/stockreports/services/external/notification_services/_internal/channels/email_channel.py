@@ -120,15 +120,15 @@ class EmailNotificationChannel(BaseNotificationChannel):
             except Exception:
                 alert_time_str = str(notification.alert_time)
         body += f"Time:       {alert_time_str}\nApproach:   {notification.approach}\n"
-    # if notification.details:
-    #     body += "\n--- Details (JSON) ---\n"
-    #     try:
-    #         details_json = json.dumps(notification.details, indent=2, ensure_ascii=False)
-    #         logger.debug(f"[EMAIL DEBUG] Alert details JSON for {notification.symbol}:\n{details_json}")
-    #         body += details_json + "\n"
-    #     except Exception as e:
-    #         logger.debug(f"[EMAIL DEBUG] Could not format details as JSON for {notification.symbol}: {e}\nDetails: {notification.details}")
-    #         body += f"[Could not format details as JSON: {e}]\n{str(notification.details)}\n"
+        if notification.details:
+            body += "\n--- Details (JSON) ---\n"
+            try:
+                details_json = json.dumps(notification.details, indent=2, ensure_ascii=False)
+                logger.debug(f"[EMAIL DEBUG] Alert details JSON for {notification.symbol}:\n{details_json}")
+                body += details_json + "\n"
+            except Exception as e:
+                logger.debug(f"[EMAIL DEBUG] Could not format details as JSON for {notification.symbol}: {e}\nDetails: {notification.details}")
+                body += f"[Could not format details as JSON: {e}]\n{str(notification.details)}\n"
         return body
 
     @staticmethod

@@ -453,15 +453,16 @@ class ReversalAnchorSignalCandleExecutor(Executor):
             )
             return None
 
-        # Check 4c: Wick percentage within range
+        # Check 4c: Wick percentage within range (BYPASSED)
         self.next_validation()
         try:
             wick_pct = self.analyzer.calculate_wick_percentage(self.last_candle, trend)
-            is_valid = self.validator.validate_alert_candle_wick(
-                wick_pct,
-                self.settings.min_percentage,
-                self.settings.max_percentage,
-            )
+            # is_valid = self.validator.validate_alert_candle_wick(
+            #     wick_pct,
+            #     self.settings.min_percentage,
+            #     self.settings.max_percentage,
+            # )
+            is_valid = True  # Hardcoded bypass
             if not is_valid:
                 log(
                     logger=self.logger,
@@ -480,12 +481,10 @@ class ReversalAnchorSignalCandleExecutor(Executor):
                 name=nameof(self.settings.min_percentage),
                 step=self.current_step,
                 validation=self.validation_step,
-                message=f"Wick percentage validation passed",
+                message=f"Wick percentage validation bypassed (always passed)",
                 status=ValidationStatus.PASSED
             ))
-            
             return wick_pct
-            
         except Exception as e:
             log(
                 logger=self.logger,

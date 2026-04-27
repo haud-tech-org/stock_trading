@@ -320,6 +320,7 @@ def normalize_alert_notification(notification: object) -> AlertNotification:
             suggested_price=get_primary_suggested_price(notification),
             suggested_profit_threshold=notification.suggested_profit_threshold,
             alert_price=notification.alert_price,
+            details=notification.details
             # Add more fields here as needed, mapping AlertData -> AlertNotification
         )
     else:
