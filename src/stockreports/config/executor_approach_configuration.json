@@ -32,7 +32,7 @@
           "description": "Detects large volume spikes for alerts.",
           "approach_type": "announce",
           "approach_config": {
-            "MULTIPLIER_VOLUME": 3.0
+            "MULTIPLIER_VOLUME": 2.5
           }
         },
         "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
@@ -45,11 +45,11 @@
             "MIN_SIZE_PRICE_WINDOW": 750,
             "MIN_SIZE_CANDLE": 150,
             "MULTIPLIER_SIZE": 1.3,
-            "MIN_VOLUME": 1500,
+            "MIN_VOLUME": 6000,
             "MULTIPLIER_VOLUME": 3.0,
             "MIN_PERCENTAGE": 0.01,
             "MAX_PERCENTAGE": 0.4,
-            "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 150.0,
+            "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 200.0,
             "COOLDOWN_WINDOW": 3
           },        
           

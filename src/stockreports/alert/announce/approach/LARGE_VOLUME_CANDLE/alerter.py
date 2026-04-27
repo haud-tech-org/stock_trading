@@ -41,7 +41,8 @@ class LargeVolumeCandleAlerter(AnnouncementAlerterBase):
         multiplier = self.approach_settings.get('MULTIPLIER_VOLUME', 2)
         confirmed_alerts = []
         # Validation logic
-        if latest[CandleColumn.VOLUME] >= multiplier * nearest[CandleColumn.VOLUME]:
+        actual_multiplier = latest[CandleColumn.VOLUME] / nearest[CandleColumn.VOLUME] if nearest[CandleColumn.VOLUME] != 0 else float('inf')
+        if actual_multiplier >= multiplier:
             alert_time = latest.name
             start_time = nearest.name
             if isinstance(alert_time, str):
@@ -61,7 +62,13 @@ class LargeVolumeCandleAlerter(AnnouncementAlerterBase):
                 start_time=start_time,
                 trend=trend,
                 magnitude=latest[CandleColumn.VOLUME],
-                details=f"Volume spike: latest={latest[CandleColumn.VOLUME]}, nearest={nearest[CandleColumn.VOLUME]}, multiplier={multiplier}"
+                details=(
+                    f"Volume spike: "
+                    f"latest(volume={latest[CandleColumn.VOLUME]}, time={alert_time}), "
+                    f"nearest(volume={nearest[CandleColumn.VOLUME]}, time={start_time}), "
+                    f"expected_multiplier={multiplier}, "
+                    f"actual_multiplier={actual_multiplier:.2f}"
+                )
             )
             confirmed_alerts.append(alert)
             logging.info(f"LargeVolumeCandleAlerter: Alert triggered for {self._symbol}. {alert.details}")

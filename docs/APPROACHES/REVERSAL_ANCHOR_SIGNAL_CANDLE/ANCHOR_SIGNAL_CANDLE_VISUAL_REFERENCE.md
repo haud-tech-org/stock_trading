@@ -256,12 +256,13 @@ Price grid showing window extremes:
          For DOWNTREND: (CLOSE - window_min_low) <= close_to_extreme_threshold
          (Alert candle close must be as close as possible to the window low, within a configurable price threshold. For downtrend, close just above the low.)
          
-         Wick Percentage Validation:
-         ─────────────────────────────
+         Wick Percentage Validation (Bypassed):
+         ─────────────────────────────────────
          lower_wick_size = CLOSE - LOW
          wick_percentage = lower_wick_size / candle_range
          
-         Must satisfy: min_percentage <= wick_percentage <= max_percentage
+         **Currently, this validation is bypassed in code and always passes.**
+         (min_percentage and max_percentage are not enforced)
 ```
 
 ---
@@ -305,9 +306,10 @@ START: Extract lookback_window_df (50 candles, for example)
 │   │   └─ For DOWNTREND: |alert_candle.CLOSE - window_min_low| <= close_to_extreme_threshold
 │   │   (Alert candle close must be within a configurable price threshold of the window extreme)
 │   │
+│   ├─► 4c: Wick Percentage (Bypassed)
 │   │   ├─ Calculate: upper_wick_percentage = (HIGH - CLOSE) / candle_range (uptrend)
 │   │   └─ Calculate: lower_wick_percentage = (CLOSE - LOW) / candle_range (downtrend)
-│   │   └─ Check: min_pct <= wick_pct <= max_pct
+│   │   └─ **Validation is currently bypassed and always passes.**
 │   │
 │   └─ Output: True or FAIL → SKIP THIS WINDOW
 │
@@ -340,7 +342,7 @@ START: Extract lookback_window_df (50 candles, for example)
 | **3. Signal** | anchor_candle onwards | Volume Rank | signal_vol / avg_vol | >= multiplier_volume |
 | **4a. Doji** | alert_candle (last) | Body Ratio | body / candle_range | < 0.05 to FAIL |
 | **4b. Extremes** | alert_candle (last) | Trend-based | HIGH or LOW extremes | Must be window extreme |
-| **4c. Wick** | alert_candle (last) | Wick Range | wick_size / body_size | in [min%, max%] |
+| **4c. Wick (Bypassed)** | alert_candle (last) | Wick Range | wick_size / body_size | **Bypassed: always passes** |
 
 ---
 
