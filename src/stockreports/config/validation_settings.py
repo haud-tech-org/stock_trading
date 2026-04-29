@@ -3,7 +3,6 @@
 Configuration settings for the alert validation script.
 This script is used in DEVELOPMENT mode to assess the performance of generated alerts against historical data.
 """
-from . import signal_settings
 from . import settings
 
 # --- Validation Parameters ---

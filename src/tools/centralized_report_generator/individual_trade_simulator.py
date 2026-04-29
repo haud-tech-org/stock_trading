@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.utils.time_utils import TIMEZONE_STR, SESSIONS
 from src.stockreports.config import loader
-from src.stockreports.config.signal_settings import APPROACH_CONFIG
+from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
 from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, MAX_TIME_TO_TRIGGER_MINUTES, VALIDATION_MIN_PROFIT_FOR_SUCCESS
 from src.stockreports.config.price_alert_settings import USE_PERFORMANCE_BY_APPROACH, PERFORMANCE_BY_APPROACH
 from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds, get_reports_directory_name
@@ -604,7 +604,13 @@ def run_individual_trade_simulation(
             summary_dict['performance_by_approach'] = performance_by_approach
             # --- End of New Section ---
 
-            summary_dict['app_config'] = APPROACH_CONFIG
+            # Collect approach_config for each enabled approach for the execution symbol
+            app_config = {}
+            enabled_approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(execution_symbol)
+            for approach in enabled_approaches:
+                config = ExecutorConfigurationOrchestrator.get(execution_symbol, approach)
+                app_config[approach] = config.approach_config
+            summary_dict['app_config'] = app_config
             # --- Add price alert settings to the report ---
             if USE_PERFORMANCE_BY_APPROACH:
                 summary_dict['price_alert_config'] = {
