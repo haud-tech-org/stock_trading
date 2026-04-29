@@ -20,7 +20,7 @@ settings = loader.get_settings()
 
 import pytz
 from src.stockreports.utils.time_utils import TimeSimulator
-from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
+from src.stockreports.services.executor_configuration_service.orchestrator import ConfigurationOrchestrator
 
 
 def setup_logging():
@@ -36,7 +36,7 @@ def test_time_simulator_with_config():
     print("\n[TEST 1] TimeSimulator with ApproachSymbolConfiguration")
     
     # Get configuration
-    config = ExecutorConfigurationOrchestrator.get(
+    config = ConfigurationOrchestrator.get(
         symbol="BTC/USDT:USDT",
         approach="REVERSAL_ANCHOR_SIGNAL_CANDLE"
     )
@@ -95,7 +95,7 @@ def test_is_trading_hours_with_config():
     print("\n[TEST 3] is_trading_hours() via TimeSimulator with ApproachSymbolConfiguration")
     
     # Get configuration
-    config = ExecutorConfigurationOrchestrator.get(
+    config = ConfigurationOrchestrator.get(
         symbol="BTC/USDT:USDT",
         approach="REVERSAL_ANCHOR_SIGNAL_CANDLE"
     )
@@ -148,7 +148,7 @@ def test_trading_hours_timezone_conversion():
     print("\n[TEST 5] Trading hours timezone conversion")
     
     # Get config with Asia/Ho_Chi_Minh timezone
-    config = ExecutorConfigurationOrchestrator.get(
+    config = ConfigurationOrchestrator.get(
         symbol="VN30F1M",
         approach="VRA"
     )
@@ -175,7 +175,7 @@ def test_configuration_data_access():
     """Test accessing trading hours data from configuration"""
     print("\n[TEST 6] Accessing trading hours data from configuration")
     
-    config = ExecutorConfigurationOrchestrator.get(
+    config = ConfigurationOrchestrator.get(
         symbol="BTC/USDT:USDT",
         approach="REVERSAL_ANCHOR_SIGNAL_CANDLE"
     )

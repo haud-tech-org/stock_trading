@@ -14,9 +14,9 @@ Two-Phase Approach:
 import logging
 from typing import Dict, Any, Optional
 
-from .orchestrator import ExecutorConfigurationOrchestrator
+from .orchestrator import ConfigurationOrchestrator
 from ...model import ApproachSymbolConfiguration
-from .exceptions import ExecutorConfigurationNotFoundError
+from .exceptions import ConfigurationNotFoundError
 
 
 
@@ -49,7 +49,7 @@ def get_configuration_v2(
             approach="REVERSAL_ANCHOR_SIGNAL_CANDLE"
         )
     """
-    return ExecutorConfigurationOrchestrator.get(
+    return ConfigurationOrchestrator.get(
         symbol=symbol,
         approach=approach
     )
@@ -110,7 +110,7 @@ def get_configuration_legacy(
         to maintain compatibility with old code expecting dict access.
     """
     try:
-        config = ExecutorConfigurationOrchestrator.get(
+        config = ConfigurationOrchestrator.get(
             symbol=symbol,
             approach=approach
         )
@@ -118,7 +118,7 @@ def get_configuration_legacy(
         # Convert to dictionary for backward compatibility
         return config.to_dict()
     
-    except ExecutorConfigurationNotFoundError:
+    except ConfigurationNotFoundError:
         logger.warning(
             f"Configuration not found: symbol={symbol}, approach={approach}"
         )
@@ -163,9 +163,9 @@ class ConfigurationAdapter:
         that expects: config = APPROACH_CONFIG[approach]
         """
         try:
-            config = ExecutorConfigurationOrchestrator.get(symbol=symbol, approach=approach)
+            config = ConfigurationOrchestrator.get(symbol=symbol, approach=approach)
             return config.get_approach_config()
-        except ExecutorConfigurationNotFoundError:
+        except ConfigurationNotFoundError:
             self.logger.warning(
                 f"Configuration not found for {symbol}:{approach}"
             )
@@ -182,7 +182,7 @@ class ConfigurationAdapter:
         Returns ApproachSymbolConfiguration object with full type safety
         and all features of the configuration service.
         """
-        return ExecutorConfigurationOrchestrator.get(symbol=symbol, approach=approach)
+        return ConfigurationOrchestrator.get(symbol=symbol, approach=approach)
     
     def get_resolution(
         self,
@@ -194,7 +194,7 @@ class ConfigurationAdapter:
         
         Replaces: APPROACH_RESOLUTION_MAPPING[approach]
         """
-        config = ExecutorConfigurationOrchestrator.get(symbol=symbol, approach=approach)
+        config = ConfigurationOrchestrator.get(symbol=symbol, approach=approach)
         return config.get_resolution()
     
     def get_trading_hours(
@@ -207,7 +207,7 @@ class ConfigurationAdapter:
         
         Replaces: TRADING_HOURS[market_code]
         """
-        config = ExecutorConfigurationOrchestrator.get(symbol=symbol, approach=approach)
+        config = ConfigurationOrchestrator.get(symbol=symbol, approach=approach)
         trading_hours = config.get_trading_hours()
         
         # Convert to dictionary format for backward compatibility
@@ -227,12 +227,12 @@ class ConfigurationAdapter:
     @classmethod
     def get_supported_symbols(cls) -> list:
         """Get all supported symbols"""
-        return ExecutorConfigurationOrchestrator.get_supported_symbols()
+        return ConfigurationOrchestrator.get_supported_symbols()
     
     @classmethod
     def get_supported_approaches(cls, symbol: str) -> list:
         """Get all supported approaches for a symbol"""
-        return ExecutorConfigurationOrchestrator.get_supported_approaches(symbol)
+        return ConfigurationOrchestrator.get_supported_approaches(symbol)
 
 
 # Singleton instance for convenient access

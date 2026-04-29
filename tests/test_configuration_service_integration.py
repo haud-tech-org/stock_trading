@@ -32,7 +32,7 @@ def test_configuration_service():
     logger.info("\n[TEST 1] Importing Executor Configuration Service...")
     try:
         from src.stockreports.services.executor_configuration_service import (
-            ExecutorConfigurationOrchestrator,
+            ConfigurationOrchestrator,
             ApproachSymbolConfiguration,
             ExecutorConfigurationError
         )
@@ -44,7 +44,7 @@ def test_configuration_service():
     # Test 2: Get configuration
     logger.info("\n[TEST 2] Getting configuration for BTC/USDT:USDT...")
     try:
-        config = ExecutorConfigurationOrchestrator.get(
+        config = ConfigurationOrchestrator.get(
             symbol="BTC/USDT:USDT",
             approach="REVERSAL_ANCHOR_SIGNAL_CANDLE"
         )
@@ -79,7 +79,7 @@ def test_configuration_service():
         
         # First call (cache miss)
         start = time.time()
-        config1 = ExecutorConfigurationOrchestrator.get(
+        config1 = ConfigurationOrchestrator.get(
             symbol="BTC/USDT:USDT",
             approach="REVERSAL_ANCHOR_SIGNAL_CANDLE"
         )
@@ -87,7 +87,7 @@ def test_configuration_service():
         
         # Second call (cache hit)
         start = time.time()
-        config2 = ExecutorConfigurationOrchestrator.get(
+        config2 = ConfigurationOrchestrator.get(
             symbol="BTC/USDT:USDT",
             approach="REVERSAL_ANCHOR_SIGNAL_CANDLE"
         )
@@ -110,8 +110,8 @@ def test_configuration_service():
     # Test 5: Singleton pattern
     logger.info("\n[TEST 5] Testing singleton pattern...")
     try:
-        orchestrator1 = ExecutorConfigurationOrchestrator()
-        orchestrator2 = ExecutorConfigurationOrchestrator()
+        orchestrator1 = ConfigurationOrchestrator()
+        orchestrator2 = ConfigurationOrchestrator()
         
         if orchestrator1 is orchestrator2:
             logger.info("✅ Singleton pattern verified (same instance)")
@@ -125,10 +125,10 @@ def test_configuration_service():
     # Test 6: Get supported symbols
     logger.info("\n[TEST 6] Getting supported symbols and approaches...")
     try:
-        symbols = ExecutorConfigurationOrchestrator.get_supported_symbols()
+        symbols = ConfigurationOrchestrator.get_supported_symbols()
         logger.info(f"✅ All symbols: {symbols}")
         
-        approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(
+        approaches = ConfigurationOrchestrator.get_supported_approaches(
             "BTC/USDT:USDT"
         )
         logger.info(f"✅ BTC/USDT:USDT approaches: {approaches}")
@@ -160,7 +160,7 @@ def test_configuration_service():
     # Test 8: Cache statistics
     logger.info("\n[TEST 8] Cache statistics...")
     try:
-        stats = ExecutorConfigurationOrchestrator.get_cache_stats()
+        stats = ConfigurationOrchestrator.get_cache_stats()
         logger.info(f"✅ Cache size: {stats['cache_size']}")
         logger.info(f"✅ Cached keys: {stats['cached_keys']}")
     except Exception as e:

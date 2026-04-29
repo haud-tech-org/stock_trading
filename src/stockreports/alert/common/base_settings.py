@@ -1,6 +1,6 @@
 # src/stockreports/alert/common/base_settings.py
 
-from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
+from src.stockreports.services.executor_configuration_service.orchestrator import ConfigurationOrchestrator
 from src.stockreports.config import loader
 
 class BaseSettings:
@@ -13,7 +13,7 @@ class BaseSettings:
         self.approach_name = approach_name
 
         # Load configuration via orchestrator
-        executor_config = ExecutorConfigurationOrchestrator.get(self.symbol, self.approach_name)
+        executor_config = ConfigurationOrchestrator.get(self.symbol, self.approach_name)
         self.approach_settings = executor_config.get_approach_config()
 
         # Restore global settings using loader for other settings
