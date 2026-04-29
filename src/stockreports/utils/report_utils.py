@@ -1,16 +1,22 @@
 """
 Utilities for saving and managing alert reports and summaries.
 """
+
+# --- Python Standard Library ---
 import os
 import json
 import logging
-import pandas as pd
-from google.cloud import storage
-from typing import Dict, Any, Optional
-import pytz
 import glob
+from typing import Dict, Any, Optional
 from datetime import datetime
 
+# --- Third-Party Libraries ---
+import pandas as pd
+import pytz
+from google.cloud import storage
+
+# --- Project Imports ---
+from stockreports.utils.symbol_utils import sanitize_symbol_for_filename
 from src.stockreports.config import loader
 from src.stockreports.alert.model.models import AlertResult, AlertSummary, ProfitabilityReport
 from src.stockreports.utils.time_utils import get_market_timezone_str
@@ -92,7 +98,7 @@ def get_report_directory(
     # For certain report types that are symbol-specific at this level
     if report_type != 'consolidated':
         if symbol:
-            path_parts.insert(2, symbol)  # e.g., reports/VN30/deployment/...
+            path_parts.insert(2, sanitize_symbol_for_filename(symbol))  # e.g., reports/VN30/deployment/...
         else:
             # If no symbol is provided for a non-consolidated report,
             # the path intentionally stops at the mode level,
@@ -224,7 +230,7 @@ def save_alert_report(result: AlertResult, symbol: str, date_str: str):
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     reports_dir_name = get_reports_directory_name()
-    reports_dir = os.path.join(project_root, reports_dir_name, symbol, settings.MODE.lower(), result.approach_name.lower())
+    reports_dir = os.path.join(project_root, reports_dir_name, sanitize_symbol_for_filename(symbol), settings.MODE.lower(), result.approach_name.lower())
     filepath = os.path.join(reports_dir, f"alert_notification_{date_str.replace('-', '')}.json")
 
     new_alerts_df = result.to_dataframe()
@@ -297,7 +303,7 @@ def update_alert_summary(result: AlertResult, symbol: str, date_str: str):
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     reports_dir_name = get_reports_directory_name()
-    reports_dir = os.path.join(project_root, reports_dir_name, symbol, settings.MODE.lower(), result.approach_name.lower())
+    reports_dir = os.path.join(project_root, reports_dir_name, sanitize_symbol_for_filename(symbol), settings.MODE.lower(), result.approach_name.lower())
     filepath = os.path.join(reports_dir, "alert_summary.json")
 
     total_alerts = len(result.confirmed_alerts)
@@ -357,7 +363,7 @@ def save_profitability_report(summary_data: ProfitabilityReport, symbol: str, da
     """
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     reports_dir_name = get_reports_directory_name()
-    report_dir = os.path.join(project_root, reports_dir_name, symbol, settings.MODE.lower(), "profitability")
+    report_dir = os.path.join(project_root, reports_dir_name, sanitize_symbol_for_filename(symbol), settings.MODE.lower(), "profitability")
     
     filename = f"profitability_summary_{date_str.replace('-', '')}.json"
     filepath = os.path.join(report_dir, filename)
