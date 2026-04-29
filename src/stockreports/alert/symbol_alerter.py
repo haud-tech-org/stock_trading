@@ -1,4 +1,4 @@
-# --- Standard Library Imports ---
+# --- Python Standard Library ---
 import os
 import sys
 import logging
@@ -6,10 +6,11 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional, cast, Dict
 
-# --- Third-Party Imports ---
+# --- Third-Party Libraries ---
 import pandas as pd
 
 # --- Project Imports ---
+from ..utils.symbol_utils import sanitize_symbol_for_filename
 from src.stockreports.config import loader
 from src.stockreports.services.external.notification_services.orchestrator import NotificationServiceOrchestrator
 from src.stockreports.coordination import get_coordinator
@@ -202,9 +203,9 @@ class SymbolAlerter:
         """Configures logging to file and console."""
         log_dir = os.path.join(project_root, "logs", settings.MODE.lower())
         os.makedirs(log_dir, exist_ok=True)
-        
-        # Sanitize symbol name for use in filename (replace / with _)
-        sanitized_symbol = self.symbol.replace("/", "_")
+
+        # Sanitize symbol name for use in filename (use utility)
+        sanitized_symbol = sanitize_symbol_for_filename(self.symbol)
         log_file_path = os.path.join(log_dir, f"alerter_{sanitized_symbol}.log")
 
         # Use a logger specific to this symbol instance
@@ -220,7 +221,7 @@ class SymbolAlerter:
             stream_handler = logging.StreamHandler(sys.stdout)
             stream_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
             self.logger.addHandler(stream_handler)
-        
+
         self.logger.info(f"Logging configured for {self.symbol}. Log file: {log_file_path}")
 
 

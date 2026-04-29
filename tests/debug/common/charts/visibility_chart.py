@@ -1,11 +1,17 @@
-import pandas as pd
+# --- Python Standard Library ---
 import os
 import json
+from typing import Tuple, Optional
+
+# --- Third-Party Libraries ---
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from typing import Tuple, Optional
+
+# --- Project Imports ---
 from src.stockreports.alert.model.models import AlertData
 from src.stockreports.alert.common.constants import Signal, CandleColumn
+from src.stockreports.utils.symbol_utils import sanitize_symbol_for_filename
 
 def calculate_best_close_price(df: pd.DataFrame, alert_time: pd.Timestamp, signal_type: str) -> Tuple[Optional[float], Optional[pd.Timestamp], Optional[int]]:
     """
@@ -71,7 +77,6 @@ def generate_alert_chart(input_file: str, output_dir: str, approach_name: str, a
     try:
         with open(input_file, 'r') as f:
             data = json.load(f)
-        
         df = pd.DataFrame(data)
         if df.empty:
             print("Dataframe is empty, skipping chart generation.")
@@ -303,7 +308,8 @@ def generate_alert_chart(input_file: str, output_dir: str, approach_name: str, a
 
         os.makedirs(output_dir, exist_ok=True)
 
-        chart_filename = os.path.join(output_dir, f"{symbol}_{approach_name}_visibility_chart.png")
+        sanitized_symbol = sanitize_symbol_for_filename(symbol)
+        chart_filename = os.path.join(output_dir, f"{sanitized_symbol}_{approach_name}_visibility_chart.png")
         plt.savefig(chart_filename)
         plt.close(fig)
 

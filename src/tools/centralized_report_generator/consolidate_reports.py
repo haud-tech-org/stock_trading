@@ -11,20 +11,23 @@ calculated performance metrics, specifically the 'avg_worst_loss_price' for each
 
 Usage Examples:
 1. Consolidate reports for a symbol in development mode without updating settings:
-   python3 -m src.tools.centralized_report_generator.consolidate_reports \\
-       --symbol VN30F1M \\
-       --mode development \\
-       --from-date 2026-01-05 \\
+   python3 -m src.tools.centralized_report_generator.consolidate_reports \
+       --symbol VN30F1M \
+       --mode development \
+       --from-date 2026-01-05 \
        --to-date 2026-01-08
 
 2. Consolidate reports and update the price alert settings file:
-   python3 -m src.tools.centralized_report_generator.consolidate_reports \\
-       --symbol VN30F1M \\
-       --mode deployment \\
-       --from-date 2026-01-05 \\
-       --to-date 2026-01-08 \\
+   python3 -m src.tools.centralized_report_generator.consolidate_reports \
+       --symbol VN30F1M \
+       --mode deployment \
+       --from-date 2026-01-05 \
+       --to-date 2026-01-08 \
        --update-price-alert-settings
 """
+
+
+# --- Python Standard Library ---
 import argparse
 import json
 import os
@@ -36,14 +39,20 @@ import importlib
 import sys
 from typing import Optional
 
+# --- Third-Party Libraries ---
+
+
+# --- Project Imports ---
+from src.stockreports.utils.symbol_utils import sanitize_symbol_for_filename
+from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds, get_reports_directory_name
+
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-sys.path.insert(0, project_root)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-from src.stockreports.utils.report_utils import get_report_directory, get_default_thresholds, get_reports_directory_name
 
 
 def _run_update_price_alert_settings(performance_data: dict, settings_file_path: str):
@@ -209,7 +218,8 @@ def consolidate_reports(
         logging.error("Invalid date format. Please use YYYY-MM-DD.")
         return
 
-    glob_pattern = os.path.join(reports_dir, f"simulation_summary_individual_trade_{symbol}_*.json")
+    sanitized_symbol = sanitize_symbol_for_filename(symbol)
+    glob_pattern = os.path.join(reports_dir, f"simulation_summary_individual_trade_{sanitized_symbol}_*.json")
     all_files = glob.glob(glob_pattern)
     
     filtered_files = []
@@ -383,7 +393,7 @@ def consolidate_reports(
     }
 
     # --- The output path is the same as the input directory ---
-    output_filename = f"{symbol}_overall_performance_{from_date_str}_to_{to_date_str}.json"
+    output_filename = f"{sanitized_symbol}_overall_performance_{from_date_str}_to_{to_date_str}.json"
     output_path = os.path.join(reports_dir, output_filename)
 
     try:

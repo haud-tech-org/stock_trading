@@ -11,40 +11,40 @@ from typing import Optional
 def sanitize_symbol_for_filename(symbol: str) -> str:
     """
     Sanitizes a trading symbol to be safe for use in file and directory names.
-    
-    Converts problematic characters (/, :, backslash, etc.) to underscores to prevent
+
+    Converts problematic characters (/, :, backslash, etc.) to hyphens ('-') to prevent
     them from being interpreted as path separators.
-    
+
     This is useful for creating consistent, filesystem-safe file paths from
-    symbols like "BTC/USDT:USDT" → "BTC_USDT_USDT".
-    
+    symbols like "BTC/USDT:USDT" → "BTC-USDT-USDT".
+
     Args:
         symbol (str): The trading symbol to sanitize (e.g., "BTC/USDT:USDT", "VN30F1M").
-    
+
     Returns:
         str: The sanitized symbol safe for use in filenames and paths.
-    
+
     Examples:
         >>> sanitize_symbol_for_filename("BTC/USDT:USDT")
-        'BTC_USDT_USDT'
+        'BTC-USDT-USDT'
         >>> sanitize_symbol_for_filename("VN30F1M")
         'VN30F1M'
         >>> sanitize_symbol_for_filename("ETH/USDT")
-        'ETH_USDT'
+        'ETH-USDT'
     """
-    # Replace problematic path separators with underscores
-    sanitized = symbol.replace('/', '_').replace(':', '_').replace('\\', '_')
-    
-    # Optional: Remove any other problematic characters for filesystem safety
-    # This regex keeps alphanumeric, underscores, and hyphens
-    sanitized = re.sub(r'[^\w\-]', '_', sanitized)
-    
-    # Remove any leading/trailing underscores
-    sanitized = sanitized.strip('_')
-    
-    # Collapse multiple consecutive underscores to single underscore
-    sanitized = re.sub(r'_+', '_', sanitized)
-    
+    # Replace problematic path separators with hyphens
+    sanitized = symbol.replace('/', '-').replace(':', '-').replace('\\', '-')
+
+    # Remove any other problematic characters for filesystem safety
+    # This regex keeps alphanumeric, and hyphens
+    sanitized = re.sub(r'[^\w\-]', '-', sanitized)
+
+    # Remove any leading/trailing hyphens
+    sanitized = sanitized.strip('-')
+
+    # Collapse multiple consecutive hyphens to single hyphen
+    sanitized = re.sub(r'-+', '-', sanitized)
+
     return sanitized
 
 
