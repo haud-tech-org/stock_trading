@@ -140,66 +140,6 @@ DEV_DATA_DATE_RANGE = {
 SAVE_DEV_API_RESPONSE_TO_FILE = True
 
 
-# --- Alerting Strategy Configuration ---
-
-# Alert Approaches (LEGACY - Kept for backward compatibility)
-# Meaning: A list of the alert generation strategies (approaches) to run. The names correspond to modules in the `src/stockreports/alert/approach/` directory.
-# Guidance: This configuration is now legacy. For new projects, use SYMBOL_ALERT_APPROACHES instead to configure approaches per symbol.
-#           This is kept as a fallback for backward compatibility with existing configurations.
-# Example: `ALERT_APPROACHES = ["RCM"]` would run only the RCM strategy.
-ALERT_APPROACHES = [
-    "VOLUME_SPIKE_CONFIRMATION",
-    "VRA",
-    "CONSISTENT_VOLUME_ANCHOR",
-    #"MA_CROSS", # Disabled as it's a confirmation signal, not a primary approach
-]
-
-
-# --- Symbol-Specific Alert Approaches Configuration ---
-
-# Symbol-Specific Alert Approaches
-# Meaning: A dictionary mapping each symbol to its specific list of alert generation strategies.
-#          This allows different symbols to run different approaches based on their characteristics.
-# Guidance: 
-#   - Define an entry for each symbol that needs custom approach configuration
-#   - Approach names must correspond to modules in `src/stockreports/alert/approach/`
-#   - Symbols not defined here will use ALERT_APPROACHES_DEFAULT
-#   - This provides fine-grained control over which strategies run for which symbols
-# Example:
-#   SYMBOL_ALERT_APPROACHES = {
-#       "VN30F1M": ["STRONG_CANDLE", "CONSISTENT_MOMENTUM", "PRICE_GAP"],
-#       "VN30": ["STRONG_CANDLE", "VOLUME_SPIKE_CONFIRMATION"],
-#       "VCB": ["STRONG_CANDLE"],
-#   }
-SYMBOL_ALERT_APPROACHES = {
-    "VN30F1M": [
-        "CONSISTENT_MOMENTUM",
-        "STRONG_CANDLE",
-        "VOLUME_SPIKE_CONFIRMATION",
-        "VRA",
-        "CONSISTENT_VOLUME_ANCHOR", 
-        "ICHIMOKU"
-    ],
-    "VN30": [
-    ],
-    "BTC/USDT:USDT": [
-        "REVERSAL_ANCHOR_SIGNAL_CANDLE"
-    ]
-}
-
-# Default Alert Approaches (Fallback)
-# Meaning: Approaches to run for any symbol NOT explicitly defined in SYMBOL_ALERT_APPROACHES.
-#          This acts as a default when a new symbol is added without a specific configuration.
-# Guidance: Set this to a reasonable default. Typical values are ["STRONG_CANDLE"] or ["RCM"].
-#          This setting provides backward compatibility and a sensible default for new symbols.
-# Example: `ALERT_APPROACHES_DEFAULT = ["STRONG_CANDLE"]`
-ALERT_APPROACHES_DEFAULT = [
-    "VRA",
-    "VOLUME_SPIKE_CONFIRMATION",
-    "CONSISTENT_VOLUME_ANCHOR"
-]
-
-
 # --- Market Hours Configuration ---
 
 # Market Country Code

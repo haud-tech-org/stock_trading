@@ -34,8 +34,8 @@ class DummyConfig:
     EMAIL_SMTP_SERVER = 'smtp.example.com'
     EMAIL_SMTP_PORT = 587
     NTFY_TOPICS = ['testtopic']
-    SCHEDULED_REMINDER_ORDER_DELAY_MINUTES = 2
-    SCHEDULED_REMINDER_CLOSE_DELAY_MINUTES = 5
+    # Removed: SCHEDULED_REMINDER_ORDER_DELAY_MINUTES = 2
+    # Removed: SCHEDULED_REMINDER_CLOSE_DELAY_MINUTES = 5
     def __init__(self):
         self.data = {
             'symbols': {

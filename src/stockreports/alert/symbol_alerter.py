@@ -13,7 +13,6 @@ import pandas as pd
 from ..utils.symbol_utils import sanitize_symbol_for_filename
 from src.stockreports.config import loader
 from src.stockreports.services.external.notification_services.orchestrator import NotificationServiceOrchestrator
-from src.stockreports.coordination import get_coordinator
 from src.stockreports.data_services import DataServiceOrchestrator
 from src.stockreports.utils.data_utils import load_data_for_development
 from src.stockreports.utils.time_utils import SESSIONS, TimeSimulator, TIMEZONE
@@ -36,7 +35,6 @@ if project_root not in sys.path:
 # --- Settings Loader ---
 # This MUST be the first project import to ensure settings are fresh.
 settings = loader.get_settings()
-signal_settings = loader.get_signal_settings()
 notification_settings = loader.get_notification_settings()
 validation_settings = loader.get_validation_settings()
 data_provider_settings = loader.get_data_provider_settings()
@@ -89,34 +87,18 @@ class SymbolAlerter:
         # Setup logging FIRST (before any code that uses self.logger)
         self._setup_logging()
 
-        # Now initialize resolution coordinator and dataframes
-        self.resolution_coordinator = get_coordinator()
+        # Now initialize resolution dataframes (no more ResolutionCoordinator)
         self._init_resolution_dataframes()
 
     def _init_resolution_dataframes(self) -> None:
         """
         Initialize resolution storage for this symbol.
-        
-        Gets all required resolutions from coordinator and creates
-        storage dict with None values for each resolution.
-        Since symbol is instance property (self.symbol), we only store by resolution (int).
-        
-        Storage structure: Dict[int, Optional[pd.DataFrame]]
-            - Key: resolution in minutes (e.g., 1, 5, 15)
-            - Value: accumulated DataFrame or None
-        
-        Note: Resolution 1 (1-minute) is ALWAYS included because:
-        - Price Alerter always uses 1-minute data
-        - Monitoring loop expects resolution 1 to exist
+        Uses ExecutorConfigurationOrchestrator to get all enabled approaches and their resolutions.
+        Always includes resolution 1 (1-minute) for price alerter compatibility.
         """
         try:
-            # Get required resolutions for this symbol
-            resolutions = self.resolution_coordinator.get_required_resolutions(self.symbol)
-            
-            # CRITICAL: Always include resolution 1 (1-minute)
-            # - Price Alerter always needs it
-            # - Monitoring loop uses it as first-run indicator
-            resolutions_set = set(resolutions)
+            approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
+            resolutions_set = {ExecutorConfigurationOrchestrator.get(self.symbol, a).resolution for a in approaches}
             resolutions_set.add(1)  # Always add 1-minute resolution
             
             # Initialize dict: resolution (int) → DataFrame
