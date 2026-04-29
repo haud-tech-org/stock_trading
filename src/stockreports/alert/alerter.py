@@ -5,7 +5,7 @@ Provides static utility to load approach configuration for a given symbol and ap
 """
 
 # --- Project Imports ---
-from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
+from src.stockreports.services.executor_configuration_service.orchestrator import ConfigurationOrchestrator
 
 class Alerter:
     """
@@ -16,5 +16,5 @@ class Alerter:
         """
         Load approach configuration for a given symbol and approach.
         """
-        executor_config = ExecutorConfigurationOrchestrator.get(symbol, approach_name)
+        executor_config = ConfigurationOrchestrator.get(symbol, approach_name)
         return executor_config.get_approach_config()

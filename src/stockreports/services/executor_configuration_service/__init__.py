@@ -119,27 +119,27 @@ from ...model import (
     Session,
 )
 
-from .orchestrator import ExecutorConfigurationOrchestrator
+from .orchestrator import ConfigurationOrchestrator
 
 from .exceptions import (
     ExecutorConfigurationError,
-    ExecutorConfigurationNotFoundError,
-    ExecutorConfigurationValidationError,
-    ExecutorConfigurationFileError
+    ConfigurationNotFoundError,
+    ConfigurationValidationError,
+    ConfigurationFileError
 )
 
 __all__ = [
     # Main classes
-    'ExecutorConfigurationOrchestrator',
+    'ConfigurationOrchestrator',
     'ApproachSymbolConfiguration',
     # Data models
     'TradingHoursConfig',
     'Session',
     # Exceptions
     'ExecutorConfigurationError',
-    'ExecutorConfigurationNotFoundError',
-    'ExecutorConfigurationValidationError',
-    'ExecutorConfigurationFileError',
+    'ConfigurationNotFoundError',
+    'ConfigurationValidationError',
+    'ConfigurationFileError',
 ]
 
 __version__ = '1.0.1'

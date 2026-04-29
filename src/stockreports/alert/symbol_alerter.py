@@ -22,7 +22,7 @@ from src.stockreports.alert.common.profitability_simulator import simulate_profi
 from src.stockreports.utils.report_utils import save_profitability_report, save_alert_report, update_alert_summary
 from src.stockreports.utils.approach_utils import get_approach_executor
 from src.stockreports.alert.announce.orchestrator import AnnouncementAlertOrchestrator
-from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
+from src.stockreports.services.executor_configuration_service.orchestrator import ConfigurationOrchestrator
 from src.stockreports.model.approach_type import ApproachType
 
 
@@ -97,8 +97,8 @@ class SymbolAlerter:
         Always includes resolution 1 (1-minute) for price alerter compatibility.
         """
         try:
-            approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
-            resolutions_set = {ExecutorConfigurationOrchestrator.get(self.symbol, a).resolution for a in approaches}
+            approaches = ConfigurationOrchestrator.get_supported_approaches(self.symbol)
+            resolutions_set = {ConfigurationOrchestrator.get(self.symbol, a).resolution for a in approaches}
             resolutions_set.add(1)  # Always add 1-minute resolution
             
             # Initialize dict: resolution (int) → DataFrame
@@ -293,7 +293,7 @@ class SymbolAlerter:
 
         # [1] Validate symbol has approaches configured
         self.logger.info(f"[INIT] Validating symbol {self.symbol} has approaches configured...")
-        all_approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
+        all_approaches = ConfigurationOrchestrator.get_supported_approaches(self.symbol)
         if not all_approaches:
             self.logger.error(
                 f"Symbol {self.symbol} has no approaches configured. "
@@ -305,7 +305,7 @@ class SymbolAlerter:
         # [2] Load symbol-level trading hours (ONCE - trading hours are symbol-dependent)
         self.logger.info(f"[INIT] Loading symbol-level trading hours for {self.symbol}...")
         try:
-            symbol_trading_hours = ExecutorConfigurationOrchestrator.get_symbol_trading_hours(self.symbol)
+            symbol_trading_hours = ConfigurationOrchestrator.get_symbol_trading_hours(self.symbol)
             self.logger.info(f"[INIT] Loaded trading hours: {symbol_trading_hours.get_sessions_summary()}")
         except Exception as e:
             self.logger.error(
@@ -322,7 +322,7 @@ class SymbolAlerter:
         approach_resolutions = {}
         for approach_name in all_approaches:
             try:
-                approach_config = ExecutorConfigurationOrchestrator.get(self.symbol, approach_name)
+                approach_config = ConfigurationOrchestrator.get(self.symbol, approach_name)
                 resolution = approach_config.resolution
                 required_resolutions.add(resolution)
                 approach_resolutions[approach_name] = resolution
@@ -431,7 +431,7 @@ class SymbolAlerter:
 
             # --- Announcement Alert Orchestrator (TASK 2: Announce approaches) ---
             self.logger.debug("[TASK-2] Announcement Alert Orchestrator: Starting analysis...")
-            announce_approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol, ApproachType.ANNOUNCE)
+            announce_approaches = ConfigurationOrchestrator.get_supported_approaches(self.symbol, ApproachType.ANNOUNCE)
             for approach_name in announce_approaches:
                 announce_resolution = approach_resolutions.get(approach_name)
                 if announce_resolution is None:
@@ -454,7 +454,7 @@ class SymbolAlerter:
                     self.logger.debug(f"[TASK-2] Data not available at {announce_resolution}-min, skipping {approach_name}.")
 
             # --- Standard Approach Alerters (TASK 3: Trade approaches) ---
-            trade_approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol, ApproachType.TRADE)
+            trade_approaches = ConfigurationOrchestrator.get_supported_approaches(self.symbol, ApproachType.TRADE)
             self.logger.debug(f"[TASK-3] Approach Executors: Starting {len(trade_approaches)} approaches...")
             if trade_approaches:
                 for approach_name in trade_approaches:
@@ -509,13 +509,13 @@ class SymbolAlerter:
 
         # Load symbol configuration for trading hours (symbol-level, not approach-level)
         try:
-            symbol_config = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
+            symbol_config = ConfigurationOrchestrator.get_supported_approaches(self.symbol)
             if not symbol_config:
                 self.logger.warning(f"No configuration found for {self.symbol}. Using global trading hours.")
                 symbol_trading_hours_for_filter = None
             else:
                 first_approach = symbol_config[0]
-                config = ExecutorConfigurationOrchestrator.get(self.symbol, first_approach)
+                config = ConfigurationOrchestrator.get(self.symbol, first_approach)
                 symbol_trading_hours_for_filter = config.trading_hours
         except Exception as e:
             self.logger.warning(f"Could not load symbol trading hours. Using global settings. Error: {e}")
@@ -552,7 +552,7 @@ class SymbolAlerter:
         all_alerts_for_day = []
         
         # Get approaches for this symbol
-        approaches_to_run = ExecutorConfigurationOrchestrator.get_supported_approaches(self.symbol)
+        approaches_to_run = ConfigurationOrchestrator.get_supported_approaches(self.symbol)
         
         if not approaches_to_run:
             self.logger.warning(
@@ -565,7 +565,7 @@ class SymbolAlerter:
         approach_resolutions = {}
         for approach_name in approaches_to_run:
             try:
-                config = ExecutorConfigurationOrchestrator.get(self.symbol, approach_name)
+                config = ConfigurationOrchestrator.get(self.symbol, approach_name)
                 approach_resolutions[approach_name] = config.resolution
             except Exception as e:
                 self.logger.warning(f"Could not load resolution for {approach_name}: {e}")

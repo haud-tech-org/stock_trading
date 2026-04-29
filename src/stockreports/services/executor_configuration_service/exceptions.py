@@ -8,14 +8,14 @@ class ExecutorConfigurationError(Exception):
     """Base exception for executor configuration errors."""
     pass
 
-class ExecutorConfigurationNotFoundError(ExecutorConfigurationError):
+class ConfigurationNotFoundError(ExecutorConfigurationError):
     """Raised when a configuration is not found for the given parameters."""
     pass
 
-class ExecutorConfigurationValidationError(ExecutorConfigurationError):
+class ConfigurationValidationError(ExecutorConfigurationError):
     """Raised when configuration validation fails."""
     pass
 
-class ExecutorConfigurationFileError(ExecutorConfigurationError):
+class ConfigurationFileError(ExecutorConfigurationError):
     """Raised when there is an error loading the configuration file."""
     pass

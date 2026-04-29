@@ -25,13 +25,13 @@ from src.stockreports.utils.file_utils import get_project_root
 from ...model import Session, TradingHoursConfig, ApproachSymbolConfiguration
 from ...model.approach_type import ApproachType
 from .exceptions import (
-    ExecutorConfigurationNotFoundError,
-    ExecutorConfigurationValidationError,
-    ExecutorConfigurationFileError
+    ConfigurationNotFoundError,
+    ConfigurationValidationError,
+    ConfigurationFileError
 )
 
 
-class ExecutorConfigurationOrchestrator:
+class ConfigurationOrchestrator:
     """
     Singleton orchestrator for configuration management.
     
@@ -61,7 +61,7 @@ class ExecutorConfigurationOrchestrator:
     """
     
     # Class variables for singleton pattern
-    _instance: Optional['ExecutorConfigurationOrchestrator'] = None
+    _instance: Optional['ConfigurationOrchestrator'] = None
     _lock: threading.Lock = threading.Lock()
     _initialized: bool = False
     
@@ -101,7 +101,7 @@ class ExecutorConfigurationOrchestrator:
                 self.logger.debug(f"Attempting to load configuration from: {config_path}")
                 if not os.path.exists(config_path):
                     self.logger.error(f"Configuration file does not exist at: {config_path}")
-                    raise ExecutorConfigurationFileError(
+                    raise ConfigurationFileError(
                         f"Configuration file not found at {config_path}"
                     )
             
@@ -120,12 +120,12 @@ class ExecutorConfigurationOrchestrator:
         
         except json.JSONDecodeError as e:
                 self.logger.error(f"Configuration file is not valid JSON: {e}")
-                raise ExecutorConfigurationFileError(
+                raise ConfigurationFileError(
                     f"Configuration file is not valid JSON: {e}"
                 )
         except IOError as e:
                 self.logger.error(f"Cannot read configuration file: {e}")
-                raise ExecutorConfigurationFileError(
+                raise ConfigurationFileError(
                     f"Cannot read configuration file: {e}"
                 )
     
@@ -226,7 +226,7 @@ class ExecutorConfigurationOrchestrator:
             approach_config = symbol_config["approaches"][approach]
         
         except KeyError as e:
-            raise ExecutorConfigurationNotFoundError(
+            raise ConfigurationNotFoundError(
                 f"Configuration not found: symbol={symbol}, "
                 f"approach={approach}. Missing key: {e}"
             )
@@ -235,14 +235,14 @@ class ExecutorConfigurationOrchestrator:
         trading_hours_name = symbol_config.get("trading_hours")
         
         if not trading_hours_name:
-            raise ExecutorConfigurationValidationError(
+            raise ConfigurationValidationError(
                 f"No trading hours defined for {symbol}"
             )
         
         try:
             trading_hours_def = self._config_tree["trading_hours_definitions"][trading_hours_name]
         except KeyError:
-            raise ExecutorConfigurationNotFoundError(
+            raise ConfigurationNotFoundError(
                 f"Trading hours definition not found: {trading_hours_name}"
             )
         
@@ -324,7 +324,7 @@ class ExecutorConfigurationOrchestrator:
             errors.append("Trading hours are required")
         
         if errors:
-            raise ExecutorConfigurationValidationError(
+            raise ConfigurationValidationError(
                 f"Configuration validation failed: {'; '.join(errors)}"
             )
     
@@ -442,7 +442,7 @@ class ExecutorConfigurationOrchestrator:
             # Navigate to symbol configuration
             symbol_config = orchestrator._config_tree["symbols"][symbol]
         except KeyError:
-            raise ExecutorConfigurationNotFoundError(
+            raise ConfigurationNotFoundError(
                 f"Symbol not found in configuration: {symbol}"
             )
         
@@ -450,7 +450,7 @@ class ExecutorConfigurationOrchestrator:
         trading_hours_name = symbol_config.get("trading_hours")
         
         if not trading_hours_name:
-            raise ExecutorConfigurationValidationError(
+            raise ConfigurationValidationError(
                 f"No trading hours defined for symbol: {symbol}"
             )
         
@@ -458,7 +458,7 @@ class ExecutorConfigurationOrchestrator:
             # Navigate to trading hours definition
             trading_hours_def = orchestrator._config_tree["trading_hours_definitions"][trading_hours_name]
         except KeyError:
-            raise ExecutorConfigurationNotFoundError(
+            raise ConfigurationNotFoundError(
                 f"Trading hours definition not found: {trading_hours_name} (referenced by {symbol})"
             )
         

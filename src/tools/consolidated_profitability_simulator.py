@@ -26,7 +26,7 @@ from src.stockreports.utils.data_utils import fetch_intraday_data, TIMEZONE_STR,
 # --- FIX: Import the correct function, not a class ---
 from src.stockreports.alert.common.profitability_simulator import simulate_profitability
 from src.stockreports.config import loader
-from src.stockreports.services.executor_configuration_service.orchestrator import ExecutorConfigurationOrchestrator
+from src.stockreports.services.executor_configuration_service.orchestrator import ConfigurationOrchestrator
 from src.stockreports.config.validation_settings import VALIDATION_PERIOD_MINUTES, VALIDATION_PRICE_THRESHOLD
 from src.stockreports.utils.report_utils import get_reports_directory_name
 import pytz
@@ -205,9 +205,9 @@ def run_consolidated_simulation(execution_symbol: str, alert_sources: list, date
             summary_dict = asdict(summary)
             # Collect approach_config for each enabled approach for the execution symbol
             app_config = {}
-            enabled_approaches = ExecutorConfigurationOrchestrator.get_supported_approaches(execution_symbol)
+            enabled_approaches = ConfigurationOrchestrator.get_supported_approaches(execution_symbol)
             for approach in enabled_approaches:
-                config = ExecutorConfigurationOrchestrator.get(execution_symbol, approach)
+                config = ConfigurationOrchestrator.get(execution_symbol, approach)
                 app_config[approach] = config.approach_config
             summary_dict['app_config'] = app_config
             validation_config = {
