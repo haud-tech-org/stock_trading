@@ -23,7 +23,12 @@ PRICE_ALERTS = {
         "reference_price": 70800.0,
         "fixed_levels": [],
         "absolute_interval": 500.0,
-    }
+    },
+    "BTCUSDT-PERP": {
+        "reference_price": 70800.0,
+        "fixed_levels": [],
+        "absolute_interval": 500.0,
+    },
 }
 
 # This flag determines whether to use the performance-based suggested price (if available)

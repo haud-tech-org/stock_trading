@@ -133,7 +133,7 @@ class Executor(ABC):
             alert.signal,
             alert.alert_time,
             alert.approach,
-            symbol=alert.symbol,
+            alert.symbol,
             resolution=self.resolution
         )
         suggested_profit_threshold = get_suggested_take_profit(alert.magnitude)

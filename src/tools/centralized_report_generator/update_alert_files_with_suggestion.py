@@ -166,6 +166,7 @@ def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, su
                 
                 signal = alert.get('signal')
                 approach = alert.get('approach')
+                symbol = alert.get('symbol')
 
                 if not signal:
                     logging.warning(f"Skipping alert due to missing 'signal': {alert}")
@@ -174,7 +175,7 @@ def update_alerts_with_suggested_prices(from_date_str: str, to_date_str: str, su
                 perf_price, struct_price = None, None
                 # Calculate prices once, then use the results conditionally.
                 if suggestion_type in ['performance', 'structural', 'all']:
-                    perf_price, struct_price = calculate_suggested_prices(signal, alert_time, approach)
+                    perf_price, struct_price = calculate_suggested_prices(signal, alert_time, approach, symbol)
 
                 # Fallback logic should only run if performance price was requested and failed.
                 if suggestion_type in ['performance', 'all']:

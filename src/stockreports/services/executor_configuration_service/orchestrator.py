@@ -366,6 +366,22 @@ class ConfigurationOrchestrator:
             return []
     
     @classmethod
+    def get_enabled_symbols(cls) -> List[str]:
+        """
+        Get all symbols with 'enabled': true in the configuration.
+        Returns:
+            List of enabled symbol names.
+        """
+        orchestrator = cls()
+        try:
+            symbols_dict = orchestrator._config_tree.get("symbols", {})
+            enabled_symbols = [symbol for symbol, attrs in symbols_dict.items() if attrs.get("enabled", False)]
+            return sorted(enabled_symbols)
+        except Exception as e:
+            orchestrator.logger.error(f"Error getting enabled symbols: {e}")
+            return []
+    
+    @classmethod
     def get_supported_approaches(cls, symbol: str, approach_type: ApproachType = None) -> List[str]:
         """
         Get all supported approaches for a symbol, optionally filtered by approach_type.

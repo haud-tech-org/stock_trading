@@ -5,38 +5,39 @@
   
   "symbols": {
     "BTC/USDT:USDT": {
+      "enabled": false,
       "display_name": "Bitcoin",
       "description": "Bitcoin to USDT trading pair",
       "trading_hours": "CRYPTO_24H",
       
       "approaches": {
         "PRICE_MOVEMENT": {
-          "enabled": true,
+          "enabled": false,
           "resolution": 1,
           "description": "Detects price movement and level crossings for alerts.",
           "approach_type": "announce",
           "approach_config": {}
         },
         "LARGE_CANDLE": {
-          "enabled": true,
+          "enabled": false,
           "resolution": 15,
           "description": "Detects large candle bodies (>= 500 points) for alerts.",
           "approach_type": "announce",
           "approach_config": {
-            "BODY_THRESHOLD": 500
+            "BODY_THRESHOLD": 300
           }
         },
         "LARGE_VOLUME_CANDLE": {
-          "enabled": true,
+          "enabled": false,
           "resolution": 15,
           "description": "Detects large volume spikes for alerts.",
           "approach_type": "announce",
           "approach_config": {
-            "MULTIPLIER_VOLUME": 2.5
+            "MULTIPLIER_VOLUME": 3.5
           }
         },
         "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
-          "enabled": true,
+          "enabled": false,
           "resolution": 15,
           "description": "15-minute reversal anchor signal candle approach",
           "approach_type": "trade",
@@ -69,8 +70,72 @@
         }
       }
     },
+  "BTCUSDT-PERP": {
+      "enabled": true,
+      "display_name": "Bitcoin Perpetual Futures",
+      "description": "Bitcoin USDT-margined perpetual futures contract",
+      "trading_hours": "CRYPTO_24H",
+      "approaches": {
+        "PRICE_MOVEMENT": {
+          "enabled": true,
+          "resolution": 1,
+          "description": "Detects price movement and level crossings for alerts.",
+          "approach_type": "announce",
+          "approach_config": {}
+        },
+        "LARGE_CANDLE": {
+          "enabled": true,
+          "resolution": 15,
+          "description": "Detects large candle bodies (>= 500 points) for alerts.",
+          "approach_type": "announce",
+          "approach_config": {
+            "BODY_THRESHOLD": 300
+          }
+        },
+        "LARGE_VOLUME_CANDLE": {
+          "enabled": true,
+          "resolution": 15,
+          "description": "Detects large volume spikes for alerts.",
+          "approach_type": "announce",
+          "approach_config": {
+            "MULTIPLIER_VOLUME": 3.5
+          }
+        },
+        "REVERSAL_ANCHOR_SIGNAL_CANDLE": {
+          "enabled": true,
+          "resolution": 15,
+          "description": "15-minute reversal anchor signal candle approach",
+          "approach_type": "trade",
+          "approach_config": {
+            "LOOKBACK_WINDOW": 11,
+            "MIN_SIZE_PRICE_WINDOW": 750,
+            "MIN_SIZE_CANDLE": 150,
+            "MULTIPLIER_SIZE": 1.3,
+            "MIN_VOLUME": 6000,
+            "MULTIPLIER_VOLUME": 3.0,
+            "MIN_PERCENTAGE": 0.01,
+            "MAX_PERCENTAGE": 0.4,
+            "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 200.0,
+            "COOLDOWN_WINDOW": 3
+          },
+          "validation": {
+            "enabled": true,
+            "validation_period_minutes": 30
+          },
+          "notification": {
+            "enabled": true,
+            "channels": ["EMAIL", "CONSOLE"],
+            "reminder_delays": {
+              "order_delay_minutes": 4,
+              "close_delay_minutes": 8
+            }
+          }
+        }
+      }
+    },
     
     "VN30F1M": {
+      "enabled": true,
       "display_name": "VN30 Futures",
       "description": "VN30 Index Futures 1-month contract",
       "trading_hours": "VIETNAM_STOCK",
@@ -207,6 +272,7 @@
     },
     
     "VN30": {
+      "enabled": false,
       "display_name": "VN30 Index",
       "trading_hours": "VIETNAM_STOCK",
       "description": "VN30 Stock Index",
