@@ -132,6 +132,8 @@ def simulate_individual_profitability(
         
         # 1. Determine the definitive entry price for the simulation.
         # This logic handles alerts from both old and new file formats.
+        approach = alert.approach
+        symbol = alert.symbol
         entry_price = None
         if alert.performance_suggested_price is not None and alert.structural_suggested_price is not None:
             # New format: two price fields exist. Use the primary selection logic.
@@ -144,8 +146,7 @@ def simulate_individual_profitability(
         else:
             # Fallback: if no price info exists, calculate it dynamically.
             logging.warning(f"No suggested price found for alert at {entry_time}. Calculating dynamically.")
-            approach = alert.approach
-            perf_price, struct_price = calculate_suggested_prices(entry_signal, entry_time, approach)
+            perf_price, struct_price = calculate_suggested_prices(entry_signal, entry_time, approach, symbol)
             entry_price = get_primary_suggested_price({
                 'performance_suggested_price': perf_price,
                 'structural_suggested_price': struct_price

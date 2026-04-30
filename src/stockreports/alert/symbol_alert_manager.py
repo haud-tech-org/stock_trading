@@ -14,6 +14,7 @@ import gc
 # --- Project Imports ---
 from .symbol_alerter import SymbolAlerter
 from ..config import loader
+from ..services.executor_configuration_service.orchestrator import ConfigurationOrchestrator
 from ..utils.data_utils import load_data_for_development
 from ..utils.report_utils import save_profitability_report, get_reports_directory_name
 from ..alert.common.profitability_simulator import simulate_profitability
@@ -29,12 +30,10 @@ class SymbolAlertManager:
         Initializes the manager.
         """
         self.settings = loader.get_settings()
-        self.symbols = self.settings.SYMBOLS
-        
+        self.symbols = ConfigurationOrchestrator.get_enabled_symbols()
         market_code = self.settings.MARKET_COUNTRY_CODE
         timezone_str = self.settings.TRADING_HOURS[market_code]['timezone']
         self.timezone = pytz.timezone(timezone_str)
-        
         self._configure_logging()
 
     def _configure_logging(self):

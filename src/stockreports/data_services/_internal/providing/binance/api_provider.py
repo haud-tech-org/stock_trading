@@ -29,6 +29,7 @@ class BinanceAPIProvider(BaseDataProvider):
     
     # API endpoint for Binance
     API_BASE_URL = "https://api.binance.com/api/v3"
+    FUTURES_BASE_URL = "https://fapi.binance.com/fapi/v1"
     
     # Supported timeframes (Binance uses different naming)
     # Map from standard timeframe to Binance interval
@@ -112,7 +113,12 @@ class BinanceAPIProvider(BaseDataProvider):
         """
         # Convert int resolution to string timeframe
         timeframe = self._resolution_to_timeframe(resolution)
-        
+
+        # Detect if this is a perpetual futures symbol
+        is_perp = symbol.endswith("-PERP")
+        real_symbol = symbol.replace("-PERP", "") if is_perp else symbol
+        base_url = self.FUTURES_BASE_URL if is_perp else self.API_BASE_URL
+
         # Validate inputs
         self.validate_symbol(symbol)
         if timeframe not in self.SUPPORTED_TIMEFRAMES:
@@ -120,57 +126,58 @@ class BinanceAPIProvider(BaseDataProvider):
                 f"Unsupported resolution: {resolution} minutes. "
                 f"Supported: {[self._timeframe_to_resolution(tf) for tf in self.SUPPORTED_TIMEFRAMES]}"
             )
-        
+
         self.logger.info(
-            f"Fetching {symbol} resolution={resolution}min ({timeframe}) data from {from_timestamp} to {to_timestamp}"
+            f"Fetching {symbol} (real symbol: {real_symbol}) resolution={resolution}min ({timeframe}) data from {from_timestamp} to {to_timestamp} using {'Futures' if is_perp else 'Spot'} endpoint"
         )
-        
+
         try:
             # Convert timeframe to Binance interval
             interval = self.TIMEFRAME_MAP[timeframe]
-            
+
             # Fetch all candles in the time range
             all_candles = []
             current_start_ms = from_timestamp * 1000
             end_ms = to_timestamp * 1000
-            
+
             # Binance max limit per request is 1000
             max_candles_per_request = 1000
-            
+
             while current_start_ms < end_ms:
                 candles = self._fetch_candles_batch(
-                    symbol=symbol,
+                    symbol=real_symbol,
                     interval=interval,
                     start_time_ms=current_start_ms,
                     end_time_ms=end_ms,
-                    limit=max_candles_per_request
+                    limit=max_candles_per_request,
+                    base_url=base_url
                 )
-                
+
                 if not candles or len(candles) == 0:
                     break
-                
+
                 all_candles.extend(candles)
-                
+
                 # Move to next batch (last candle's time + 1 interval)
                 last_candle_time_ms = candles[-1][0]
                 current_start_ms = last_candle_time_ms + 1
-                
+
                 # Add small delay to avoid rate limiting
                 time.sleep(0.1)
-            
+
             if not all_candles:
                 self.logger.warning(f"No data received from Binance for {symbol}")
                 return pd.DataFrame()
-            
+
             # Normalize raw data to standard format
             df = self.normalizer.normalize(all_candles, symbol)
-            
+
             self.logger.info(
                 f"Successfully fetched {len(df)} candles for {symbol} {timeframe}"
             )
-            
+
             return df
-        
+
         except Exception as e:
             self.logger.error(
                 f"Error fetching data from Binance API for {symbol}: {e}"
@@ -185,7 +192,8 @@ class BinanceAPIProvider(BaseDataProvider):
         interval: str,
         start_time_ms: int,
         end_time_ms: int,
-        limit: int = 1000
+        limit: int = 1000,
+        base_url: str = None
     ) -> list:
         """
         Fetch a batch of candles from Binance API.
@@ -196,6 +204,7 @@ class BinanceAPIProvider(BaseDataProvider):
             start_time_ms (int): Start time in milliseconds
             end_time_ms (int): End time in milliseconds
             limit (int): Max candles to fetch
+            base_url (str): Override base URL (for futures)
         
         Returns:
             list: List of candle arrays
@@ -203,8 +212,7 @@ class BinanceAPIProvider(BaseDataProvider):
         Raises:
             RuntimeError: If API request fails
         """
-        url = f"{self.API_BASE_URL}/klines"
-        
+        url = f"{base_url or self.API_BASE_URL}/klines"
         params = {
             "symbol": symbol,
             "interval": interval,
@@ -212,7 +220,6 @@ class BinanceAPIProvider(BaseDataProvider):
             "endTime": end_time_ms,
             "limit": limit
         }
-        
         for attempt in range(self.retries):
             try:
                 response = self.session.get(
@@ -221,17 +228,13 @@ class BinanceAPIProvider(BaseDataProvider):
                     timeout=self.timeout
                 )
                 response.raise_for_status()
-                
                 candles = response.json()
                 if not isinstance(candles, list):
                     raise RuntimeError(f"Expected list, got {type(candles)}")
-                
                 self.logger.debug(
                     f"Fetched {len(candles)} candles for {symbol} from Binance"
                 )
-                
                 return candles
-            
             except requests.exceptions.RequestException as e:
                 if attempt < self.retries - 1:
                     wait_time = 2 ** attempt  # Exponential backoff
@@ -242,7 +245,6 @@ class BinanceAPIProvider(BaseDataProvider):
                     time.sleep(wait_time)
                 else:
                     raise RuntimeError(f"Binance API request failed after {self.retries} attempts: {e}")
-            
             except (ValueError, KeyError) as e:
                 raise RuntimeError(f"Error parsing Binance API response: {e}")
     

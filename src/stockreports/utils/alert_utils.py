@@ -76,22 +76,15 @@ def _apply_price_offset(base_price: float, adjustment: float, signal: str, min_o
     return round(final_price, 1)
 
 
-def get_execution_symbol() -> str:
-    """
-    Retrieves the primary execution symbol from the settings.
-    """
-    return settings.SYMBOLS[0]
-
-def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: Optional[str] = None, symbol: Optional[str] = None, resolution: Optional[int] = None) -> Tuple[Optional[float], Optional[float]]:
+def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: str, symbol: str, resolution: Optional[int] = None) -> Tuple[Optional[float], Optional[float]]:
     """
     Calculates both performance-based and structural suggested prices.
 
     Args:
         signal (str): The alert signal ('BUY' or 'SELL').
         alert_time (pd.Timestamp): The timestamp of the alert.
-        approach (Optional[str]): The name of the alert approach.
-        symbol (Optional[str]): The trading symbol. If provided, overrides the default execution symbol.
-                               If None, uses the primary execution symbol from settings.
+        approach (str): The name of the alert approach. Must be provided.
+        symbol (str): The trading symbol. Must be provided.
         resolution (Optional[int]): The data resolution in minutes. If None, uses MONITORING_DATA_RESOLUTION_MINUTES.
 
     Returns:
@@ -99,7 +92,9 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
             - performance_suggested_price
             - structural_suggested_price
     """
-    execution_symbol = symbol if symbol is not None else get_execution_symbol()
+    if approach is None:
+        raise ValueError("'approach' is a required argument for calculate_suggested_prices.")
+    execution_symbol = symbol
     if resolution is None:
         resolution = data_provider_settings.MONITORING_DATA_RESOLUTION_MINUTES
     performance_price = None
@@ -164,22 +159,21 @@ def calculate_suggested_prices(signal: str, alert_time: pd.Timestamp, approach: 
     df_indexed = market_data
 
     # --- Performance-Based Logic ---
-    if approach:
-        performance_config = getattr(price_alert_settings, 'PERFORMANCE_BY_APPROACH', {})
-        approach_perf = performance_config.get(approach.upper())
+    performance_config = getattr(price_alert_settings, 'PERFORMANCE_BY_APPROACH', {})
+    approach_perf = performance_config.get(approach.upper())
 
-        if approach_perf and 'avg_worst_loss_price' in approach_perf:
-            try:
-                current_candle = df_indexed.loc[alert_time]
-                close_price = current_candle['close']
-                # Ensure adjustment is always positive, _apply_price_offset handles direction
-                adjustment = abs(approach_perf['avg_worst_loss_price'])
-                
-                performance_price = _apply_price_offset(close_price, adjustment, signal, min_offset, max_offset)
-                logger.info(f"Calculated performance price for '{approach}': {performance_price}")
+    if approach_perf and 'avg_worst_loss_price' in approach_perf:
+        try:
+            current_candle = df_indexed.loc[alert_time]
+            close_price = current_candle['close']
+            # Ensure adjustment is always positive, _apply_price_offset handles direction
+            adjustment = abs(approach_perf['avg_worst_loss_price'])
+            
+            performance_price = _apply_price_offset(close_price, adjustment, signal, min_offset, max_offset)
+            logger.info(f"Calculated performance price for '{approach}': {performance_price}")
 
-            except Exception as e:
-                logger.error(f"Error during performance price calculation: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Error during performance price calculation: {e}", exc_info=True)
 
     # --- Structural Logic ---
     try:

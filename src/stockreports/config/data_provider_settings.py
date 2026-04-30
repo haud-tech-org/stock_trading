@@ -25,7 +25,7 @@ Provider and symbol are consistently and dependently related (1:1 model).
 # Future: binance (implementation complete, awaiting deployment)
 # Guidance: Providers listed here will be registered and available for use.
 #           Provider selection is explicit at each call site (no defaults).
-ENABLED_DATA_PROVIDERS = ["vietstock", "binance_ccxt"]
+ENABLED_DATA_PROVIDERS = ["vietstock", "binance", "binance_ccxt"]
 
 # Provider-Specific Configuration
 # Meaning: Configuration dictionary for each data provider. Allows customization of provider behavior.
@@ -97,7 +97,8 @@ PROVIDER_SYMBOLS_CONFIG = {
     "binance": {
         "name": "binance",
         "supported_symbols": [
-            "BTCUSDT",   # Bitcoin - Tether
+            # Spot trading pairs
+            "BTCUSDT",   # Bitcoin - Tether (Spot)
             "ETHUSDT",   # Ethereum - Tether
             "BNBUSDT",   # Binance Coin - Tether
             "BNBBUSD",   # Binance Coin - Binance USD
@@ -106,8 +107,11 @@ PROVIDER_SYMBOLS_CONFIG = {
             "ADAUSDT",   # Cardano - Tether
             "DOGEUSDT",  # Dogecoin - Tether
             "SHIBUSDT",  # Shiba Inu - Tether
+            # Perpetual Futures (USDT-margined)
+            "BTCUSDT-PERP", # Bitcoin - Tether (USDT-Margined Perpetual Futures)
+            # Add more _PERP symbols as needed
         ],
-        "description": "Binance REST API trading pairs (crypto)",
+        "description": "Binance REST API trading pairs (crypto spot + USDT-margined perpetual futures)",
         "reference": "https://www.binance.com/en/trade"
     },
     "binance_ccxt": {

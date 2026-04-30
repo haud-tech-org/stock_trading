@@ -12,8 +12,10 @@ notifications, and market-specific details.
 # Guidance: Change this to the ticker symbol you want to track (e.g., "AAPL", "VNINDEX"). Ensure it matches the symbol expected by the API.
 # Example: `SYMBOL = "VN30"`
 # Symbols: "41I1FA000","VIC","VCB"
-# Always include the derivative symbol is the FIRST symbol
-SYMBOLS = ["VN30F1M", "VN30", "BTC/USDT:USDT"]
+
+# DEPRECATED: SYMBOLS is no longer used. Symbol enablement is now controlled via
+# executor_approach_configuration.json and accessed through the Orchestrator.
+# SYMBOLS = ["VN30F1M", "VN30", "BTC/USDT:USDT", "BTCUSDT-PERP"]
 
 # List of symbols that have a significant impact on the market.
 IMPACT_SYMBOLS = ["VIC", "VHM"]
