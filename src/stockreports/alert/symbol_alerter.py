@@ -24,6 +24,8 @@ from src.stockreports.utils.approach_utils import get_approach_executor
 from src.stockreports.alert.announce.orchestrator import AnnouncementAlertOrchestrator
 from src.stockreports.services.executor_configuration_service.orchestrator import ConfigurationOrchestrator
 from src.stockreports.model.approach_type import ApproachType
+from src.stockreports.trade_service.orchestrator import TradingServiceOrchestrator
+from src.stockreports.alert.common.constants import Mode
 
 
 # --- Path Setup ---
@@ -83,6 +85,7 @@ class SymbolAlerter:
         """
         self.symbol = symbol
         self.notification_orchestrator = NotificationServiceOrchestrator.get_instance()
+        self.trading_orchestrator = TradingServiceOrchestrator()
 
         # Setup logging FIRST (before any code that uses self.logger)
         self._setup_logging()
@@ -211,9 +214,9 @@ class SymbolAlerter:
 
     def execute(self):
         self.logger.info(f"Executing alerter for symbol: {self.symbol}...")
-        if settings.MODE == "DEVELOPMENT":
+        if settings.MODE == Mode.DEVELOPMENT:
             self._run_development_mode()
-        elif settings.MODE == "DEPLOYMENT":
+        elif settings.MODE == Mode.DEPLOYMENT:
             self._run_deployment_mode()
         self.logger.critical(f"Execution finished for symbol: {self.symbol}.")
 
@@ -223,7 +226,7 @@ class SymbolAlerter:
         """
         # This function now only saves the report, enrichment is done prior.
         save_alert_report(result, self.symbol, processing_date)
-        if settings.MODE == "DEVELOPMENT":
+        if settings.MODE == Mode.DEVELOPMENT:
             update_alert_summary(result, self.symbol, processing_date)
 
     def _run_development_mode(self):
@@ -481,6 +484,23 @@ class SymbolAlerter:
                         self.logger.info(f"[TASK-3] Found {len(result.confirmed_alerts)} alerts from {approach_name}")
                         for alert in result.confirmed_alerts:
                             self.notification_orchestrator.send_notification(alert)
+                            # --- Trade Execution (DEPLOYMENT only) ---
+                            # Fire the full DCA ladder + dynamic bracket lifecycle in a
+                            # daemon thread so the monitoring loop is never blocked.
+                            if settings.MODE == Mode.DEPLOYMENT:
+                                expired_minutes = settings.TRADING_EXECUTION_EXPIRED_MINUTES
+                                if time_simulator.is_alert_expired(alert.alert_time, expired_minutes):
+                                    self.logger.warning(
+                                        f"[TASK-3] Skipping trade execution: alert at {alert.alert_time} "
+                                        f"is >{expired_minutes}m old. "
+                                        f"Signal={alert.signal}, Price={alert.alert_price}"
+                                    )
+                                else:
+                                    self.logger.info(
+                                        f"[TASK-3] Dispatching bracket order for {alert.signal} "
+                                        f"alert at {alert.alert_price} ({approach_name})"
+                                    )
+                                    self.trading_orchestrator.orchestrate_bracket_order(alert, time_simulator)
                         self._enrich_and_save_reports(result, time_simulator.processing_date)
                     else:
                         self.logger.debug(f"[TASK-3] No alerts from {approach_name}")
@@ -598,7 +618,7 @@ class SymbolAlerter:
                     self.notification_orchestrator.send_notification(alert)
 
                 # Further enrich with validation data and save reports
-                if settings.MODE == "DEVELOPMENT":
+                if settings.MODE == Mode.DEVELOPMENT:
                     for alert in result.confirmed_alerts:  # Type: AlertData (inferred from List[AlertData])
                         alert.symbol = self.symbol
                         validated_alert = calculate_alert_performance(alert, daily_df, validation_settings.VALIDATION_PERIOD_MINUTES)
@@ -614,7 +634,7 @@ class SymbolAlerter:
                 # Collect alerts for end-of-day profitability simulation
                 all_alerts_for_day.extend([a.to_dict() for a in result.confirmed_alerts])
 
-        if settings.MODE == "DEVELOPMENT" and all_alerts_for_day:
+        if settings.MODE == Mode.DEVELOPMENT and all_alerts_for_day:
             self.logger.info(f"\n--- Running Profitability Simulation for {self.symbol} on {processing_date} ---")
             simulation_summary = simulate_profitability(all_alerts_for_day, daily_df)
             

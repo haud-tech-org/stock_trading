@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import json
+from typing import Optional
 
 def make_json_safe(obj):
     """
@@ -47,3 +48,35 @@ def default_serializer(obj):
     except Exception:
         pass
     return str(obj)
+
+
+# ---------------------------------------------------------------------------
+# Primitive type converters
+# ---------------------------------------------------------------------------
+
+def to_float(value) -> Optional[float]:
+    """
+    Safely convert a value to float.
+    Returns None if the value is None or cannot be converted.
+    Useful for Binance REST responses that return numeric fields as strings.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def to_int(value) -> Optional[int]:
+    """
+    Safely convert a value to int.
+    Returns None if the value is None or cannot be converted.
+    Truncates floats (e.g. 1.0 → 1); does NOT round.
+    """
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None

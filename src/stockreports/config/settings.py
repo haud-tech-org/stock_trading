@@ -103,7 +103,7 @@ LOGS_DIR = "logs"
 # Guidance: "INFO" provides a good balance of detail. "DEBUG" is very verbose and useful for troubleshooting. "WARNING" will only show potential problems.
 # Range: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL".
 # Example: `LOG_LEVEL = "INFO"`
-LOG_LEVEL = "ERROR"
+LOG_LEVEL = "WARNING"
 
 
 # --- Data Source & Operational Mode ---
@@ -186,6 +186,16 @@ CONSOLIDATED_PROFITABILITY = {
     "ALERT_SOURCE_SYMBOLS": ["VN30", "VN30F1M"],
     "TRADE_EXECUTION_SYMBOL": "VN30F1M"
 }
+
+
+# Trade Execution Expiry
+# Meaning: Maximum age (in minutes) of an alert for it to be eligible for live trade execution.
+#          If the simulator's current time is more than this many minutes ahead of alert.alert_time,
+#          the bracket order dispatch is skipped to avoid acting on stale signals.
+# Guidance: Set lower (e.g. 2) for fast markets, higher (e.g. 10) if execution lag is expected.
+# Range: Integer > 0.
+# Example: `TRADING_EXECUTION_EXPIRED_MINUTES = 5`
+TRADING_EXECUTION_EXPIRED_MINUTES = 5
 
 # --- Debug Replay Configuration ---
 

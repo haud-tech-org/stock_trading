@@ -190,6 +190,34 @@ class TimeSimulator:
         return False
 
 
+    def is_alert_expired(self, alert_time, expired_minutes: int) -> bool:
+        """
+        Returns True if the alert is older than `expired_minutes` relative to the
+        simulator's current time (works in both live and replay mode).
+
+        Both timestamps are normalised to tz-naive before comparison so that
+        mixing tz-aware / tz-naive alert times never raises a TypeError.
+
+        Args:
+            alert_time: The alert's timestamp (pd.Timestamp, datetime, or int Unix seconds).
+            expired_minutes: Maximum allowed age in minutes.
+
+        Returns:
+            True if the alert age exceeds `expired_minutes`, False otherwise.
+        """
+        current_ts = pd.Timestamp(self.get_current_time())
+        alert_ts = pd.Timestamp(alert_time)
+
+        # Normalise both to tz-naive UTC-equivalent for safe arithmetic
+        if current_ts.tzinfo is not None:
+            current_ts = current_ts.tz_convert(None)
+        if alert_ts.tzinfo is not None:
+            alert_ts = alert_ts.tz_convert(None)
+
+        age_minutes = (current_ts - alert_ts).total_seconds() / 60
+        return age_minutes > expired_minutes
+
+
 def get_market_timezone_str(timezone_str: str = TIMEZONE_STR) -> str:
     """
     Get the market's timezone string from settings.
