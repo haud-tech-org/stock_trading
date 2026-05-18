@@ -224,7 +224,7 @@ gcloud run deploy $SERVICE_NAME \
   --add-volume=name=gcs-1,type=cloud-storage,bucket=stock-trading-2 \
   --add-volume-mount=volume=gcs-1,mount-path=/mnt \
   --set-env-vars GOOGLE_CLOUD_PROJECT=$PROJECT_ID,EMAIL_ENABLED=true,EMAIL_SMTP_SERVER=smtp.gmail.com,EMAIL_SMTP_PORT=587,EMAIL_RECEIVERS=haud.fin@gmail.com,EMAIL_BCC_RECEIVERS=haud.fin@gmail.com,NTFY_ENABLED=false,NTFY_TOPICS=vn30_alerts_f8a9b2c1,TWILIO_ENABLED=false,TWILIO_PHONE_NUMBER="",SMS_RECEIVER_PHONE_NUMBER="" \
-  --set-secrets EMAIL_SENDER=email-sender:latest,EMAIL_APP_PASSWORD=email-app-password:latest,EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest
+  --set-secrets EMAIL_SENDER=email-sender:latest,EMAIL_APP_PASSWORD=email-app-password:latest,EMAIL_SENDER_DISPLAY_NAME=email-sender-display-name:latest,TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,BINANCE_API_KEY=binance-api-key:latest,BINANCE_API_SECRET=binance-api-secret:latest,BINANCE_DEMO_API_KEY=binance-demo-api-key:latest,BINANCE_DEMO_API_SECRET=binance-demo-api-secret:latest
 ```
 
 ### Important Note: Cloud Run Environment Variables

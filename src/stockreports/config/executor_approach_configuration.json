@@ -51,7 +51,7 @@
             "MIN_PERCENTAGE": 0.01,
             "MAX_PERCENTAGE": 0.4,
             "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 200.0,
-            "COOLDOWN_WINDOW": 3
+            "COOLDOWN_WINDOW": 30
           },        
           
           "validation": {
@@ -116,7 +116,7 @@
             "MIN_PERCENTAGE": 0.01,
             "MAX_PERCENTAGE": 0.4,
             "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 200.0,
-            "COOLDOWN_WINDOW": 3
+            "COOLDOWN_WINDOW": 30
           },
           "validation": {
             "enabled": true,

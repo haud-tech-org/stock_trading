@@ -3,7 +3,7 @@
 **Purpose**: Tier 2 reference documentation  
 **Audience**: Architects, senior developers, anyone needing deep architectural knowledge  
 **Scope**: Architecture patterns, design decisions, theoretical knowledge  
-**Last Updated**: April 10, 2026
+**Last Updated**: May 18, 2026
 
 ---
 
@@ -15,7 +15,7 @@ This directory contains **reference-level architecture documentation** - the "wh
 
 ---
 
-## 🏗️ Layer-Based Organization (9 Layers)
+## 🏗️ Layer-Based Organization (10 Layers)
 
 Each layer contains theory and reference materials:
 
@@ -30,6 +30,7 @@ Each layer contains theory and reference materials:
 | **7** | Notification Delivery | User notifications | [→ Layer 7](./LAYER_7_NOTIFICATION_DELIVERY/README.md) |
 | **8** | Performance Analysis | Metrics & backtesting | [→ Layer 8](./LAYER_8_PERFORMANCE_ANALYSIS/README.md) |
 | **9** | Operational Support | Logging, config, deployment | [→ Layer 9](./LAYER_9_OPERATIONAL_SUPPORT/README.md) |
+| **10** | Trade Execution Service | DCA ladder + dynamic bracket lifecycle | [→ Layer 10](./LAYER_10_TRADE_EXECUTION/README.md) ⚡ NEW |
 
 ---
 
@@ -69,6 +70,10 @@ Each layer contains theory and reference materials:
 - **[PROVIDER_RESOURCE_LIFECYCLE.md](./LAYER_5_DATA_SERVICES/PROVIDER_RESOURCE_LIFECYCLE.md)** - Resource management, context managers, connection lifecycle
 - **[CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md](./LAYER_5_DATA_SERVICES/CONTEXT_MANAGER_IMPLEMENTATION_GUIDE.md)** - Implementation guide for context managers
 
+### Trade Execution Service (Layer 10) ⚡ NEW
+- **[LAYER_10_TRADE_EXECUTION/README.md](./LAYER_10_TRADE_EXECUTION/README.md)** - Full DCA bracket architecture, Facade+Registry+Strategy patterns
+- **[LAYER_10_TRADE_EXECUTION/BINANCE_PERPETUAL_TRADING_REFERENCE.md](./LAYER_10_TRADE_EXECUTION/BINANCE_PERPETUAL_TRADING_REFERENCE.md)** - Complete method map, config reference, lifecycle diagrams, API usage
+
 ---
 
 ## 🚀 Common Use Cases
@@ -78,6 +83,8 @@ Each layer contains theory and reference materials:
 | **"How is the system structured?"** | [SYSTEM_ARCHITECTURE_OVERVIEW.md](../SYSTEM_ARCHITECTURE_OVERVIEW.md) |
 | **"Why the executor pattern?"** | [Layer 4: Deep Dive](./LAYER_4_APPROACH_EXECUTION/DEEP_DIVE_FINDINGS.md) |
 | **"What's the data architecture?"** | [Layer 5: Data Layer](./LAYER_5_DATA_SERVICES/DATA_LAYER_ARCHITECTURE.md) |
+| **"How does live trading work?"** | [Layer 10: Trade Execution](./LAYER_10_TRADE_EXECUTION/README.md) ⚡ NEW |
+| **"How is trade service integrated?"** | [SYSTEM_ARCHITECTURE_OVERVIEW.md — Layer 10 block](../SYSTEM_ARCHITECTURE_OVERVIEW.md) |
 | **"How do 9 layers connect?"** | Each layer README shows connections |
 | **"Operational patterns?"** | [Layer 9 README](./LAYER_9_OPERATIONAL_SUPPORT/README.md) |
 
@@ -110,6 +117,9 @@ TECHNICAL_REFERENCE/
 │   └── README.md
 ├── LAYER_9_OPERATIONAL_SUPPORT/
 │   └── README.md
+├── LAYER_10_TRADE_EXECUTION/          ⚡ NEW
+│   └── README.md (DCA ladder theory, Facade+Registry+Strategy patterns,
+│                  Binance algo order design, OCO lifecycle, USDT sizing)
 ├── ARCHIVES/
 │   └── (Historical docs, investigations, reviews)
 ├── README.md (this file)

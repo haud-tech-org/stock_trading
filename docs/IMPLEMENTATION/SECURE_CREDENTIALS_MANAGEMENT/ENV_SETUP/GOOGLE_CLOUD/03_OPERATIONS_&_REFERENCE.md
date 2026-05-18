@@ -397,7 +397,9 @@ gcloud projects get-iam-policy stock-trading-489001 --format=json | \
 
 # 2. Verify secret access
 for secret in email-sender email-app-password email-sender-display-name \
-              twilio-account-sid twilio-auth-token; do
+              twilio-account-sid twilio-auth-token \
+              binance-api-key binance-api-secret \
+              binance-demo-api-key binance-demo-api-secret; do
   gcloud secrets get-iam-policy $secret
 done
 
@@ -516,7 +518,9 @@ gcloud projects get-iam-policy stock-trading-489001 --format=json | \
 
 # Check secret access
 for secret in email-sender email-app-password email-sender-display-name \
-              twilio-account-sid twilio-auth-token; do
+              twilio-account-sid twilio-auth-token \
+              binance-api-key binance-api-secret \
+              binance-demo-api-key binance-demo-api-secret; do
   echo "=== $secret ==="
   gcloud secrets get-iam-policy $secret --format=json | \
     jq ".bindings[] | select(.members[] | contains(\"stock-alerter-sa\"))"

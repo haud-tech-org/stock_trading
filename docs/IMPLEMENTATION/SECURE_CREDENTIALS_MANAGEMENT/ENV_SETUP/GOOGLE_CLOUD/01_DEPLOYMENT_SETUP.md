@@ -102,6 +102,20 @@ echo -n "ACxxxxxxxxxxxxxxxxxx" | gcloud secrets create twilio-account-sid \
 # Store Twilio Auth Token (if using SMS alerts)
 echo -n "your_auth_token_here" | gcloud secrets create twilio-auth-token \
   --data-file=-
+
+# Store Binance live production API credentials
+echo -n "your_live_api_key_here" | gcloud secrets create binance-api-key \
+  --data-file=-
+
+echo -n "your_live_api_secret_here" | gcloud secrets create binance-api-secret \
+  --data-file=-
+
+# Store Binance demo/paper-trading API credentials
+echo -n "your_demo_api_key_here" | gcloud secrets create binance-demo-api-key \
+  --data-file=-
+
+echo -n "your_demo_api_secret_here" | gcloud secrets create binance-demo-api-secret \
+  --data-file=-
 ```
 
 **Argument Explanations**:
@@ -123,7 +137,9 @@ gcloud secrets list
 
 # Verify each secret was created
 for secret in email-sender email-app-password email-sender-display-name \
-              twilio-account-sid twilio-auth-token; do
+              twilio-account-sid twilio-auth-token \
+              binance-api-key binance-api-secret \
+              binance-demo-api-key binance-demo-api-secret; do
   echo "Checking $secret..."
   gcloud secrets describe $secret
 done
@@ -184,7 +200,9 @@ Grant the service account permission to access the secrets created in Step 3.
 ```bash
 # For each secret, grant the service account read-only access
 for secret in email-sender email-app-password email-sender-display-name \
-              twilio-account-sid twilio-auth-token; do
+              twilio-account-sid twilio-auth-token \
+              binance-api-key binance-api-secret \
+              binance-demo-api-key binance-demo-api-secret; do
   gcloud secrets add-iam-policy-binding $secret \
     --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
     --role=roles/secretmanager.secretAccessor
@@ -206,7 +224,9 @@ done
 ```bash
 # Verify service account has access to each secret
 for secret in email-sender email-app-password email-sender-display-name \
-              twilio-account-sid twilio-auth-token; do
+              twilio-account-sid twilio-auth-token \
+              binance-api-key binance-api-secret \
+              binance-demo-api-key binance-demo-api-secret; do
   echo "Permissions for $secret:"
   gcloud secrets get-iam-policy $secret
 done
@@ -317,15 +337,19 @@ gcloud projects get-iam-policy $PROJECT_ID --format=json | \
 
 - [ ] Project variables set (`PROJECT_ID`, `REGION`, `SERVICE_NAME`)
 - [ ] APIs enabled (Cloud Run, Secret Manager, Artifact Registry, Compute)
-- [ ] All 5 secrets created in Secret Manager
+- [ ] All 9 secrets created in Secret Manager
   - [ ] email-sender
   - [ ] email-app-password
   - [ ] email-sender-display-name
   - [ ] twilio-account-sid
   - [ ] twilio-auth-token
+  - [ ] binance-api-key
+  - [ ] binance-api-secret
+  - [ ] binance-demo-api-key
+  - [ ] binance-demo-api-secret
 - [ ] Service account created (stock-alerter-sa)
 - [ ] Service account email captured and exported
-- [ ] Service account has `secretmanager.secretAccessor` role for all 5 secrets
+- [ ] Service account has `secretmanager.secretAccessor` role for all 9 secrets
 - [ ] Service account has 8 additional roles assigned
 - [ ] All roles verified with `gcloud projects get-iam-policy`
 

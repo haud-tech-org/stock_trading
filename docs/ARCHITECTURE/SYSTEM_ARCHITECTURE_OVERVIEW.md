@@ -2,9 +2,9 @@
 
 **Status**: ✅ Complete System Reference  
 **Purpose**: Understand the entire trading alert system architecture, from entry point to delivery  
-**Scope**: **Complete system-wide architecture** (from SymbolAlertManager through all components to report generation)  
+**Scope**: **Complete system-wide architecture** (from SymbolAlertManager through all components to report generation and live trade execution)  
 **Audience**: All developers, architects, operations, stakeholders  
-**Last Updated**: April 10, 2026
+**Last Updated**: May 18, 2026
 
 ---
 
@@ -17,7 +17,8 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 3. **Detects** trading opportunities via multi-resolution analysis (1m, 5m, 15m, 1h candles)
 4. **Validates** signals using threshold-based rules
 5. **Notifies** users via email, SMS, and web notifications
-6. **Records** alerts and generates performance reports
+6. **Executes** live DCA bracket trades on Binance perpetual futures (DEPLOYMENT mode only)
+7. **Records** alerts and generates performance reports
 
 **Core Operating Modes**:
 - 🔴 **LIVE Mode** - Real-time production monitoring (indefinite, auto-recovering)
@@ -358,6 +359,82 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  Documentation: OPERATIONS_DEPLOYMENT_GUIDE.md, API_DOCUMENTATION.md     │
 │                                                                             │
 └────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 10: TRADE EXECUTION SERVICE  ⚡ NEW                                  │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Integration Point: Fired from Layer 2 (SymbolAlerter TASK-3) in a        │
+│  daemon thread whenever a TRADE-type approach produces a confirmed alert   │
+│  AND the alert is not expired AND MODE == DEPLOYMENT.                      │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │ TradingServiceOrchestrator (Public Facade)                          │  │
+│  │ Location: src/stockreports/trade_service/orchestrator.py            │  │
+│  │ Responsibility: Thin facade — receives AlertData from SymbolAlerter, │  │
+│  │   dispatches orchestrate_bracket_order in a dedicated daemon thread. │  │
+│  │                                                                     │  │
+│  │ Pattern: Facade + Registry + Strategy                               │  │
+│  │                                                                     │  │
+│  │ Internal chain:                                                     │  │
+│  │ ├─ TradingCoordinator                                              │  │
+│  │ │  └─ Selects the correct platform for the alert's symbol          │  │
+│  │ ├─ TradingPlatformRegistry                                         │  │
+│  │ │  └─ Symbol → Platform mapping (e.g. BTCUSDT-PERP →              │  │
+│  │ │     BinancePerpetualTrading)                                     │  │
+│  │ └─ BinancePerpetualTrading (live implementation)                   │  │
+│  │    └─ orchestrate_bracket_order(alert, time_simulator)             │  │
+│  └──────────────────────────────┬──────────────────────────────────────┘  │
+│                                 │                                          │
+│                                 ▼                                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │ BinancePerpetualTrading — Full DCA Bracket Lifecycle                │  │
+│  │ Location: …/platforms/binance_perpetual_trading.py                  │  │
+│  │                                                                     │  │
+│  │ Step 1 — Set leverage (once per symbol per process)                │  │
+│  │   POST /fapi/v1/leverage                                           │  │
+│  │                                                                     │  │
+│  │ Step 2 — Place DCA ladder (7 LIMIT orders, USDT-sized)             │  │
+│  │   Pre-flight guards:                                               │  │
+│  │   ├─ Close diverged same-side position if price drifted > 100 USDT │  │
+│  │   ├─ Absorb any opposite-side position into first order qty        │  │
+│  │   └─ Assert available balance ≥ required margin × 1.5             │  │
+│  │   POST /fapi/v1/batchOrders (chunks of ≤5)                        │  │
+│  │                                                                     │  │
+│  │ Step 2b — Wait for position to open                                │  │
+│  │   Poll _get_position_info every 10s up to 3600s                   │  │
+│  │   If no position confirmed → cancel ladder, return TIMEOUT         │  │
+│  │                                                                     │  │
+│  │ Step 3 — _monitor_ladder (blocking, runs in daemon thread)         │  │
+│  │   ├─ Phase A: Poll position until first LIMIT fills               │  │
+│  │   ├─ Phase B: On each fill → recalculate TP/SL from avg entry,    │  │
+│  │   │           cancel stale bracket, place new TP + SL algo orders  │  │
+│  │   │           POST /fapi/v1/algoOrder ×2 (CONDITIONAL type)       │  │
+│  │   ├─ Phase B′: On subsequent fills → re-bracket with updated qty  │  │
+│  │   ├─ Phase C: Cancel remaining LIMIT orders after 2000s timeout   │  │
+│  │   ├─ Phase D: On TP fill → cancel SL; on SL fill → cancel TP     │  │
+│  │   │           OcoOutcome: TP_FILLED | SL_FILLED |                 │  │
+│  │   │           EXTERNAL_TERMINAL | TIMEOUT                         │  │
+│  │   └─ Exit: when no open LIMIT + no open TP/SL algo orders remain  │  │
+│  │                                                                     │  │
+│  │ Config: src/…/config/binance_perpetual_config.py                   │  │
+│  │ Trade doc: TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/              │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  Key design rules:                                                         │
+│  • Trade execution NEVER blocks the SymbolAlerter monitoring loop         │
+│    (always dispatched in a daemon thread)                                  │
+│  • Only fires in MODE == DEPLOYMENT and only for non-expired alerts        │
+│    (expiry = TRADING_EXECUTION_EXPIRED_MINUTES, default 5 min)            │
+│  • All TP/SL as conditional algo orders via /fapi/v1/algoOrder —          │
+│    NOT /fapi/v1/order (Binance returns -4120 otherwise)                   │
+│  • Quantities are USDT-based: qty = order_usdt_amount / price             │
+│  • Server time sync at startup prevents -1021 timestamp errors            │
+│                                                                             │
+│  Location: src/stockreports/trade_service/                                │
+│  Reference: TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/                 │
+│                                                                             │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -398,13 +475,23 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
          ├─ Deduplicate overlapping signals (same symbol+approach+resolution within 5min)
          └─ Save to reports/ (LIVE) or reports_replay/ (REPLAY)
 
-6. NOTIFY
+6. NOTIFY  (parallel with step 6b)
    └─ Send alerts to users (NotificationManager)
       ├─ Email channel (SMTP)
       ├─ SMS channel (Twilio or similar)
       └─ Web notification channel (ntfy.sh or similar)
          └─ All channels send independently
             └─ One channel failure doesn't block others
+
+6b. EXECUTE TRADE  (parallel with step 6, DEPLOYMENT mode only)
+   └─ For each confirmed TRADE-type alert where alert_age ≤ TRADING_EXECUTION_EXPIRED_MINUTES:
+      └─ TradingServiceOrchestrator.orchestrate_bracket_order(alert, time_simulator)
+         └─ Dispatched in daemon thread → monitoring loop never blocked
+            └─ BinancePerpetualTrading runs full DCA bracket lifecycle:
+               ├─ Set leverage
+               ├─ Place 7 LIMIT orders (DCA ladder)
+               ├─ Wait for position to open (step 2b guard)
+               └─ _monitor_ladder: re-bracket on fills → OCO resolution
 
 7. ANALYSIS (Optional)
    └─ Trade performance analysis engine (Trade Simulation)
@@ -450,6 +537,19 @@ SymbolAlertManager
 │  ├─ EmailChannel
 │  ├─ SMSChannel
 │  └─ WebNotificationChannel
+│
+├─ TradingServiceOrchestrator  ⚡ NEW (DEPLOYMENT mode only)
+│  └─ TradingCoordinator
+│     └─ TradingPlatformRegistry
+│        └─ BinancePerpetualTrading
+│           ├─ orchestrate_bracket_order
+│           │  ├─ place_order (DCA ladder via /fapi/v1/batchOrders)
+│           │  ├─ position open guard (poll /fapi/v2/positionRisk)
+│           │  └─ _monitor_ladder
+│           │     ├─ _place_tp_sl_batch (/fapi/v1/algoOrder ×2)
+│           │     ├─ _query_algo_order  (/fapi/v1/algoOrder GET)
+│           │     └─ _cancel_algo_order (/fapi/v1/algoOrder DELETE)
+│           └─ Config: BINANCE_PERPETUAL_CONFIG
 │
 └─ (Optional) Trade Simulation Engine
    └─ Performance metrics generation
@@ -570,6 +670,10 @@ FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pai
 | Email notifications | ✅ | ✅ | Via SMTP |
 | SMS notifications | ✅ | ✅ | Via Twilio/similar |
 | Web notifications | ✅ | ✅ | Via ntfy.sh |
+| **Live trade execution** | ✅ | ❌ | DEPLOYMENT mode only; daemon thread |
+| **DCA ladder orders** | ✅ | ❌ | 7 LIMIT orders, USDT-sized |
+| **Dynamic TP/SL bracket** | ✅ | ❌ | Recalculated from avg fill price |
+| **Alert expiry guard** | ✅ | ❌ | Skips stale alerts (default 5 min) |
 | Performance analysis | ✅ | ✅ | Backtesting available |
 | Alert deduplication | ✅ | ✅ | Within 5 min window |
 | Report generation | ✅ | ✅ | CSV format |
@@ -593,6 +697,11 @@ FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pai
 - `IMPLEMENTATION_GUIDES/EXECUTOR_IMPLEMENTATION_GUIDE.md` - How to create executors
 - `IMPLEMENTATION_GUIDES/ANALYZER_VALIDATOR_QUICK_REFERENCE.md` - ABC usage guide
 
+### Trade Execution Service (Layer 10) ⚡ NEW
+- `TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/README.md` - Trade service architecture theory
+- `TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/BINANCE_PERPETUAL_TRADING_REFERENCE.md` - Full BinancePerpetualTrading reference (method map, config, lifecycle diagrams)
+- `IMPLEMENTATION_GUIDES/LAYER_10_TRADE_EXECUTION/README.md` - How to extend trade platforms
+
 ### Data & Notifications
 - `DATA_SERVICES/ARCHITECTURE.md` - Data layer design
 - `IMPLEMENTATION_GUIDES/DATA_PROVIDER_EXTENSION_GUIDE.md` - Adding data sources
@@ -613,6 +722,12 @@ FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pai
 3. Study: Existing approach in `src/stockreports/alert/approach/`
 4. Implement: New Executor, Analyzer, Validator
 
+### For **Trade Service** (extending live trading)
+1. Read: `TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/README.md`
+2. Read: `TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/BINANCE_PERPETUAL_TRADING_REFERENCE.md`
+3. Study: `BinancePerpetualTrading` in `…/platforms/binance_perpetual_trading.py`
+4. Extend: Add new symbol mapping in `TradingPlatformRegistry` or implement new `BaseTrading` subclass
+
 ### For **Data Integration** (adding new data sources)
 1. Read: `DATA_SERVICES/ARCHITECTURE.md`
 2. Read: `IMPLEMENTATION_GUIDES/DATA_PROVIDER_EXTENSION_GUIDE.md`
@@ -632,5 +747,5 @@ FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pai
 
 **Status**: Tier 1 - System Orchestration ✅  
 **Focus**: Complete end-to-end system architecture  
-**Scope**: From SymbolAlertManager through all layers to report generation  
-**Last Updated**: April 10, 2026
+**Scope**: From SymbolAlertManager through all layers to report generation and live trade execution  
+**Last Updated**: May 18, 2026

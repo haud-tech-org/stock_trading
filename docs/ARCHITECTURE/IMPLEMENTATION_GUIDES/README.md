@@ -3,7 +3,7 @@
 **Purpose**: Tier 3 practical implementation documentation  
 **Audience**: Developers building features, extending systems, solving problems  
 **Scope**: How-to guides, practical examples, implementation patterns  
-**Last Updated**: April 10, 2026
+**Last Updated**: May 18, 2026
 
 ---
 
@@ -15,7 +15,7 @@ This directory contains **practical, hands-on documentation** - the "how to do i
 
 ---
 
-## 🏗️ Layer-Based Organization (9 Layers)
+## 🏗️ Layer-Based Organization (10 Layers)
 
 Each layer contains practical implementation guides:
 
@@ -30,6 +30,7 @@ Each layer contains practical implementation guides:
 | **7** | Notification Delivery | Notification setup | [→ Layer 7](./LAYER_7_NOTIFICATION_DELIVERY/README.md) |
 | **8** | Performance Analysis | Metrics & analysis | [→ Layer 8](./LAYER_8_PERFORMANCE_ANALYSIS/README.md) |
 | **9** | Operational Support | Deployment & ops | [→ Layer 9](./LAYER_9_OPERATIONAL_SUPPORT/README.md) |
+| **10** | Trade Execution Service | Live DCA bracket trading | [→ Layer 10](./LAYER_10_TRADE_EXECUTION/README.md) ⚡ NEW |
 
 ---
 
@@ -45,6 +46,11 @@ Each layer contains practical implementation guides:
 1. **Understand Data Layer**: [TECHNICAL_REFERENCE/Layer 5](../TECHNICAL_REFERENCE/LAYER_5_DATA_SERVICES/README.md)
 2. **Follow Guide**: [LAYER_5: DATA_PROVIDER_EXTENSION_GUIDE.md](./LAYER_5_DATA_SERVICES/DATA_PROVIDER_EXTENSION_GUIDE.md)
 3. **Quick Ref**: [LAYER_5: DATA_SERVICES_QUICK_REFERENCE.md](./LAYER_5_DATA_SERVICES/DATA_SERVICES_QUICK_REFERENCE.md)
+
+### ⚡ **Working on Live Trade Execution** (NEW)
+1. **Architecture theory**: [TECHNICAL_REFERENCE/Layer 10](../TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/README.md)
+2. **Deep reference**: [BINANCE_PERPETUAL_TRADING_REFERENCE.md](../TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/BINANCE_PERPETUAL_TRADING_REFERENCE.md)
+3. **Follow Guide**: [LAYER_10: Trade Execution Implementation Guide](./LAYER_10_TRADE_EXECUTION/README.md)
 
 ### 🚀 **Deploying to Production**
 1. **Deployment Guide**: [LAYER_9: OPERATIONS_DEPLOYMENT_GUIDE.md](./LAYER_9_OPERATIONAL_SUPPORT/OPERATIONS_DEPLOYMENT_GUIDE.md)
@@ -87,6 +93,7 @@ Each layer contains practical implementation guides:
 | **Fix problem** | [Layer 9: Troubleshooting](./LAYER_9_OPERATIONAL_SUPPORT/TROUBLESHOOTING_GUIDE.md) |
 | **Add performance metrics** | [Layer 8 Guides](./LAYER_8_PERFORMANCE_ANALYSIS/) |
 | **Replay historical data** | [Layer 3: Replay Guide](./LAYER_3_RESOLUTION_COORDINATION/REPLAY_MODE_ARCHITECTURE.md) |
+| **Extend live trade execution** | [Layer 10 Guides](./LAYER_10_TRADE_EXECUTION/) ⚡ NEW |
 
 ---
 
@@ -122,6 +129,8 @@ IMPLEMENTATION_GUIDES/
 │   ├── README.md
 │   ├── OPERATIONS_DEPLOYMENT_GUIDE.md ⭐ (How to deploy)
 │   └── TROUBLESHOOTING_GUIDE.md (How to troubleshoot)
+├── LAYER_10_TRADE_EXECUTION/          ⚡ NEW
+│   └── README.md (How to extend trading platforms and add new symbols)
 ├── README.md (this file)
 └── INDEX.md
 ```
