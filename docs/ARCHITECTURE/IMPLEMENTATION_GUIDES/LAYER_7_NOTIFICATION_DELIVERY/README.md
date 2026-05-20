@@ -11,7 +11,7 @@
 ## 🎯 Layer Responsibility
 
 
-Layer 7 implementation focuses on **modular, type-based notification delivery across multiple channels**. All notification logic is routed by `approach_type` (e.g., `announce`, `trade`) using the `ApproachType` enum. The orchestrator is the single entry point for all notification delivery, with pluggable channels and a scheduler for trade signals.
+Layer 7 implementation focuses on **modular, type-based notification delivery across multiple channels**. All notification logic is routed by `approach_type` (e.g., `announce`, `trade`) using the `ApproachType` enum. The orchestrator is the single entry point for all notification delivery, with pluggable channels (Email, SMS, Ntfy, **Slack**) and a scheduler for trade signals.
 
 ---
 
@@ -32,11 +32,23 @@ Layer 7 implementation focuses on **modular, type-based notification delivery ac
 
 ### Adding/Modifying Channels
 - **[ChannelFactory](../../../../src/stockreports/services/external/notification_services/_internal/channel_factory.py):**
-	- Add new channel by implementing the channel interface and registering in the factory
-	- Channel enablement is type-aware and config-driven (per approach, by `approach_type`)
-	- Supported: [EmailNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/email_channel.py), [SMSNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/sms_channel.py), [NtfyNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/ntfy_channel.py) (web push)
+        - Add new channel by implementing the channel interface and registering in the factory
+        - Channel enablement is type-aware and config-driven (per approach, by `approach_type`)
+        - Supported: [EmailNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/email_channel.py), [SMSNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/sms_channel.py), [NtfyNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/ntfy_channel.py) (web push), [SlackNotificationChannel](../../../../src/stockreports/services/external/notification_services/_internal/channels/slack_channel.py) (Incoming Webhook)
 
-
+### Slack Channel
+- **File**: [`slack_channel.py`](../../../../src/stockreports/services/external/notification_services/_internal/channels/slack_channel.py)
+- **Delivery**: Slack Incoming Webhook — no bot token required. Obtain webhook URL from: Slack App → Your App → Incoming Webhooks → Add New Webhook to Workspace.
+- **Payload format**: `{"attachments": [{"color": "#...", "blocks": [...]}]}` — Block Kit with colour-coded signal sidebar.
+  - 🟢 `#00B050` — BUY / ORDER_REMINDER
+  - 🔴 `#FF0000` — SELL / CLOSE_POSITION
+  - 🔵 `#0078D4` — Other signals
+- **Fields delivered**: symbol, approach, signal price, suggested entry, profit threshold, alert time.
+- **Multi-URL**: Set `SLACK_WEBHOOK_URLS` as a comma-separated list — payload is fanned out to all URLs.
+- **Retry**: Exponential backoff, 3 retries, initial delay 1 s (doubles each attempt). Success = HTTP 200 + body `"ok"`.
+- **Credential loading**: `SLACK_WEBHOOK_URLS` is loaded via `SecretsLoader` (sensitive). Set in `.env` locally, or as GCP Secret Manager secret `slack-webhook-urls` in production (injected via `--set-secrets SLACK_WEBHOOK_URLS=slack-webhook-urls:latest`).
+- **No global enabled flag**: Channel activation is **exclusively** controlled by `notification_service_config.json` — set `"SLACK": {"enabled": true}` for the desired symbol/approach. There is no `SLACK_ENABLED` environment variable.
+- **`ChannelType` enum value**: `ChannelType.SLACK` (`"SLACK"`)
 ### Scheduler/Reminders
 - **[NotificationScheduler](../../../../src/stockreports/services/external/notification_services/_internal/scheduler.py):**
 	- Handles scheduled reminders and close position notifications for **trade-type approaches only**
@@ -72,6 +84,9 @@ Layer 7 implementation focuses on **modular, type-based notification delivery ac
 ### **"How do I add SMS support?"**
 → Implement SMS channel handler, register in ChannelFactory, and enable for desired approaches/types in config.
 
+### **"How do I set up Slack notifications?"**
+→ Create a Slack Incoming Webhook URL (Slack App → Incoming Webhooks → Add New Webhook to Workspace). Set `SLACK_WEBHOOK_URLS` in `.env` (local) or GCP Secret Manager secret `slack-webhook-urls` (production). Enable per symbol/approach in `notification_service_config.json` by setting `"SLACK": {"enabled": true}`.
+
 ### **"How do I customize alert messages?"**
 → Modify message formatters for each channel type. Use orchestrator to route by type.
 
@@ -89,5 +104,5 @@ Layer 7 implementation focuses on **modular, type-based notification delivery ac
 
 ---
 
-*Last Updated: April 25, 2026*  
+*Last Updated: May 20, 2026*  
 *Part of Tier 3 Documentation - Implementation & How-To (2026 Modular, Type-Based)*

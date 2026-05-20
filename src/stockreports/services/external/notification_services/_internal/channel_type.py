@@ -6,3 +6,4 @@ class ChannelType(Enum):
     EMAIL = "EMAIL"
     SMS = "SMS"
     NTFY = "NTFY"
+    SLACK = "SLACK"

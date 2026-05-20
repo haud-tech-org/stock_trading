@@ -11,6 +11,7 @@ from typing import Dict, Optional
 from .channels.email_channel import EmailNotificationChannel
 from .channels.sms_channel import SMSNotificationChannel
 from .channels.ntfy_channel import NtfyNotificationChannel
+from .channels.slack_channel import SlackNotificationChannel
 from .channel_type import ChannelType
 from .channels.base_channel import BaseNotificationChannel
 
@@ -44,6 +45,8 @@ class ChannelFactory:
                 self._instances[key] = SMSNotificationChannel(self.config)
             elif key == ChannelType.NTFY.value:
                 self._instances[key] = NtfyNotificationChannel(self.config)
+            elif key == ChannelType.SLACK.value:
+                self._instances[key] = SlackNotificationChannel(self.config)
             else:
                 return None
         return self._instances[key]

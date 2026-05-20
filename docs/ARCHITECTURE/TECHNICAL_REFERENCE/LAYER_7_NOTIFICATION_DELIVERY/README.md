@@ -10,7 +10,7 @@
 ## 🎯 Layer Responsibility
 
 
-Layer 7 delivers **trading alerts and announcements to users** through multiple channels (email, SMS, web push) using a modular, config-driven, and type-based architecture. Notification routing, formatting, and delivery reliability are handled by a central orchestrator, with pluggable channels and a scheduler for trade signals.
+Layer 7 delivers **trading alerts and announcements to users** through multiple channels (Email, SMS, Ntfy web push, and Slack) using a modular, config-driven, and type-based architecture. Notification routing, formatting, and delivery reliability are handled by a central orchestrator, with pluggable channels and a scheduler for trade signals.
 
 **Key Concepts:**
 - Modular, type-based notification system: all approaches are classified by `approach_type` (e.g., `announce`, `trade`) using the `ApproachType` enum.
@@ -33,7 +33,9 @@ See [NOTIFICATION_SERVICE_DATA_FLOW_DIAGRAM.md](./NOTIFICATION_SERVICE_DATA_FLOW
 ## 🆕 New Architecture (2026)
 
 
-Layer 7 is powered by a modular, config-driven notification orchestrator. It supports multiple pluggable channels (Email, SMS, Ntfy/web), robust deduplication, and a scheduler for reminders and close position alerts. All logic is driven by a hierarchical configuration, with type-based filtering (`announce` vs `trade`) and error handling built in. The orchestrator uses the `ApproachType` enum to route each alert to the correct delivery flow.
+Layer 7 is powered by a modular, config-driven notification orchestrator. It supports multiple pluggable channels (Email, SMS, Ntfy/web, **Slack**), robust deduplication, and a scheduler for reminders and close position alerts. All logic is driven by a hierarchical configuration, with type-based filtering (`announce` vs `trade`) and error handling built in. The orchestrator uses the `ApproachType` enum to route each alert to the correct delivery flow.
+
+- **Slack channel** (`SlackNotificationChannel`): Delivers alerts via Incoming Webhook using Slack Block Kit attachments with colour-coded signal sidebar (green = BUY/REMINDER, red = SELL/CLOSE, blue = other). Supports multiple webhook URLs (comma-separated `SLACK_WEBHOOK_URLS`), exponential-backoff retry (3 retries), and multi-URL fan-out. Credentials loaded via `SecretsLoader` — no separate `SLACK_ENABLED` env flag; enablement is entirely controlled by `notification_service_config.json` per symbol/approach/signal.
 
 **For implementation details, code locations, and how-to guides, see the [Layer 7 Implementation Guide](../../../IMPLEMENTATION_GUIDES/LAYER_7_NOTIFICATION_DELIVERY/README.md).**
 
@@ -99,6 +101,17 @@ User Device
 - Web dashboard updates
 - In-app messaging
 - Rich media support
+
+**Slack**:
+- Incoming Webhook delivery (no bot token required)
+- Block Kit attachment format with colour-coded signal bar
+  - 🟢 Green (`#00B050`) — BUY / ORDER_REMINDER
+  - 🔴 Red (`#FF0000`) — SELL / CLOSE_POSITION
+  - 🔵 Blue (`#0078D4`) — Other signals
+- Fields: symbol, approach, signal price, suggested entry, profit threshold, time
+- Multi-URL fan-out: multiple webhooks supported (comma-separated `SLACK_WEBHOOK_URLS`)
+- Exponential-backoff retry: 3 retries, doubling delay starting at 1 s
+- Success detection: HTTP 200 + body text `"ok"`
 
 ### Notification Filtering
 
@@ -174,7 +187,7 @@ Features:
 
 ## 🔍 Key Concepts
 
-**Multi-Channel Delivery**: Email, SMS, Web notifications  
+**Multi-Channel Delivery**: Email, SMS, Web push (Ntfy), Slack Incoming Webhook  
 **User Preferences**: Customizable filtering and channel selection  
 **Message Formatting**: Channel-specific alert formatting  
 **Delivery Reliability**: Retry mechanisms and fallback channels  
@@ -191,5 +204,5 @@ Features:
 
 ---
 
-*Last Updated: April 10, 2026*  
+*Last Updated: May 20, 2026*  
 *Part of Tier 2 Documentation - Reference & Theory*

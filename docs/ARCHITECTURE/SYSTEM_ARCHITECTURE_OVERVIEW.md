@@ -4,7 +4,7 @@
 **Purpose**: Understand the entire trading alert system architecture, from entry point to delivery  
 **Scope**: **Complete system-wide architecture** (from SymbolAlertManager through all components to report generation and live trade execution)  
 **Audience**: All developers, architects, operations, stakeholders  
-**Last Updated**: May 18, 2026
+**Last Updated**: May 20, 2026
 
 ---
 
@@ -16,7 +16,7 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 2. **Analyzes** price action using 18+ configurable trading approaches
 3. **Detects** trading opportunities via multi-resolution analysis (1m, 5m, 15m, 1h candles)
 4. **Validates** signals using threshold-based rules
-5. **Notifies** users via email, SMS, and web notifications
+5. **Notifies** users via email, SMS, web push, and Slack notifications
 6. **Executes** live DCA bracket trades on Binance perpetual futures (DEPLOYMENT mode only)
 7. **Records** alerts and generates performance reports
 
@@ -242,7 +242,7 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  │                                                                     │  │
 │  │ Channel System:                                                     │  │
 │  │ ├─ Modular channel factory creates/manages notification channels    │  │
-│  │ ├─ Supported channels: Email (SMTP), SMS, Ntfy (web push)           │  │
+│  │ ├─ Supported channels: Email (SMTP), SMS, Ntfy (web push), Slack (Incoming Webhook) │  │
 │  │ ├─ Each channel: config-driven, pluggable, and validated            │  │
 │  │                                                                     │  │
 │  │ Scheduler Integration:                                              │  │
@@ -338,7 +338,7 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  │    • Kubernetes manifests for orchestration                         │  │
 │  │    • Resource limits & guarantees (CPU, memory)                     │  │
 │  │    • Credential injection via environment variables                 │  │
-│  │    • Multi-channel notification support (Email, SMS, Ntfy)          │  │
+│  │    • Multi-channel notification support (Email, SMS, Ntfy, Slack)   │  │
 │  │                                                                     │  │
 │  │ 6. MODE SWITCHING                                                   │  │
 │  │    • DEPLOYMENT: Concurrent monitoring (indefinite, auto-recover)  │  │
@@ -479,7 +479,8 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
    └─ Send alerts to users (NotificationManager)
       ├─ Email channel (SMTP)
       ├─ SMS channel (Twilio or similar)
-      └─ Web notification channel (ntfy.sh or similar)
+      ├─ Web notification channel (ntfy.sh or similar)
+      └─ Slack channel (Incoming Webhook)
          └─ All channels send independently
             └─ One channel failure doesn't block others
 
@@ -536,7 +537,8 @@ SymbolAlertManager
 ├─ NotificationManager
 │  ├─ EmailChannel
 │  ├─ SMSChannel
-│  └─ WebNotificationChannel
+│  ├─ WebNotificationChannel (Ntfy)
+│  └─ SlackChannel (Incoming Webhook)
 │
 ├─ TradingServiceOrchestrator  ⚡ NEW (DEPLOYMENT mode only)
 │  └─ TradingCoordinator
@@ -670,6 +672,7 @@ FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pai
 | Email notifications | ✅ | ✅ | Via SMTP |
 | SMS notifications | ✅ | ✅ | Via Twilio/similar |
 | Web notifications | ✅ | ✅ | Via ntfy.sh |
+| Slack notifications | ✅ | ✅ | Via Incoming Webhook (Block Kit) |
 | **Live trade execution** | ✅ | ❌ | DEPLOYMENT mode only; daemon thread |
 | **DCA ladder orders** | ✅ | ❌ | 7 LIMIT orders, USDT-sized |
 | **Dynamic TP/SL bracket** | ✅ | ❌ | Recalculated from avg fill price |
@@ -748,4 +751,4 @@ FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pai
 **Status**: Tier 1 - System Orchestration ✅  
 **Focus**: Complete end-to-end system architecture  
 **Scope**: From SymbolAlertManager through all layers to report generation and live trade execution  
-**Last Updated**: May 18, 2026
+**Last Updated**: May 20, 2026

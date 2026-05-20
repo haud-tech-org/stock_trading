@@ -7,15 +7,34 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": false,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -25,15 +44,34 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": false,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -43,15 +81,34 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": false,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -65,19 +122,52 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": false,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -91,15 +181,34 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -109,15 +218,34 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -127,15 +255,34 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -149,19 +296,52 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -175,15 +355,34 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -193,15 +392,34 @@
             "EMAIL": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -211,15 +429,34 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "PRICE_UP": {"enabled": true},
-                "PRICE_DOWN": {"enabled": true}
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "PRICE_UP": {
+                  "enabled": true
+                },
+                "PRICE_DOWN": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -233,19 +470,52 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -259,19 +529,52 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -285,19 +588,52 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -311,19 +647,52 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             },
             "NTFY": {
               "enabled": false,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             }
           }
@@ -337,10 +706,18 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             },
             "SMS": {
@@ -358,6 +735,23 @@
                   "enabled": true
                 }
               }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
+              }
             }
           }
         },
@@ -370,23 +764,59 @@
             "EMAIL": {
               "enabled": true,
               "signals": {
-                "BUY": {"enabled": true},
-                "SELL": {"enabled": true},
-                "CLOSE_POSITION": {"enabled": true},
-                "ORDER_REMINDER": {"enabled": true}
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
               }
             },
-            "SMS": {"enabled": false, "signals": {}},
-            "NTFY": {"enabled": false, "signals": {}},
-            "CONSOLE": {"enabled": true, "signals": {"BUY": {"enabled": true}}}
+            "SMS": {
+              "enabled": false,
+              "signals": {}
+            },
+            "NTFY": {
+              "enabled": false,
+              "signals": {}
+            },
+            "CONSOLE": {
+              "enabled": true,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                }
+              }
+            },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": {
+                  "enabled": true
+                },
+                "SELL": {
+                  "enabled": true
+                },
+                "CLOSE_POSITION": {
+                  "enabled": true
+                },
+                "ORDER_REMINDER": {
+                  "enabled": true
+                }
+              }
+            }
           }
         }
       }
     },
     "VN30": {
-      "approaches": {
-        
-      }
+      "approaches": {}
     }
   }
 }

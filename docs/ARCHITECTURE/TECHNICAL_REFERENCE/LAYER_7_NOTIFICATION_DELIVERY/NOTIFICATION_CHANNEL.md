@@ -29,11 +29,12 @@ This document provides a conceptual overview of Notification Channels in Layer 7
 
 ## 🧩 Concepts
 
-- Notification Channels are responsible for formatting and delivering alerts to users via different mediums (Email, SMS, Web Push).
+- Notification Channels are responsible for formatting and delivering alerts to users via different mediums (Email, SMS, Web Push, Slack).
 - Each channel implements a common interface for sending notifications, allowing for pluggable and extensible delivery mechanisms.
 - The ChannelFactory instantiates and manages all enabled channels per approach, as defined in config.
 - The orchestrator delegates delivery to enabled channels based on approach type and config.
 - Channel enablement is type-aware and config-driven.
+- **Slack channel** delivers via Incoming Webhook using Block Kit attachment format. Credentials (`SLACK_WEBHOOK_URLS`) are loaded via `SecretsLoader`. No global enable flag — controlled entirely by `notification_service_config.json` per symbol/approach/signal.
 
 ---
 
@@ -43,4 +44,4 @@ For implementation details, see the Implementation Guide.
 
 ---
 
-*Last updated: April 24, 2026*
+*Last updated: May 20, 2026*
