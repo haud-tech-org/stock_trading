@@ -33,7 +33,9 @@ class EmailNotificationChannel(BaseNotificationChannel):
         """
         notification_settings = config_loader.get_notification_settings()
         subject = self.format_email_subject(notification)
+        ctx = self._get_run_context_footer()
         body = self.format_email_body(notification)
+        body += f"\n---\nEnv: {ctx.environment}   Run: {ctx.run_mode}\n"
         sender_email: Optional[str] = notification_settings.EMAIL_SENDER
         sender_display_name: Optional[str] = notification_settings.EMAIL_SENDER_DISPLAY_NAME
         receiver_emails: List[str] = notification_settings.EMAIL_RECEIVERS or []

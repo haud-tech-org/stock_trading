@@ -4,6 +4,22 @@ import pandas as pd
 import logging
 from datetime import datetime
 from src.stockreports.alert.common.constants import ValidationStatus, Approach, Signal, Status, Trend, TREND_MAPPING, STATUS_MAPPING
+from src.stockreports.alert.common.constants import RunMode
+from src.stockreports.alert.common.environment import EnvironmentType
+
+
+@dataclass
+class NotificationContext:
+    """
+    Deployment and run-mode context appended at the bottom of every notification payload.
+
+    Attributes:
+        environment: Deployment environment from EnvironmentType
+                     (e.g. EnvironmentType.LOCAL, EnvironmentType.GCP)
+        run_mode:    RunMode.LIVE or "REPLAY (<timestamp>)"
+    """
+    environment: str = EnvironmentType.LOCAL
+    run_mode: str = RunMode.LIVE
 
 @dataclass
 class AlertData:
