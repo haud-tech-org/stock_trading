@@ -116,6 +116,13 @@ echo -n "your_demo_api_key_here" | gcloud secrets create binance-demo-api-key \
 
 echo -n "your_demo_api_secret_here" | gcloud secrets create binance-demo-api-secret \
   --data-file=-
+
+# Store Slack Incoming Webhook URL(s)
+# Treat the webhook URL as a secret — anyone with it can post to your Slack channel
+# Comma-separate multiple URLs if posting to more than one channel
+echo -n "https://your-org.webhook.office.com/webhookb2/xxx/IncomingWebhook/yyy/zzz" | \
+  gcloud secrets create slack-webhook-urls \
+  --data-file=-
 ```
 
 **Argument Explanations**:
@@ -139,7 +146,8 @@ gcloud secrets list
 for secret in email-sender email-app-password email-sender-display-name \
               twilio-account-sid twilio-auth-token \
               binance-api-key binance-api-secret \
-              binance-demo-api-key binance-demo-api-secret; do
+              binance-demo-api-key binance-demo-api-secret \
+              slack-webhook-urls; do
   echo "Checking $secret..."
   gcloud secrets describe $secret
 done
@@ -202,7 +210,8 @@ Grant the service account permission to access the secrets created in Step 3.
 for secret in email-sender email-app-password email-sender-display-name \
               twilio-account-sid twilio-auth-token \
               binance-api-key binance-api-secret \
-              binance-demo-api-key binance-demo-api-secret; do
+              binance-demo-api-key binance-demo-api-secret \
+              slack-webhook-urls; do
   gcloud secrets add-iam-policy-binding $secret \
     --member=serviceAccount:$SERVICE_ACCOUNT_EMAIL \
     --role=roles/secretmanager.secretAccessor
@@ -226,7 +235,8 @@ done
 for secret in email-sender email-app-password email-sender-display-name \
               twilio-account-sid twilio-auth-token \
               binance-api-key binance-api-secret \
-              binance-demo-api-key binance-demo-api-secret; do
+              binance-demo-api-key binance-demo-api-secret \
+              slack-webhook-urls; do
   echo "Permissions for $secret:"
   gcloud secrets get-iam-policy $secret
 done
@@ -337,7 +347,7 @@ gcloud projects get-iam-policy $PROJECT_ID --format=json | \
 
 - [ ] Project variables set (`PROJECT_ID`, `REGION`, `SERVICE_NAME`)
 - [ ] APIs enabled (Cloud Run, Secret Manager, Artifact Registry, Compute)
-- [ ] All 9 secrets created in Secret Manager
+- [ ] All 10 secrets created in Secret Manager
   - [ ] email-sender
   - [ ] email-app-password
   - [ ] email-sender-display-name
@@ -347,9 +357,10 @@ gcloud projects get-iam-policy $PROJECT_ID --format=json | \
   - [ ] binance-api-secret
   - [ ] binance-demo-api-key
   - [ ] binance-demo-api-secret
+  - [ ] slack-webhook-urls
 - [ ] Service account created (stock-alerter-sa)
 - [ ] Service account email captured and exported
-- [ ] Service account has `secretmanager.secretAccessor` role for all 9 secrets
+- [ ] Service account has `secretmanager.secretAccessor` role for all 10 secrets
 - [ ] Service account has 8 additional roles assigned
 - [ ] All roles verified with `gcloud projects get-iam-policy`
 

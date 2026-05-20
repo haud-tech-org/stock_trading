@@ -41,12 +41,13 @@ This document provides a detailed data flow diagram for the Notification Service
 │  - EmailNotificationChannel                                                  │
 │  - SMSNotificationChannel                                                    │
 │  - NtfyNotificationChannel                                                   │
+│  - SlackNotificationChannel                                                  │
 └──────────────────────────────────────────────────────────────────────────────┘
                                 │
                     [3] CHANNEL SEND
                                 │
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                Channel (Email/SMS/Ntfy)                                     │
+│                Channel (Email/SMS/Ntfy/Slack)                               │
 │  - Format and send notification                                             │
 └──────────────────────────────────────────────────────────────────────────────┘
                                 │
@@ -84,12 +85,13 @@ This document provides a detailed data flow diagram for the Notification Service
 │  - EmailNotificationChannel                                                  │
 │  - SMSNotificationChannel                                                    │
 │  - NtfyNotificationChannel                                                   │
+│  - SlackNotificationChannel                                                  │
 └───────────────────────────────┬───────────────────────────────────────────────┘
                                 │
                     [C] CHANNEL SEND
                                 │
 ┌───────────────────────────────▼───────────────────────────────────────────────┐
-│                Channel (Email/SMS/Ntfy)                                     │
+│                Channel (Email/SMS/Ntfy/Slack)                               │
 │  - Format and send announcement                                             │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```

@@ -142,6 +142,28 @@ TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")
 # Example: SMS_RECEIVER_PHONE_NUMBER = "+84983794189"
 SMS_RECEIVER_PHONE_NUMBER = os.getenv("SMS_RECEIVER_PHONE_NUMBER", "")
 
+# --- Slack Configuration ---
+
+# Slack Incoming Webhook URLs (SECURED - treat webhook URLs as secrets)
+# Meaning: One or more Slack channel webhook URLs (comma-separated).
+# How to obtain:
+#   1. Go to https://api.slack.com/apps → Your App → Incoming Webhooks
+#   2. Toggle "Activate Incoming Webhooks" ON
+#   3. Click "Add New Webhook to Workspace" → select channel → Allow
+#   4. Copy the generated webhook URL
+# Load from: SLACK_WEBHOOK_URLS environment variable
+# Example: SLACK_WEBHOOK_URLS = "https://hooks.slack.com/services/T.../B.../..."
+SLACK_WEBHOOK_URLS_STR = _secrets_loader.get_secret(
+    "SLACK_WEBHOOK_URLS",
+    default="",
+    required=False,
+    is_sensitive=True
+) or ""
+SLACK_WEBHOOK_URLS = (
+    [u.strip() for u in SLACK_WEBHOOK_URLS_STR.split(",") if u.strip()]
+    if SLACK_WEBHOOK_URLS_STR else []
+)
+
 # --- Configuration Validation ---
 
 def validate_configuration() -> None:
@@ -170,6 +192,10 @@ def validate_configuration() -> None:
             errors.append("TWILIO_ENABLED=True but TWILIO_PHONE_NUMBER not configured")
         if not SMS_RECEIVER_PHONE_NUMBER:
             errors.append("TWILIO_ENABLED=True but SMS_RECEIVER_PHONE_NUMBER not configured")
+
+    # Validate Slack Configuration
+    if not SLACK_WEBHOOK_URLS:
+        pass  # Slack is optional; enablement controlled via notification_service_config.json
     
     # Log warnings or raise errors
     if errors:
@@ -182,4 +208,4 @@ def validate_configuration() -> None:
 validate_configuration()
 
 # Log loaded configuration (non-sensitive only)
-logger.info(f"Notification settings loaded - Email: {EMAIL_ENABLED}, Twilio: {TWILIO_ENABLED}, ntfy: {NTFY_ENABLED}")
+logger.info(f"Notification settings loaded - Email: {EMAIL_ENABLED}, Twilio: {TWILIO_ENABLED}, ntfy: {NTFY_ENABLED}, Slack webhook configured: {bool(SLACK_WEBHOOK_URLS)}")
