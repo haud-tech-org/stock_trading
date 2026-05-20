@@ -58,6 +58,10 @@ class Mode:
     DEVELOPMENT = "DEVELOPMENT"
     DEPLOYMENT = "DEPLOYMENT"
 
+class RunMode:
+    LIVE = "LIVE"
+    REPLAY = "REPLAY"
+
 class Signal:
     BUY = "BUY"
     SELL = "SELL"

@@ -73,6 +73,10 @@ class SlackNotificationChannel(BaseNotificationChannel):
           - SELL / CLOSE   → #FF0000  (red)
           - Other          → #0078D4  (blue)
 
+        Footer context block (appended via BaseNotificationChannel._get_run_context_footer()):
+          - Environment  ← _secrets_loader.environment_type  (LOCAL / GCP / DOCKER …)
+          - Run Mode     ← settings.DEBUG_REPLAY_START_TIME  (LIVE / REPLAY <timestamp>)
+
         Slack expects POST body: {"attachments": [...]}
         Success response: HTTP 200, body text "ok"
         """
@@ -101,6 +105,13 @@ class SlackNotificationChannel(BaseNotificationChannel):
         else:
             color = "#0078D4"   # blue
 
+        # --- run-context footer (common method from BaseNotificationChannel) ---
+        ctx = SlackNotificationChannel._get_run_context_footer()
+        footer_text = (
+            f"*Env:* `{ctx.environment}`\u2003"
+            f"*Run:* `{ctx.run_mode}`"
+        )
+
         return {
             "attachments": [
                 {
@@ -123,6 +134,16 @@ class SlackNotificationChannel(BaseNotificationChannel):
                                 {"type": "mrkdwn", "text": f"*Suggested Entry*\n{suggested_price}"},
                                 {"type": "mrkdwn", "text": f"*Profit Threshold*\n{profit_thresh}"},
                                 {"type": "mrkdwn", "text": f"*Time*\n{alert_time_str}"},
+                            ],
+                        },
+                        {"type": "divider"},
+                        {
+                            "type": "context",
+                            "elements": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": footer_text,
+                                }
                             ],
                         },
                     ],
