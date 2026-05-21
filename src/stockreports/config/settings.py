@@ -195,7 +195,7 @@ CONSOLIDATED_PROFITABILITY = {
 # Guidance: Set lower (e.g. 2) for fast markets, higher (e.g. 10) if execution lag is expected.
 # Range: Integer > 0.
 # Example: `TRADING_EXECUTION_EXPIRED_MINUTES = 5`
-TRADING_EXECUTION_EXPIRED_MINUTES = 5
+TRADING_EXECUTION_EXPIRED_MINUTES = 10
 
 # --- Debug Replay Configuration ---
 

@@ -465,7 +465,7 @@ logger.info(f"Email app password: {password[:5]}****")
 - **DESIGN_OVERVIEW.md** - High-level architecture
 - **ENVIRONMENT_DETECTION.md** - Environment detection logic
 - **CLOUD_PLATFORM_INTEGRATION.md** - Cloud-specific setup
-- **Implementation Guides** - See `docs/IMPLEMENTATION/` for setup instructions
+- **Implementation Guides** - See `docs/REFERENCES/IMPLEMENTATION/` for setup instructions
 
 ---
 

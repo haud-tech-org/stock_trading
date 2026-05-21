@@ -88,7 +88,7 @@ docs/ARCHITECTURE/SECURE_CREDENTIALS_MANAGEMENT/
 ## 🔗 Related Documentation
 
 For **implementation details**, configuration, and operational procedures, see:
-- 📖 `docs/IMPLEMENTATION/SECURE_CREDENTIALS_MANAGEMENT/`
+- 📖 `docs/REFERENCES/IMPLEMENTATION/SECURE_CREDENTIALS_MANAGEMENT/`
 
 ## ✅ Architecture Highlights
 
