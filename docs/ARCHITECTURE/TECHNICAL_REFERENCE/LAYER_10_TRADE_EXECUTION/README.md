@@ -47,7 +47,6 @@ src/stockreports/trade_service/
     │   └── enums.py             ← OrderType, OrderStatus, OcoOutcome, TimeInForce
     └── platforms/
         ├── binance_perpetual_trading.py  ← Live Binance implementation
-        ├── mock_trading.py
         └── demo_trading.py
 ```
 

@@ -1,9 +1,16 @@
-# Architecture Guide for Operations & Cross-Functional Teams
+# Operations & Deployment Guide
 
-**Date:** April 8, 2026  
-**Target Audience:** QA, BSA, Product, Operations, DevOps  
-**Purpose:** Understand system capabilities, deployment, monitoring, and troubleshooting  
-**Reading Time:** 20-25 minutes
+**For:** QA · BSA · Product · Operations · DevOps
+**Date:** May 29, 2026
+**Read Time:** 20-25 minutes
+
+> **TL;DR**
+> - Single health endpoint: `GET /health` → `{"status": "ok"}` at port **8080**
+> - Deploy with: `gunicorn --bind 0.0.0.0:$PORT stockreports.web:app`
+> - Config lives in: `src/stockreports/config/`
+> - Output: `reports/` (LIVE mode) · `reports_replay/` (REPLAY mode)
+> - Channels validated: Email ✅ · Slack ✅ · Ntfy ✅ · SMS ⚠️ not yet validated
+> - **Trade execution:** BTCUSDT-PERP only (Binance Futures API) · VN30F1M is notification-only (Vietstock is data-only)
 
 ---
 
@@ -35,7 +42,7 @@ Both modes run on the same codebase with different configurations.
 ### ✅ Core Alert Generation
 - [ ] Multi-symbol monitoring (unlimited symbols)
 - [ ] Real-time price data fetching
-- [ ] 7 different alert detection approaches
+- [ ] 8 alert detection approaches: **TRADE (5 active)** + **ANNOUNCE (3)**
 - [ ] Customizable alert thresholds
 - [ ] Time-based scheduled operations
 - [ ] Multi-threaded concurrent processing
@@ -48,9 +55,10 @@ Both modes run on the same codebase with different configurations.
 - [ ] Automatic data refresh intervals
 
 ### ✅ Notification Delivery
-- [ ] Email notifications
-- [ ] SMS notifications
-- [ ] Ntfy web notifications
+- [ ] Email notifications ✅ (validated)
+- [ ] Slack notifications ✅ (validated)
+- [ ] Ntfy web notifications ✅ (validated)
+- [ ] SMS notifications ⚠️ (not yet validated)
 - [ ] Error isolation (one channel failure doesn't affect others)
 - [ ] Retry logic for failed deliveries
 
@@ -61,6 +69,17 @@ Both modes run on the same codebase with different configurations.
 - [ ] Performance metrics generation
 - [ ] Optional S/R level detection
 - [ ] Optional parameter optimization
+
+### ✅ Trade Execution (BTCUSDT-PERP only)
+- [ ] Automated DCA bracket order placement via Binance Futures API
+- [ ] 7-rung LIMIT entry ladder per confirmed TRADE alert
+- [ ] Dynamic take-profit + stop-loss (Binance algo conditional orders)
+- [ ] Bracket auto-recalculates on each additional ladder fill
+- [ ] Alert expiry guard (`TRADING_EXECUTION_EXPIRED_MINUTES`) skips stale alerts
+- [ ] Daemon thread execution — monitoring loop never blocked
+- [ ] Demo mode available (`use_demo: True` in config) for testing without real orders
+> **Note:** Trade execution is only implemented for **BTCUSDT-PERP** (via Binance Futures API).
+> **VN30F1M** alerts are notification-only — Vietstock is a data provider and does not support order placement via API.
 
 ### ✅ Operational Features
 - [ ] Health check endpoints
@@ -93,15 +112,21 @@ Both modes run on the same codebase with different configurations.
    │ Service │        │ Executors│      │ Manager    │
    └─────────┘        └──────────┘      └────────────┘
         ↓                   ↓                   ↓
-   [3 Sources]    [7 Approaches]    [3 Channels]
+   [3 Sources]    [8 Approaches]    [4 Channels]
    ↓              ↓                  ↓
-   Vietstock      Strong Candle      Email
-   Binance API    Momentum            SMS
-   Binance CCXT   Volume Spike        Ntfy
-                  VRA
-                  Ichimoku
-                  Vol Anchor
+   Vietstock      TRADE (5 active):  Email ✅ validated
+   Binance API    Strong Candle      Slack ✅ validated
+   Binance CCXT   VRA                Ntfy  ✅ validated
+                  Ichimoku           SMS   ⚠️ not yet validated
+                  Consistent Momentum
                   Reversal Anchor Signal Candle
+                  ANNOUNCE (3):
+                  Large Candle
+                  Large Volume Candle
+                  Price Movement
+                  ── Archived (not wired) ──
+                  Volume Spike Confirmation
+                  Consistent Volume Anchor
         ↓
     ┌─────────────┐
     │ Reports out │
@@ -141,13 +166,23 @@ Input: Symbol list + Configuration
    ↓
 Fetch OHLCV Data (1-min, 5-min, etc.)
    ↓
-Analyze via 7+ Executors
+TASK-2: ANNOUNCE path → AnnouncementAlerterBase
+   ↓ LARGE_CANDLE / LARGE_VOLUME_CANDLE / PRICE_MOVEMENT
+   ↓
+TASK-3: TRADE path → ConfigurationOrchestrator → Executors
+   ↓ STRONG_CANDLE / VRA / ICHIMOKU / CONSISTENT_MOMENTUM
+   ↓ REVERSAL_ANCHOR_SIGNAL_CANDLE
    ↓
 Generate Alerts (when conditions match)
    ↓
-Send via Notification Channels
+Send via Notification Channels (Email ✅ / Slack ✅ / Ntfy ✅ / SMS ⚠️)
    ↓
 Store in Reports Directory
+   ↓
+Trade Execution (BTCUSDT-PERP only, DEPLOYMENT mode only)
+   └─ TradingServiceOrchestrator → Binance Futures API
+      DCA ladder + TP/SL bracket placed automatically
+      ⚠️ VN30F1M: notification-only (Vietstock is data-only, no order API)
    ↓
 Optional: Backtest Analysis
 ```
@@ -216,7 +251,7 @@ Optional: Backtest Analysis
 
 #### Scenario 6: Notification Failure Isolation
 ```
-1. Start monitoring with 3 channels configured
+1. Start monitoring with validated channels configured (Email, Slack, Ntfy)
 2. Disable one notification channel
 3. Verify alerts still send via other channels
 4. Verify failure doesn't crash system
@@ -242,35 +277,10 @@ Optional: Backtest Analysis
 #### 1. System Health Check
 ```
 GET /health
-Response: {
-  "status": "healthy",
-  "timestamp": "2026-04-08T10:30:00Z",
-  "uptime_seconds": 3600,
-  "mode": "LIVE"
-}
+Response: {"status": "ok"}
 ```
 
-#### 2. Component Status
-```
-GET /health/components
-Response: {
-  "data_provider": "healthy",
-  "notifications": "healthy", 
-  "execution_engine": "healthy",
-  "storage": "healthy"
-}
-```
-
-#### 3. Alert Status
-```
-GET /alerts/status
-Response: {
-  "monitoring_symbols": ["VN30", "BTC", "ETH"],
-  "active_executors": 6,
-  "alerts_generated": 152,
-  "last_alert": "2026-04-08T10:25:15Z"
-}
-```
+> **Note:** The system exposes a single `/health` endpoint at port **8080** via the Flask web layer (`src/stockreports/web.py`). This is the only implemented endpoint — component-level and alert-status sub-endpoints do not exist. Monitoring should rely on structured logs and this `/health` response.
 
 ### Key Metrics to Monitor
 
@@ -292,10 +302,9 @@ Response: {
 - DEBUG: Detailed execution flow
 
 **Log Locations:**
-- `/var/log/trading_alert_system.log` - Main system log
-- `/var/log/alerts/` - Alert generation logs
-- `reports/` - Alert output files
-- `reports_replay/` - Backtest output files
+- Structured Python logging output (level configurable via `log_level` in `global_settings`)
+- `reports/` - Alert output files (LIVE mode)
+- `reports_replay/` - Backtest output files (REPLAY mode)
 
 ---
 
@@ -353,30 +362,26 @@ Before deployment, verify:
    pip install -r requirements.txt
    ```
 
-2. **Validate Configuration**
+2. **Review Configuration**
+   - `src/stockreports/config/executor_approach_configuration.json` — enable/disable approaches per symbol
+   - `src/stockreports/config/notification_service_config.json` — configure channels per symbol/approach
+   - `src/stockreports/config/price_alert_settings.py` — set price levels and cooldowns
+
+3. **Start System (local)**
    ```
-   python -m src.config.validator
+   python src/stockreports/web.py
    ```
 
-3. **Test Data Connections**
+4. **Start System (production via Gunicorn)**
    ```
-   python -m src.data.connection_test
-   ```
-
-4. **Test Notifications**
-   ```
-   python -m src.notification.test_channels
+   gunicorn --bind 0.0.0.0:$PORT stockreports.web:app
    ```
 
-5. **Start System**
+5. **Verify Health**
    ```
-   python -m src.stockreports.alert.symbol_alert_manager
+   curl http://localhost:8080/health
    ```
-
-6. **Verify Health**
-   ```
-   curl http://localhost:8000/health
-   ```
+   Expected response: `{"status": "ok"}`
 
 ---
 
@@ -413,14 +418,15 @@ Before deployment, verify:
 **Check 1: Channel Configuration**
 ```
 - Verify SMTP settings for email
-- Verify phone number for SMS
+- Verify Slack webhook URL
 - Verify Ntfy endpoint URL
+- (SMS: not yet validated — do not enable until implementation is validated)
 ```
 
 **Check 2: Channel Health**
 ```
 - Test email: Send test email
-- Test SMS: Send test SMS
+- Test Slack: Post to webhook
 - Test Ntfy: Curl to endpoint
 ```
 
@@ -507,7 +513,7 @@ Before deployment, verify:
    - Solutions: Algorithm optimization, parallelization
 
 3. **Notification** (20% of time)
-   - Network calls to email/SMS providers
+   - Network calls to email/Slack/Ntfy providers
    - Solutions: Batching, connection pooling, async
 
 4. **System Overhead** (10% of time)
@@ -519,10 +525,8 @@ Before deployment, verify:
 
 ### Backup Strategy
 
-- **Alert Files:** Backed up hourly
 - **Configuration:** Version controlled in Git
-- **Databases:** Daily incremental backups
-- **Logs:** Archived daily, retained 30 days
+- **Alert Reports:** Stored locally in `reports/` (LIVE) and `reports_replay/` (REPLAY) — no automated backup implemented
 
 ### Recovery Time Objectives (RTO)
 

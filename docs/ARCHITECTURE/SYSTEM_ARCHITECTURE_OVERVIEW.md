@@ -4,7 +4,7 @@
 **Purpose**: Understand the entire trading alert system architecture, from entry point to delivery  
 **Scope**: **Complete system-wide architecture** (from SymbolAlertManager through all components to report generation and live trade execution)  
 **Audience**: All developers, architects, operations, stakeholders  
-**Last Updated**: May 20, 2026
+**Last Updated**: May 29, 2026
 
 ---
 
@@ -12,11 +12,11 @@
 
 The **Stock Trading Alert System** is a real-time market analysis platform that:
 
-1. **Monitors** multiple symbols across different exchanges (Vietstock, Binance, etc.)
-2. **Analyzes** price action using 18+ configurable trading approaches
-3. **Detects** trading opportunities via multi-resolution analysis (1m, 5m, 15m, 1h candles)
+1. **Monitors** multiple symbols across different exchanges (Vietstock, Binance)
+2. **Analyzes** price action using 8 trading approaches: TRADE (5 active) and ANNOUNCE (3) — plus 2 archived TRADE approaches not currently wired
+3. **Detects** trading opportunities via per-approach resolution analysis (configurable: 1m, 5m, 15m, 1h, etc.)
 4. **Validates** signals using threshold-based rules
-5. **Notifies** users via email, SMS, web push, and Slack notifications
+5. **Notifies** users via 4 registered channels: Email ✅, Slack ✅, Ntfy ✅ (validated); SMS ⚠️ (not yet validated)
 6. **Executes** live DCA bracket trades on Binance perpetual futures (DEPLOYMENT mode only)
 7. **Records** alerts and generates performance reports
 
@@ -79,36 +79,44 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 └────────────────────────────────────────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ LAYER 3: RESOLUTION COORDINATION                                           │
+│ LAYER 3: RESOLUTION & APPROACH COORDINATION                                │
 ├────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
-│  │ ResolutionCoordinator (Multi-Resolution Approach Mapper)            │  │
-│  │ Location: src/stockreports/coordination/resolution_coordinator.py   │  │
-│  │ Responsibility: Map trading approaches to specific resolutions      │  │
+│  │ ConfigurationOrchestrator (Approach & Resolution Mapper)            │  │
+│  │ Location: src/stockreports/services/executor_configuration_service/ │  │
+│  │           orchestrator.py                                           │  │
+│  │ Responsibility: Resolve which approaches to run and at what         │  │
+│  │                 resolution for a given symbol                       │  │
 │  │                                                                     │  │
-│  │ Input: Symbol, current candle data                                 │  │
-│  │ Process:                                                            │  │
-│  │ ├─ Read APPROACH_RESOLUTION_MAPPING configuration                 │  │
-│  │ ├─ For each configured resolution (1m, 5m, 15m, 1h):              │  │
-│  │ │  ├─ Fetch candle data at that resolution                        │  │
-│  │ │  ├─ Get list of approaches for this resolution                  │  │
-│  │ │  └─ Yield (resolution, approach_list) tuple                     │  │
-│  │ └─ Handle multi-resolution conflicts                               │  │
+│  │ Called by SymbolAlerter._perform_monitoring_session():              │  │
+│  │ ├─ get_supported_approaches(symbol)        → all approach names     │  │
+│  │ ├─ get_supported_approaches(symbol,        → TRADE approach names   │  │
+│  │ │     ApproachType.TRADE)                                          │  │
+│  │ ├─ get_supported_approaches(symbol,        → ANNOUNCE approach names│  │
+│  │ │     ApproachType.ANNOUNCE)                                       │  │
+│  │ ├─ get(symbol, approach_name)              → approach config        │  │
+│  │ │    └─ config.resolution  (e.g. 1, 5, 15, 60)                    │  │
+│  │ └─ get_symbol_trading_hours(symbol)        → trading session config │  │
 │  │                                                                     │  │
-│  │ Output: Iterator of (resolution, approaches) tuples                │  │
+│  │ ApproachType (src/stockreports/model/approach_type.py):             │  │
+│  │ • TRADE   — signal-based strategies → full Executor pipeline        │  │
+│  │ • ANNOUNCE — real-time event alerts → AnnouncementAlerterBase       │  │
+│  │                                                                     │  │
+│  │ Source config: executor_approach_configuration.json                 │  │
 │  └──────────────────────────────┬──────────────────────────────────────┘  │
 │                                 │                                          │
-│                    ┌────────────┴────────────┐                            │
-│                    │ (For each resolution)   │                            │
-│                    ▼                         ▼                            │
+│              ┌──────────────────┴──────────────────┐                      │
+│              │ TRADE approaches                    │ ANNOUNCE approaches   │
+│              ▼                                     ▼                      │
 └────────────────────────────────────────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ LAYER 4: APPROACH EXECUTION (18+ Trading Strategies)                       │
+│ LAYER 4a: TRADE APPROACH EXECUTION (7 Signal-Based Strategies)             │
 ├────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  For each APPROACH at current RESOLUTION:                                  │
+│  TASK-3 in SymbolAlerter._perform_monitoring_session()                     │
+│  For each TRADE approach at its configured resolution:                     │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
 │  │ Executor (Trading Strategy Implementation)                         │  │
@@ -117,7 +125,7 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  │ Responsibility: Detect trading signals for this strategy           │  │
 │  │                                                                     │  │
 │  │ Common Executor Actions (ALL approaches follow this pattern):       │  │
-│  │ ├─ Load approach-specific configuration via ExecutorConfigurationOrchestrator │  │
+│  │ ├─ Load approach-specific configuration via ConfigurationOrchestrator│  │
 │  │ │  ├─ Thresholds (price, volume, ratio limits)                    │  │
 │  │ │  └─ Window sizes (lookback periods)                             │  │
 │  │ │  └─ Source: executor_approach_configuration.json                │  │
@@ -134,28 +142,58 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  │ ├─ Handle exceptions gracefully                                   │  │
 │  │ │  └─ Missing data, invalid inputs, errors                       │  │
 │  │ │                                                                  │  │
-│  │ └─ Return AlertResult (alerts or error info)                      │  │
+│  │ └─ Return AlertResult (confirmed_alerts: List[AlertData])         │  │
 │  │                                                                     │  │
-│  │ AVAILABLE APPROACHES (18+):                                        │  │
-│  │ • STRONG_CANDLE - Strong candle detection                         │  │
-│  │ • VRA - Volume Rate of Change analysis                            │  │
-│  │ • ICHIMOKU - Ichimoku cloud analysis                              │  │
-│  │ • CONSISTENT_MOMENTUM - Consistent color patterns                 │  │
-│  │ • BREAKOUT - Breakout detection                                   │  │
-│  │ • REVERSAL - Reversal pattern detection                           │  │
-│  │ • VOLATILITY - Volatility-based analysis                          │  │
-│  │ • And 11+ more custom strategies                                  │  │
+│  │ TRADE APPROACHES (5 active):                                      │  │
+│  │ • STRONG_CANDLE             - Strong candle body detection         │  │
+│  │ • VRA                       - Volume Rate of Change analysis       │  │
+│  │ • ICHIMOKU                  - Ichimoku cloud analysis              │  │
+│  │ • CONSISTENT_MOMENTUM       - Consistent candle color patterns     │  │
+│  │ • REVERSAL_ANCHOR_SIGNAL_CANDLE - Reversal with anchor candle      │  │
+│  │                                                                     │  │
+│  │ ARCHIVED (not wired into orchestrator):                            │  │
+│  │ • VOLUME_SPIKE_CONFIRMATION - Volume spike with price confirmation │  │
+│  │ • CONSISTENT_VOLUME_ANCHOR  - Volume-anchored consistency pattern  │  │
 │  │                                                                     │  │
 │  │ Key Characteristic: Each approach is INDEPENDENT                  │  │
 │  │ ├─ Can use different analyzers and validators                     │  │
 │  │ ├─ Can have different thresholds and rules                        │  │
-│  │ ├─ Runs in parallel (no blocking between approaches)              │  │
+│  │ ├─ Each approach runs at its own configured resolution            │  │
 │  │ └─ One failure doesn't affect others                              │  │
 │  └──────────────────────────────┬──────────────────────────────────────┘  │
 │                                 │                                          │
-│                    ┌────────────┴────────────┐                            │
-│                    │ (For each approach)     │                            │
-│                    ▼                         ▼                            │
+│                                 ▼                                          │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 4b: ANNOUNCE APPROACH EXECUTION (3 Real-Time Event Alerts)           │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  TASK-2 in SymbolAlerter._perform_monitoring_session()                     │
+│  For each ANNOUNCE approach at its configured resolution:                  │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │ AnnouncementAlertOrchestrator                                       │  │
+│  │ Location: src/stockreports/alert/announce/orchestrator.py          │  │
+│  │ Responsibility: Run announcement-type alerters (price/volume events)│  │
+│  │                                                                     │  │
+│  │ Pattern: AnnouncementAlerterBase (ABC) — no Analyzer/Validator     │  │
+│  │ Factory: _AnnouncementAlertFactory                                  │  │
+│  │          (src/stockreports/alert/announce/factory.py)               │  │
+│  │                                                                     │  │
+│  │ ANNOUNCE APPROACHES (3):                                           │  │
+│  │ • LARGE_CANDLE        - Large candle body detection                │  │
+│  │   Location: src/stockreports/alert/announce/approach/LARGE_CANDLE/ │  │
+│  │ • LARGE_VOLUME_CANDLE - Large candle with volume confirmation       │  │
+│  │   Location: …/announce/approach/LARGE_VOLUME_CANDLE/               │  │
+│  │ • PRICE_MOVEMENT      - Price level crossing alerts                 │  │
+│  │   Location: …/announce/approach/PRICE_MOVEMENT/                    │  │
+│  │                                                                     │  │
+│  │ Returns: AlertResult (confirmed_alerts: List[AlertData])           │  │
+│  │ On alert → immediately dispatched to NotificationServiceOrchestrator│  │
+│  └──────────────────────────────┬──────────────────────────────────────┘  │
+│                                 │                                          │
+│                                 ▼                                          │
 └────────────────────────────────────────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────────────────┐
@@ -169,27 +207,29 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  │                                                                     │  │
 │  │ Features:                                                            │  │
 │  │ ├─ Smart caching (avoid redundant API calls)                       │  │
-│  │ ├─ Multi-source support (Vietstock, Binance, CCXT)                │  │
-│  │ ├─ Resolution aggregation (convert 1m → 5m, 15m, 1h)              │  │
+│  │ ├─ Multi-source support (Vietstock, Binance API, Binance CCXT)     │  │
+│  │ ├─ Resolution aggregation (convert 1m → 5m, 15m, 1h, etc.)        │  │
 │  │ ├─ Error handling with fallbacks                                   │  │
 │  │ ├─ Data validation                                                 │  │
 │  │ └─ Automatic refresh intervals                                     │  │
 │  │                                                                     │  │
-│  │ Supported Data Providers:                                           │  │
-│  │ • Vietstock (Vietnamese stocks/indices)                             │  │
-│  │ • Binance API (Cryptocurrencies)                                    │  │
-│  │ • Binance CCXT (Alternative integration)                            │  │
-│  │ • Custom providers (extensible)                                     │  │
+│  │ Supported Data Providers (Provider enum):                           │  │
+│  │ • Provider.VIETSTOCK    → VietstockProvider                         │  │
+│  │   Location: …/providing/vietstock/provider.py                      │  │
+│  │ • Provider.BINANCE      → BinanceAPIProvider                        │  │
+│  │   Location: …/providing/binance/api_provider.py                    │  │
+│  │ • Provider.BINANCE_CCXT → BinanceCCXTProvider                       │  │
+│  │   Location: …/providing/binance/ccxt_provider.py                   │  │
 │  │                                                                     │  │
-│  │ Resource Management (Context Managers):                             │  │
-│  │ ├─ All providers implement context manager pattern                 │  │
-│  │ ├─ Guarantees connection cleanup on every 57-sec cycle             │  │
+│  │ All providers extend BaseDataProvider (ABC) and use the context     │  │
+│  │ manager pattern — connection cleanup guaranteed each cycle:         │  │
+│  │ ├─ Guarantees connection cleanup on every monitoring cycle          │  │
 │  │ ├─ Solves 1-2 hour timeout issue from connection reuse             │  │
 │  │ ├─ Fresh connection every cycle prevents stale sockets             │  │
 │  │ └─ Validated for 24+ hour operation without timeouts ✅            │  │
 │  │                                                                     │  │
 │  │ Technical Details:                                                  │  │
-│  │ • Coordinator uses: with provider: pattern (line 168-174)          │  │
+│  │ • DataProviderCoordinator uses: with provider: pattern             │  │
 │  │ • BaseDataProvider provides: __enter__(), __exit__(), close()      │  │
 │  │ • BinanceAPIProvider overrides close() for HTTP session cleanup     │  │
 │  │ • BinanceCCXTProvider overrides close() for exchange cleanup       │  │
@@ -204,7 +244,7 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
 │  │ Report Generation & Storage                                         │  │
-│  │ Location: src/stockreports/report/report_utils.py                  │  │
+│  │ Location: src/stockreports/utils/report_utils.py                   │  │
 │  │ Responsibility: Collect and store alerts with metadata              │  │
 │  │                                                                     │  │
 │  │ Storage Strategy:                                                   │  │
@@ -238,12 +278,21 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
 │  │ Notification Delivery Orchestrator (Config-Driven Multi-Channel Delivery) │  │
+│  │ Location: src/stockreports/services/external/                       │  │
+│  │           notification_services/orchestrator.py                     │  │
 │  │ Responsibility: Modular, config-driven notification dispatch, deduplication, and channel orchestration │  │
 │  │                                                                     │  │
-│  │ Channel System:                                                     │  │
-│  │ ├─ Modular channel factory creates/manages notification channels    │  │
-│  │ ├─ Supported channels: Email (SMTP), SMS, Ntfy (web push), Slack (Incoming Webhook) │  │
-│  │ ├─ Each channel: config-driven, pluggable, and validated            │  │
+│  │ Channel System (ChannelFactory + ChannelType enum):                 │  │
+│  │ ├─ ChannelType.EMAIL → EmailNotificationChannel  (SMTP)            │  │
+│  │ ├─ ChannelType.SMS   → SMSNotificationChannel                      │  │
+│  │ ├─ ChannelType.NTFY  → NtfyNotificationChannel  (web push)         │  │
+│  │ └─ ChannelType.SLACK → SlackNotificationChannel (Block Kit webhook) │  │
+│  │                                                                     │  │
+│  │ All channels extend BaseNotificationChannel (ABC):                  │  │
+│  │ ├─ send(notification) → normalize → _send(AlertNotification)       │  │
+│  │ ├─ validate_config()  → raises ValueError if misconfigured         │  │
+│  │ └─ _get_run_context_footer() → NotificationContext                 │  │
+│  │      (appends Env + RunMode footer to every payload)               │  │
 │  │                                                                     │  │
 │  │ Scheduler Integration:                                              │  │
 │  │ ├─ Scheduler handles reminders, close position, and per-symbol/approach delays │  │
@@ -272,7 +321,8 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
 │  │ Trade Simulation & Backtesting Engine                               │  │
-│  │ Location: src/stockreports/report/trade_report.py                  │  │
+│  │ Location: src/stockreports/utils/report_utils.py                   │  │
+│  │           src/stockreports/alert/model/reports_models.py           │  │
 │  │ Responsibility: Analyze strategy performance offline                │  │
 │  │                                                                     │  │
 │  │ Features:                                                            │  │
@@ -338,7 +388,7 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 │  │    • Kubernetes manifests for orchestration                         │  │
 │  │    • Resource limits & guarantees (CPU, memory)                     │  │
 │  │    • Credential injection via environment variables                 │  │
-│  │    • Multi-channel notification support (Email, SMS, Ntfy, Slack)   │  │
+│  │    • Multi-channel notification support (Email ✅, Slack ✅, Ntfy ✅; SMS ⚠️ not yet validated) │  │
 │  │                                                                     │  │
 │  │ 6. MODE SWITCHING                                                   │  │
 │  │    • DEPLOYMENT: Concurrent monitoring (indefinite, auto-recover)  │  │
@@ -447,60 +497,67 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
       └─ For each symbol in configuration
 
 2. FETCH DATA
-   └─ Symbol monitoring loop (SymbolAlerter)
-      └─ Retrieve latest market data for symbol
-         └─ From data service (Vietstock, Binance, or CCXT)
-            └─ Returns: OHLCV candle data
+   └─ Symbol monitoring loop (SymbolAlerter._perform_monitoring_session)
+      └─ Retrieve latest market data for all required resolutions
+         └─ DataServiceOrchestrator → DataProviderCoordinator
+            └─ Provider per symbol (Vietstock / BinanceAPI / BinanceCCXT)
+               └─ Returns: OHLCV candle DataFrames, keyed by resolution
 
-3. COORDINATE RESOLUTIONS
-   └─ Resolution mapping (ResolutionCoordinator)
-      └─ For each configured resolution (1m, 5m, 15m, 1h)
-         └─ Get list of approaches assigned to this resolution
-            └─ Returns: (resolution, approaches) pairs
+3. COORDINATE APPROACHES
+   └─ ConfigurationOrchestrator (per symbol)
+      ├─ get_supported_approaches(symbol, ApproachType.ANNOUNCE) → announce list
+      └─ get_supported_approaches(symbol, ApproachType.TRADE)    → trade list
+         └─ get(symbol, approach_name).resolution → per-approach resolution
 
-4. EXECUTE APPROACHES
-   └─ For each approach at this resolution
-      └─ Execute trading strategy (Executor)
-         ├─ ANALYZE: Process data using Analyzer
-         │  └─ Generate all necessary market metrics
-         ├─ VALIDATE: Check signals using Validator
-         │  └─ Apply business rules and thresholds
-         └─ CREATE: Generate alert if all validations pass
-            └─ AlertData: timestamp, symbol, approach, resolution, signal, confidence
+4a. EXECUTE ANNOUNCE APPROACHES  [TASK-2]
+   └─ For each ANNOUNCE approach (LARGE_CANDLE, LARGE_VOLUME_CANDLE, PRICE_MOVEMENT)
+      └─ AnnouncementAlertOrchestrator.run(approach, symbol, df)
+         └─ _AnnouncementAlertFactory → AnnouncementAlerterBase subclass
+            └─ Returns: AlertResult (confirmed_alerts: List[AlertData])
+               └─ On alert → NotificationServiceOrchestrator.send_notification()
+
+4b. EXECUTE TRADE APPROACHES  [TASK-3]
+   └─ For each active TRADE approach (STRONG_CANDLE, VRA, ICHIMOKU, CONSISTENT_MOMENTUM,
+      REVERSAL_ANCHOR_SIGNAL_CANDLE)
+      └─ get_approach_executor(symbol, approach, resolution) → Executor
+         ├─ ANALYZE: Analyzer — pure calculations (body ratio, volume, etc.)
+         ├─ VALIDATE: Validator — threshold checks, business rules
+         └─ GENERATE: AlertData if all validations pass
 
 5. AGGREGATE ALERTS
-   └─ Collect results from all resolutions/approaches
-      └─ Report storage system
-         ├─ Combine all alerts from this monitoring cycle
-         ├─ Deduplicate overlapping signals (same symbol+approach+resolution within 5min)
+   └─ Collect confirmed_alerts (List[AlertData]) from all approaches
+      └─ report_utils.py
+         ├─ Deduplicate overlapping signals
          └─ Save to reports/ (LIVE) or reports_replay/ (REPLAY)
 
 6. NOTIFY  (parallel with step 6b)
-   └─ Send alerts to users (NotificationManager)
-      ├─ Email channel (SMTP)
-      ├─ SMS channel (Twilio or similar)
-      ├─ Web notification channel (ntfy.sh or similar)
-      └─ Slack channel (Incoming Webhook)
-         └─ All channels send independently
-            └─ One channel failure doesn't block others
+   └─ NotificationServiceOrchestrator.send_notification(alert)
+      └─ ChannelFactory → configured per notification_service_config.json
+         ├─ EmailNotificationChannel  ✅ validated
+         ├─ SlackNotificationChannel  ✅ validated
+         ├─ NtfyNotificationChannel   ✅ validated
+         └─ SMSNotificationChannel    ⚠️ not yet validated
+            └─ All channels send independently
+               └─ One channel failure doesn't block others
 
 6b. EXECUTE TRADE  (parallel with step 6, DEPLOYMENT mode only)
-   └─ For each confirmed TRADE-type alert where alert_age ≤ TRADING_EXECUTION_EXPIRED_MINUTES:
+   └─ For each TRADE alert where alert_age ≤ TRADING_EXECUTION_EXPIRED_MINUTES:
       └─ TradingServiceOrchestrator.orchestrate_bracket_order(alert, time_simulator)
          └─ Dispatched in daemon thread → monitoring loop never blocked
             └─ BinancePerpetualTrading runs full DCA bracket lifecycle:
                ├─ Set leverage
-               ├─ Place 7 LIMIT orders (DCA ladder)
-               ├─ Wait for position to open (step 2b guard)
+               ├─ Place 7 LIMIT orders (DCA ladder via /fapi/v1/batchOrders)
+               ├─ Wait for position to open (poll /fapi/v2/positionRisk)
                └─ _monitor_ladder: re-bracket on fills → OCO resolution
+                  (TP/SL via /fapi/v1/algoOrder — CONDITIONAL type)
 
 7. ANALYSIS (Optional)
-   └─ Trade performance analysis engine (Trade Simulation)
+   └─ Trade performance analysis (report_utils.py + reports_models.py)
       └─ Offline backtesting with generated alerts
          └─ Generate performance reports and metrics
 
 8. END
-   └─ Sleep until next monitoring interval
+   └─ Sleep until next monitoring interval (TimeSimulator.advance())
       └─ Return to FETCH DATA (loop continues)
 ```
 
@@ -511,36 +568,46 @@ The **Stock Trading Alert System** is a real-time market analysis platform that:
 ```
 SymbolAlertManager
 ├─ SymbolAlerter
-│  ├─ ResolutionCoordinator
-│  │  └─ DataServiceOrchestrator
-│  │     ├─ VietStockProvider
-│  │     ├─ BinanceAPIProvider
-│  │     └─ BinanceCCXTProvider
+│  ├─ ConfigurationOrchestrator
+│  │  └─ executor_approach_configuration.json
 │  │
-│  └─ 18+ Executors (selected by ResolutionCoordinator)
-│     ├─ StrongCandleExecutor
-│     │  ├─ StrongCandleAnalyzer
-│     │  │  └─ Analyzer (base class)
-│     │  └─ StrongCandleValidator
-│     │     └─ Validator (base class)
-│     ├─ VRAExecutor
-│     │  ├─ VRAAnalyzer
-│     │  │  └─ Analyzer (base class)
-│     │  └─ VRAValidator
-│     │     └─ Validator (base class)
-│     └─ ... (16 more approaches)
+│  ├─ DataServiceOrchestrator
+│  │  ├─ DataProviderCoordinator
+│  │  │  ├─ VietstockProvider        (Provider.VIETSTOCK)
+│  │  │  ├─ BinanceAPIProvider       (Provider.BINANCE)
+│  │  │  └─ BinanceCCXTProvider      (Provider.BINANCE_CCXT)
+│  │  └─ ProviderFactory
+│  │
+│  ├─ AnnouncementAlertOrchestrator  [TASK-2: ANNOUNCE approaches]
+│  │  └─ _AnnouncementAlertFactory
+│  │     ├─ LargeCandleAlerter        (LARGE_CANDLE)
+│  │     ├─ LargeVolumeCandleAlerter  (LARGE_VOLUME_CANDLE)
+│  │     └─ PriceMovementAlerter      (PRICE_MOVEMENT)
+│  │
+│  ├─ 5 Executors via get_approach_executor() [TASK-3: TRADE approaches — active]
+│  │  ├─ StrongCandleExecutor         (STRONG_CANDLE)
+│  │  │  ├─ StrongCandleAnalyzer
+│  │  │  └─ StrongCandleValidator
+│  │  ├─ VRAExecutor                  (VRA)
+│  │  │  ├─ VRAAnalyzer
+│  │  │  └─ VRAValidator
+│  │  ├─ IchimokuExecutor             (ICHIMOKU)
+│  │  ├─ ConsistentMomentumExecutor   (CONSISTENT_MOMENTUM)
+│  │  └─ ReversalAnchorSignalCandleExecutor (REVERSAL_ANCHOR_SIGNAL_CANDLE)
+│  │  [archived — code exists, not wired:]
+│  │  ├─ VolumeSpikeConfirmationExecutor (VOLUME_SPIKE_CONFIRMATION)
+│  │  └─ ConsistentVolumeAnchorExecutor  (CONSISTENT_VOLUME_ANCHOR)
+│  │
+│  └─ NotificationServiceOrchestrator
+│     ├─ NotificationScheduler
+│     └─ ChannelFactory
+│        ├─ EmailNotificationChannel  (ChannelType.EMAIL) ✅ validated
+│        ├─ SlackNotificationChannel  (ChannelType.SLACK) ✅ validated
+│        ├─ NtfyNotificationChannel   (ChannelType.NTFY)  ✅ validated
+│        └─ SMSNotificationChannel    (ChannelType.SMS)   ⚠️ not yet validated
+│           └─ BaseNotificationChannel (ABC — shared footer logic)
 │
-├─ Report Generation System
-│  ├─ Alert storage
-│  └─ Deduplication logic
-│
-├─ NotificationManager
-│  ├─ EmailChannel
-│  ├─ SMSChannel
-│  ├─ WebNotificationChannel (Ntfy)
-│  └─ SlackChannel (Incoming Webhook)
-│
-├─ TradingServiceOrchestrator  ⚡ NEW (DEPLOYMENT mode only)
+├─ TradingServiceOrchestrator  (DEPLOYMENT mode only)
 │  └─ TradingCoordinator
 │     └─ TradingPlatformRegistry
 │        └─ BinancePerpetualTrading
@@ -551,7 +618,7 @@ SymbolAlertManager
 │           │     ├─ _place_tp_sl_batch (/fapi/v1/algoOrder ×2)
 │           │     ├─ _query_algo_order  (/fapi/v1/algoOrder GET)
 │           │     └─ _cancel_algo_order (/fapi/v1/algoOrder DELETE)
-│           └─ Config: BINANCE_PERPETUAL_CONFIG
+│           └─ Config: binance_perpetual_config.py
 │
 └─ (Optional) Trade Simulation Engine
    └─ Performance metrics generation
@@ -591,33 +658,33 @@ Behavior:
 
 ## 🎯 Multi-Resolution Strategy
 
-The system analyzes the same symbol across multiple timeframes **simultaneously**:
+Each approach is independently configured with its own resolution. The system fetches all required resolutions in one batch per cycle:
 
 ```
-Symbol: VN30
+Symbol: VN30F1M  (example)
 
-Resolution 1m:
-├─ STRONG_CANDLE approach → Alert (if triggered)
-├─ VRA approach → Alert (if triggered)
-└─ VOLATILITY approach → No alert
+Resolution 1m  (always fetched — used by ANNOUNCE approaches + price alerter):
+├─ LARGE_CANDLE approach       → Alert (if triggered)
+├─ LARGE_VOLUME_CANDLE approach → Alert (if triggered)
+└─ PRICE_MOVEMENT approach     → Alert (if triggered)
 
-Resolution 5m:
-├─ ICHIMOKU approach → Alert (if triggered)
-├─ BREAKOUT approach → No alert
-└─ MOMENTUM approach → Alert (if triggered)
+Resolution 5m  (fetched if any approach is configured at 5m):
+├─ STRONG_CANDLE approach      → Alert (if triggered)
+└─ VRA approach                → Alert (if triggered)
 
-Resolution 15m:
-├─ REVERSAL approach → No alert
+Resolution 15m (fetched if any approach is configured at 15m):
+├─ ICHIMOKU approach           → Alert (if triggered)
 └─ CONSISTENT_MOMENTUM approach → Alert (if triggered)
 
-Resolution 1h:
-├─ MACD approach → No alert
-└─ (other 1h-specific approaches)
+Resolution 60m (fetched if any approach is configured at 60m):
+└─ REVERSAL_ANCHOR_SIGNAL_CANDLE → Alert (if triggered)
 
-FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pair
+FINAL RESULT: Alerts from triggered (approach, resolution) pairs, independently
+              delivered to all enabled notification channels
 ```
 
-**Benefit**: Avoid false signals by confirming signals across multiple timeframes
+**Design**: Each approach's resolution is defined in `executor_approach_configuration.json`.  
+Only the resolutions actually needed are fetched — no wasted API calls.
 
 ---
 
@@ -666,22 +733,24 @@ FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pai
 |------------|-----------|------------|-------|
 | Multi-symbol monitoring | ✅ | ✅ | Unlimited symbols |
 | Real-time analysis | ✅ | ❌ | Historical in REPLAY |
-| 18+ trading approaches | ✅ | ✅ | All approaches available |
-| Multi-resolution (1m/5m/15m/1h) | ✅ | ✅ | Simultaneous analysis |
+| 5 active TRADE approaches | ✅ | ✅ | Executor → Analyzer → Validator |
+| 2 archived TRADE approaches | ❌ | ❌ | `enabled: false` in executor config |
+| 3 ANNOUNCE approaches | ✅ | ✅ | AnnouncementAlerterBase |
+| Per-approach resolution (configurable) | ✅ | ✅ | 1m, 5m, 15m, 1h, etc. |
 | Auto-recovery | ✅ | ❌ | Supervisor loop in LIVE |
-| Email notifications | ✅ | ✅ | Via SMTP |
-| SMS notifications | ✅ | ✅ | Via Twilio/similar |
-| Web notifications | ✅ | ✅ | Via ntfy.sh |
-| Slack notifications | ✅ | ✅ | Via Incoming Webhook (Block Kit) |
+| Email notifications | ✅ | ✅ | Via SMTP — validated |
+| Slack notifications | ✅ | ✅ | Via Incoming Webhook (Block Kit) — validated |
+| Ntfy web push notifications | ✅ | ✅ | Via Ntfy — validated |
+| SMS notifications | ⚠️ | ⚠️ | Not yet validated |
+| Env/run-mode footer on all channels | ✅ | ✅ | BaseNotificationChannel._get_run_context_footer() |
 | **Live trade execution** | ✅ | ❌ | DEPLOYMENT mode only; daemon thread |
 | **DCA ladder orders** | ✅ | ❌ | 7 LIMIT orders, USDT-sized |
 | **Dynamic TP/SL bracket** | ✅ | ❌ | Recalculated from avg fill price |
 | **Alert expiry guard** | ✅ | ❌ | Skips stale alerts (default 5 min) |
 | Performance analysis | ✅ | ✅ | Backtesting available |
-| Alert deduplication | ✅ | ✅ | Within 5 min window |
-| Report generation | ✅ | ✅ | CSV format |
-| Support/Resistance detection | ✅ | ✅ | Optional feature |
-| Parameter optimization | ✅ | ✅ | Optional feature |
+| Alert deduplication | ✅ | ✅ | Within monitoring cycle |
+| Report generation | ✅ | ✅ | reports/ vs reports_replay/ |
+| Scheduled notifications | ✅ | ✅ | NotificationScheduler (close position, reminders) |
 
 ---
 
@@ -751,4 +820,4 @@ FINAL RESULT: Multiple alerts, one for each triggered (resolution, approach) pai
 **Status**: Tier 1 - System Orchestration ✅  
 **Focus**: Complete end-to-end system architecture  
 **Scope**: From SymbolAlertManager through all layers to report generation and live trade execution  
-**Last Updated**: May 20, 2026
+**Last Updated**: May 29, 2026

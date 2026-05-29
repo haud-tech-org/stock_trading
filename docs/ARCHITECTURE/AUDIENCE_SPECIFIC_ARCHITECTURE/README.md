@@ -1,14 +1,50 @@
 # Audience-Specific Architecture Documentation Index
 
-**Last Updated:** April 8, 2026  
-**Status:** ✅ All 3 audience documents complete  
-**Total Lines:** 2,400+ lines of documentation
+**Last Updated:** May 29, 2026
+**Status:** ✅ 4 audience documents available
+
+---
+
+## 📌 Which Document Do You Need?
+
+| I am… | Read this |
+|-------|-----------|
+| An **investor or strategic partner** evaluating this project | [INVESTOR_PARTNER_OVERVIEW.md](INVESTOR_PARTNER_OVERVIEW.md) |
+| A **potential client or business stakeholder** evaluating the system | [BUSINESS_VALUE_FOR_STAKEHOLDERS.md](BUSINESS_VALUE_FOR_STAKEHOLDERS.md) |
+| A **trader** setting up or using alert strategies | [ARCHITECTURE_FOR_CLIENTS.md](ARCHITECTURE_FOR_CLIENTS.md) |
+| An **ops/QA/product** team member deploying or testing | [ARCHITECTURE_FOR_OPERATIONS.md](ARCHITECTURE_FOR_OPERATIONS.md) |
 
 ---
 
 ## Quick Navigation
 
-### � For Stakeholders & Decision Makers
+### � For Investors & Strategic Partners
+**→ Read: [INVESTOR_PARTNER_OVERVIEW.md](INVESTOR_PARTNER_OVERVIEW.md)**
+
+**Best for:**
+- Investors evaluating the project opportunity
+- Strategic partners assessing integration or co-distribution
+- Fund managers considering platform licensing or white-label
+- Enterprise clients performing initial due diligence
+
+**Read Time:** 5–8 minutes
+**Sections Included:**
+1. The problem being solved
+2. What the platform does (plain language, no code)
+3. Two-market coverage: VN30F1M + BTCUSDT-PERP
+4. Detection engine: 8 approaches explained
+5. Automated DCA bracket execution
+6. REPLAY backtesting capability
+7. Delivery infrastructure and deployment options
+8. Current production state
+9. Competitive differentiation table
+10. Roadmap `[TODO placeholders]`
+11. Business model `[TODO placeholders]` (not now)
+12. The ask `[TODO placeholder]` (not now)
+
+---
+
+### �📣 For Stakeholders & Decision Makers
 **→ Read: [BUSINESS_VALUE_FOR_STAKEHOLDERS.md](BUSINESS_VALUE_FOR_STAKEHOLDERS.md)**
 
 **Best for:**
@@ -34,7 +70,7 @@
 
 ---
 
-### �👥 For Traders & Business Users
+### � For Traders & End Users
 **→ Read: [ARCHITECTURE_FOR_CLIENTS.md](ARCHITECTURE_FOR_CLIENTS.md)**
 
 **Best for:**
@@ -48,7 +84,7 @@
 1. What the system does (LIVE & REPLAY modes)
 2. Key capabilities (7 major features)
 3. How it works (complete 6-step flow)
-4. Alert approaches explained (6 signal types for traders)
+4. Alert approaches explained (8 signal types: 5 active TRADE + 3 ANNOUNCE)
 5. Backtesting feature with example output
 6. Data sources available
 7. Configuration examples (4 trader scenarios)
@@ -81,7 +117,7 @@
 8. Monitoring & health checks (endpoints, metrics, logs)
 9. Deployment architecture (LIVE & REPLAY)
 10. Configuration validation checklist
-11. Deployment steps (6-step installation)
+11. Deployment steps (5-step installation)
 12. Troubleshooting guide (4 major issues with solutions)
 13. Performance & scalability analysis
 14. Disaster recovery (RTO & failover)
@@ -107,8 +143,8 @@
 3. Component inventory (6 major layers, 14+ components)
    - Orchestration (SymbolAlertManager, SymbolAlerter)
    - Data (DataServiceOrchestrator, 3 providers)
-   - Analysis (Executor framework, 6 executors)
-   - Notification (NotificationManager, 3 channels)
+   - Analysis (Executor framework, 5 active TRADE executors + 2 archived + 3 ANNOUNCE approaches)
+   - Notification (NotificationManager, 4 channels: Email ✅, Slack ✅, Ntfy ✅ validated; SMS ⚠️ not yet validated)
    - Time control (TimeSimulator - critical design)
    - Report generation (CentralizedReportGenerator)
 4. Configuration system (6 settings modules)
@@ -158,11 +194,11 @@
 - **DEVS:** See DEVELOPERS doc "Configuration System" (all 6 modules)
 
 ### "How do I deploy this?"
-- **OPS:** See OPERATIONS doc "Deployment Steps" (6 steps)
+- **OPS:** See OPERATIONS doc "Deployment Steps" (5 steps)
 - **DEVS:** Reference OPERATIONS_DEPLOYMENT_GUIDE.md for procedures
 
 ### "What about alerts/signals?"
-- **TRADERS:** See CLIENTS doc section 4 (6 approaches explained simply)
+- **TRADERS:** See CLIENTS doc section 4 (8 approaches: 5 active TRADE + 3 ANNOUNCE, explained simply)
 - **OPS:** See OPERATIONS doc capabilities checklist
 - **DEVS:** See DEVELOPERS doc "Analysis Layer" section
 
@@ -249,7 +285,7 @@
 
 ### "I'm deploying this to production"
 1. Start: ARCHITECTURE_FOR_OPERATIONS.md sections 1-3 (architecture overview)
-2. Follow: Section 11 "Deployment Steps" (6 steps)
+2. Follow: Section 11 "Deployment Steps" (5 steps)
 3. Configure: Section 7 "Configuration Validation Checklist"
 4. Monitor: Section 8 "Monitoring & Health Checks"
 
@@ -342,9 +378,8 @@ ARCHITECTURE/
 ### Content Verification
 - ✅ 100% verified against source code
 - ✅ 14+/14+ components documented (100%)
-- ✅ 6/6 real executors covered (100%)
-- ✅ 3/3 real providers covered (100%)
-- ✅ 3/3 real channels covered (100%)
+- ✅ 8/8 active alert approaches covered: 5 TRADE + 3 ANNOUNCE (100%)
+- ✅ 4/4 channels documented: Email ✅, Slack ✅, Ntfy ✅ (validated); SMS ⚠️ (not yet validated)
 - ✅ 6/6 config modules covered (100%)
 - ✅ 0% speculation or hypothetical content
 
