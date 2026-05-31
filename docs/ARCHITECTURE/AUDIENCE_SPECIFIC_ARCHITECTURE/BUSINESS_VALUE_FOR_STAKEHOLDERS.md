@@ -1,92 +1,121 @@
-# Price Movement Alerter Service - Business Value & Use Cases
-## For Potential Clients & Stakeholders
+# Never Miss a Trade. Never Get Spammed.
+
+> Real-time trading alerts for Vietnam futures and crypto markets —
+> fires when it matters, stays silent when it doesn't.
+
+**For:** Business stakeholders · Fund managers · Potential clients · Sales teams
+**Date:** May 29, 2026
+**Read Time:** 10-15 minutes
 
 ---
 
-## 📊 Executive Summary
+## ❗ The Problem
 
-The **Price Movement Alerter Service** is a sophisticated, real-time market monitoring solution designed for Vietnam Stock Exchange (VN) traders and investment firms. It provides intelligent, symbol-specific price level notifications that help traders:
+Watching charts all day is exhausting — but missing one key price level can mean missing the trade entirely.
 
-- **Execute trades at precisely the right moments** by monitoring predefined price levels
-- **Avoid alert fatigue** through intelligent cooldown mechanisms and repeated-alert suppression
-- **Track multiple symbols independently** without cross-contamination or false suppressions
-- **React to market movements** with real-time, millisecond-precision alerts
+Most alert tools push **too many notifications** (every tick, every candle) until traders start ignoring them. Or they alert only once and go silent — missing legitimate re-entries later in the session.
 
-The service is engineered for **production reliability**, **high performance**, and **trader convenience**, processing thousands of price ticks daily with zero false negatives.
+**There's a smarter way.**
 
 ---
 
-## 🎯 Business Value Proposition
+## ✅ What This System Does
 
-### Core Benefits
+The **Trading Alert System** monitors your symbols 24/7, fires alerts only when genuine signals appear, and stays silent when conditions don't warrant action.
 
-#### 1. **Never Miss Critical Price Levels**
-- Real-time notifications when stock prices cross predefined trading levels
-- Works 24/7 during market hours with automatic recovery from network failures
-- Symbol-specific tracking ensures each stock's price movements are monitored independently
+**8 detection approaches** across two categories:
 
-#### 2. **Intelligent Alert Management**
-- **Cooldown Mechanism**: Prevents alert spam by enforcing a configurable cooldown period (default: 3 minutes) after each alert
-- **Repeated Alert Control**: Administrators can choose to either:
-  - Alert only once per day per level (recommended for most traders)
-  - Alert every time a level is crossed (for aggressive trading strategies)
-- **Automatic Expiration**: Triggered levels are automatically cleared after the cooldown period, allowing the next crossing to trigger
+| Category | Approaches |
+|----------|-----------|
+| **TRADE (5 active)** — precision entry signals | STRONG_CANDLE · VRA · ICHIMOKU · CONSISTENT_MOMENTUM · REVERSAL_ANCHOR_SIGNAL_CANDLE |
+| **ANNOUNCE (3)** — market movement awareness | LARGE_CANDLE · LARGE_VOLUME_CANDLE · PRICE_MOVEMENT |
 
-#### 3. **Support Multiple Trading Strategies**
-- **Fixed Levels**: Monitor specific, manually-defined price points (e.g., $1,768.49, $1,850.00)
-- **Interval-Based Levels**: Track dynamic, evenly-spaced price bands (e.g., every 9-point movement from reference price)
-- **Flexible Configuration**: Easily adjust monitoring targets without service restart
+> *(VOLUME_SPIKE_CONFIRMATION and CONSISTENT_VOLUME_ANCHOR exist in the codebase but are currently archived — not wired into execution.)*
 
-#### 4. **Multi-Symbol Monitoring Without Interference**
-- Monitor multiple stocks simultaneously (e.g., VN30 Index, VN30F1M Futures)
-- Each symbol maintains independent level tracking
-- No cross-contamination: An alert for VN30 at $1,768.49 won't suppress VN30F1M alerts at the same price
-- Isolated cooldown management per symbol
+**Delivered via:** Email ✅ · Slack ✅ · Ntfy ✅ (mobile & web push via ntfy.sh) · SMS ⚠️ not yet validated
 
-#### 5. **Production-Grade Reliability**
-- Engineered for continuous operation in live trading environments
-- Comprehensive error handling and logging for audit trails
-- Automatic recovery from temporary network interruptions
-- Containerized deployment (Docker/Kubernetes) for scalability
+**Validate first:** Run any strategy in **REPLAY mode** against historical data before risking real money.
+
+> **⚡ Automated order execution:** For **BTCUSDT-PERP**, confirmed TRADE alerts can automatically place a full DCA bracket order (limit ladder entries + take-profit + stop-loss) via the Binance Futures API — no manual intervention needed.
+> For **VN30F1M**, alerts are **notification-only** — Vietstock is a data provider and does not support order execution via API. Traders act on the alert manually.
 
 ---
 
-## 💼 Use Cases
+## 📊 At a Glance
 
-### Use Case 1: Index Trader
-**Scenario**: A trader wants to execute on VN30 Index movements
+| Capability | Details |
+|---|---|
+| **Supported symbols** | VN30F1M (Vietnam futures) · BTCUSDT-PERP (Bitcoin perpetual) · extensible |
+| **Data sources** | Vietstock · Binance API · Binance CCXT |
+| **Operating modes** | LIVE (real-time, auto-recovery) · REPLAY (backtest, historical simulation) |
+| **Alert cooldown** | Configurable per symbol — default 3 min, prevents repeat spam |
+| **Repeated alerts** | Cooldown window (minutes) — same signal suppressed until window expires |
+| **Symbol isolation** | Each symbol tracked independently — zero cross-contamination |
+| **Deployment** | Docker · Kubernetes · Cloud · On-premises · Heroku (Procfile included) |
+
+---
+
+## 💡 5 Reasons Traders Choose This System
+
+### 1. 🔕 Alerts Fire When It Matters — Silence When They Don't
+A configurable **cooldown period** prevents the same signal from firing repeatedly within a short window. You get notified once → system goes quiet → fires again only after the cooldown window expires.
+
+> **Config lever (TRADE approaches):** `cooldown_window` (minutes) — configured per approach in `executor_config.yaml`. After the cooldown expires, the same signal can fire again.
+> **Config lever (PRICE_MOVEMENT approach):** `LEVEL_ALERT_COOLDOWN_MINUTES` (default: 3 min) — controls per-level cooldown for interval/fixed-level crossing alerts.
+
+### 2. 🎛️ PRICE_MOVEMENT: Repeat or Once-Per-Cooldown
+For the **PRICE_MOVEMENT** (ANNOUNCE) approach, there is an additional toggle:
+- **`ALLOW_REPEATED_LEVEL_ALERTS = False`** *(default)* — a crossed level is suppressed until its cooldown window expires; after expiry it can fire again
+- **`ALLOW_REPEATED_LEVEL_ALERTS = True`** — fires on every crossing regardless of prior alerts
+
+> **Note:** This toggle applies only to `PRICE_MOVEMENT`. TRADE approaches (VRA, STRONG_CANDLE, etc.) use only the per-approach cooldown window.
+
+### 3. 🔀 Multi-Symbol, Zero Interference
+Monitor VN30F1M and BTCUSDT-PERP simultaneously with **completely independent** cooldown tracking per symbol. An alert on one never blocks alerts on another — even at the same price level.
+
+### 4. 🧪 Validate Before You Risk Real Money
+Every strategy can be tested in **REPLAY mode** against historical data before going live. See how your approach would have performed, then make an informed decision about whether it's ready.
+
+### 5. 📲 Instant Delivery, Multiple Channels
+Alerts reach you via **Email, Slack, or Ntfy** (mobile push + web via ntfy.sh) — or all three simultaneously. Each notification includes symbol, price, approach triggered, and environment context.
+
+---
+
+## 💼 Real-World Use Cases
+
+### 🟦 Use Case 1: VN30F1M Futures Trader
+**Scenario**: A trader wants to execute on VN30F1M futures movements
 
 **Setup**:
-- Monitor VN30 at specific technical levels: 1,768.49, 1,799.35, 1,850.00, etc.
-- 3-minute cooldown to prevent re-entries on the same price within 3 minutes
-- Allow repeated alerts disabled (alert once per day per level)
+- Monitor VN30F1M at interval-based levels: 1,756.2, 1,765.2, 1,774.2, 1,783.2, etc. (9-point intervals)
+- 3-minute cooldown to prevent re-alerts for the same level within the cooldown window
+- `ALLOW_REPEATED_LEVEL_ALERTS = False` (default) — level suppressed until cooldown expires, then can fire again
 
 **Workflow**:
 ```
-Market Event → Price crosses 1,768.49 → Alert triggered → Trader reviews setup
+Market Event → Price crosses 1,774.2 → Alert triggered → Notification sent
    ↓
-Trader enters trade → Sets stop loss → Continues monitoring
+Trader reviews alert (Email/Slack/Ntfy) → Manually enters trade
+   ↓               ⚠️ VietStock is data-only — no API order execution
+Price later touches 1,774.2 again (within 3 mins) → No alert (cooldown active)
    ↓
-Price later touches 1,768.49 again (within 3 mins) → No alert (cooldown active)
-   ↓
-Next day → Price touches 1,768.49 again → Alert triggered (new day)
+Next day → Price touches 1,774.2 again → Alert triggered (new day)
 ```
 
 **Benefits**:
 - Never miss key technical levels
-- Focus on trading, not monitoring
+- Focus on trading, not constant chart-watching
 - Automatic alert suppression prevents decision paralysis
-- Scalable to 5+ symbols simultaneously
+
+> **Result:** Clean signals on VN30F1M, zero noise, zero decision paralysis.
 
 ---
 
-### Use Case 2: Futures Trader
+### 🟠 Use Case 2: VN30F1M Interval Scalper
 **Scenario**: Day trader monitoring VN30F1M futures with interval-based levels
-
-**Setup**:
 - Monitor intervals of 9-point movements from reference price 1,765.2
-- 10-minute aggressive cooldown for quick re-entries
-- Allow repeated alerts enabled (catch every cross)
+- 10-minute cooldown to limit re-alerts on the same level
+- `ALLOW_REPEATED_LEVEL_ALERTS = True` — fires on every crossing regardless of prior alerts *(PRICE_MOVEMENT approach only)*
 
 **Workflow**:
 ```
@@ -107,37 +136,39 @@ Wait 10 mins → 1,774.2 again → Alert → Can re-enter
 - Aggressive cooldown for frequent traders
 - Flexible interval sizing matches trading style
 
+> **Result:** Catches every meaningful cross, ignores the noise in between.
+
 ---
 
-### Use Case 3: Multi-Symbol Portfolio Manager
-**Scenario**: Fund manager monitoring 5+ stocks simultaneously
+### 🟢 Use Case 3: Multi-Symbol Portfolio
+**Scenario**: Trader monitoring both VN30F1M and BTCUSDT-PERP simultaneously
 
 **Setup**:
-- VN30 Index: Fixed levels for technical support/resistance
-- VN30F1M: Interval-based for futures
-- Individual stocks: Custom configurations per security
+- VN30F1M: Interval-based levels (9-point bands) during Vietnam trading hours → **notification-only** (manual execution)
+- BTCUSDT-PERP: ANNOUNCE + TRADE approaches running 24/7 → **automated DCA bracket order placement** via Binance Futures API
 - Unified notification system with symbol context in each alert
 
 **Workflow**:
 ```
-Monitor VN30 @ 1,768.49 ← Alert 1 triggered
+VN30F1M @ 1,774.2 ← Alert fires → Trader notified → Manually enters trade
+                                    ⚠️ VietStock is data-only
 Parallel ↓
-Monitor VN30F1M @ 1,765.30 ← Alert 2 triggered (same level, different symbol, independent!)
-Parallel ↓
-Monitor VNM @ 98.50 ← Alert 3 triggered
+BTCUSDT-PERP @ 95,500 ← Alert fires → System automatically places
+                         DCA bracket order (ladder + TP + SL) on Binance Futures API
 
-All alerts route to trader → Each clearly labeled with symbol
+Both alerts route to trader → Each clearly labeled with symbol + approach
 ```
 
 **Benefits**:
-- Single unified system for portfolio
+- One system covers both VN futures (manual trading) and crypto (automated orders)
 - No alert interference between symbols
 - Independent cooldowns per symbol
-- Scalable to 20+ symbols
 
 ---
 
 ## ⚙️ Operational Workflow
+
+> ⚠️ **Scope note:** The `triggered_levels_today` state and `ALLOW_REPEATED_LEVEL_ALERTS` toggle described in this section apply specifically to the **PRICE_MOVEMENT approach** (`PriceMovementAlerter`). TRADE approaches (VRA, STRONG_CANDLE, ICHIMOKU, etc.) use a separate per-approach `cooldown_window` (in minutes) with no "once per day" mode.
 
 ### Daily Trading Cycle
 
@@ -145,13 +176,13 @@ All alerts route to trader → Each clearly labeled with symbol
 ```
 T = 09:00 → Market opens
 Service automatically initializes with fresh state
-- triggered_levels_today = {}  # Starts empty
+- triggered_levels_today = {}  # Starts empty (PRICE_MOVEMENT approach class variable)
 - All symbols ready to alert
 
 T = 09:15 → First price movement
-- VN30 crosses 1,768.49
-- Alert generated: "VN30 crossed above 1,768.49"
-- triggered_levels_today["VN30"][1768.49] = 09:15
+- VN30F1M crosses a configured level (e.g. via absolute_interval)
+- Alert generated: "VN30F1M crossed above 1,774.2"
+- triggered_levels_today["VN30F1M"][1,774.2] = 09:15
 - Trader receives notification
 ```
 
@@ -159,13 +190,13 @@ T = 09:15 → First price movement
 ```
 T = 10:00 → Volatility increases
 - Multiple symbols active
-- VN30 triggers 3 alerts (different levels)
-- VN30F1M triggers 2 alerts (same levels, different symbol → NO interference)
+- VN30F1M triggers 3 alerts (different levels)
+- BTCUSDT-PERP triggers 2 alerts (different levels, independent)
 - Each symbol's cooldown independent
 - Examples:
-  * VN30 @ 1,768.49: triggered at 09:15 → cooldown until 09:18
-  * VN30F1M @ 1,768.49: triggered at 09:45 → cooldown until 09:48
-  * Same price, different symbols, different cooldown timings ✓
+  * VN30F1M @ 1,774.2: triggered at 09:15 → cooldown until 09:18
+  * VN30F1M @ 1,783.2: triggered at 09:45 → cooldown until 09:48
+  * Different levels, same symbol, independent cooldown timings ✓
 
 T = 12:00 → Lunch break approaches
 - Market quieter
@@ -178,14 +209,12 @@ T = 12:00 → Lunch break approaches
 ```
 T = 13:30 → Market reopens
 - Fresh monitoring resumes
-- Expired levels from morning are cleared
-- Traders can now re-trigger alerts for same levels
-- Example: VN30 @ 1,768.49 
+- Expired levels from morning are cleared (on next PriceMovementAlerter instantiation)
+- Traders can now re-trigger PRICE_MOVEMENT alerts for the same levels
+- Example: VN30F1M @ 1,774.2 
   * Originally triggered at 09:15
   * Cooldown expires at 09:18 (3 min default)
-  * After 09:18, it can trigger again
-  * Or, if ALLOW_REPEATED_LEVEL_ALERTS=False,
-    wait until next calendar day
+  * After 09:18, _remove_expired_levels() removes it → can trigger again
 ```
 
 #### Close (Market End)
@@ -204,78 +233,78 @@ T = 23:59 → End of day
 
 ### Cooldown Mechanism in Action
 
-#### Scenario: VN30 at Level 1,768.49
+#### Scenario: VN30F1M at a Configured Level
 
 ```
 Timeline:
 
-09:15:00 → VN30 = 1,768.48 → 1,768.50 (crosses 1,768.49 going UP)
+09:15:00 → VN30F1M price crosses 1,774.2 going UP
            ✓ Alert triggered
-           ✓ triggered_levels_today["VN30"][1768.49] = 09:15:00
+           ✓ triggered_levels_today["VN30F1M"][1,774.2] = 09:15:00
            ✓ Trader notified
 
-09:16:00 → VN30 = 1,768.49 (stays above)
-           ✗ Check: 1,768.49 in triggered_levels_today["VN30"]? YES
+09:16:00 → VN30F1M price still near 1,774.2
+           ✗ Check: 1,774.2 in triggered_levels_today["VN30F1M"]? YES
            ✗ Cooldown active (from 09:15 to 09:18)
            ✗ Alert SUPPRESSED (prevents spam)
 
-09:17:00 → VN30 = 1,768.50 (still above)
+09:17:00 → VN30F1M still above 1,774.2
            ✗ Cooldown still active
            ✗ Alert SUPPRESSED
 
-09:18:00 → VN30 = 1,768.48 (drops below, crosses DOWN)
-           ✓ IF ALLOW_REPEATED_LEVEL_ALERTS = True:
-               Alert triggered "VN30 crossed below 1,768.49"
-               triggered_levels_today["VN30"][1768.49] = 09:18:00
-           ✗ IF ALLOW_REPEATED_LEVEL_ALERTS = False:
-               Alert SUPPRESSED (already triggered today)
-               triggered_levels_today["VN30"][1768.49] = 09:15:00 (unchanged)
+09:18:00 → VN30F1M drops back below 1,774.2 (crosses DOWN)
+           ✓ IF ALLOW_REPEATED_LEVEL_ALERTS = True (PRICE_MOVEMENT only):
+               Alert triggered "VN30F1M crossed below 1,774.2"
+               triggered_levels_today["VN30F1M"][1,774.2] = 09:18:00
+           ✗ IF ALLOW_REPEATED_LEVEL_ALERTS = False (default, PRICE_MOVEMENT only):
+               Alert SUPPRESSED (level still in cooldown — not yet expired)
+               triggered_levels_today["VN30F1M"][1,774.2] = 09:15:00 (unchanged)
 
-10:00:00 → VN30 = 1,768.49 (crosses UP again)
-           ✓ IF ALLOW_REPEATED_LEVEL_ALERTS = True:
-               Cooldown from 09:18:00 + 3 mins = expired
-               Alert triggered "VN30 crossed above 1,768.49"
-           ✗ IF ALLOW_REPEATED_LEVEL_ALERTS = False:
-               Alert SUPPRESSED (already triggered today)
+10:00:00 → VN30F1M crosses 1,774.2 UP again
+           ✓ IF ALLOW_REPEATED_LEVEL_ALERTS = True (PRICE_MOVEMENT only):
+               Alert triggered "VN30F1M crossed above 1,774.2"
+           ✓ IF ALLOW_REPEATED_LEVEL_ALERTS = False (default, PRICE_MOVEMENT only):
+               Cooldown from 09:15:00 + 3 mins = expired at 09:18:00
+               Level removed from triggered_levels_today → Alert triggered
 ```
 
 ---
 
 ### Symbol Isolation Demonstrated
 
-#### Scenario: VN30 & VN30F1M Both Cross 1,768.49
+#### Scenario: VN30F1M & BTCUSDT-PERP Both Cross Their Respective Levels
 
 ```
-09:15:00 → VN30 crosses 1,768.49 UP
-           ✓ Alert: "VN30 crossed above 1,768.49"
-           ✓ triggered_levels_today["VN30"][1768.49] = 09:15:00
+09:15:00 → VN30F1M crosses 1,774.2 UP
+           ✓ Alert: "VN30F1M crossed above 1,774.2"
+           ✓ triggered_levels_today["VN30F1M"][1,774.2] = 09:15:00
 
-09:16:00 → VN30F1M crosses 1,768.49 UP
-           ✓ Alert: "VN30F1M crossed above 1,768.49"  ← INDEPENDENT!
-           ✓ triggered_levels_today["VN30F1M"][1768.49] = 09:16:00
-           ✓ VN30's tracking unaffected!
+09:16:00 → BTCUSDT-PERP crosses 95,500 UP
+           ✓ Alert: "BTCUSDT-PERP crossed above 95,500"  ← INDEPENDENT!
+           ✓ triggered_levels_today["BTCUSDT-PERP"][95500] = 09:16:00
+           ✓ VN30F1M's tracking unaffected!
 
-09:17:00 → VN30F1M briefly touches 1,768.49 again
-           ✗ Check: 1,768.49 in triggered_levels_today["VN30F1M"]? YES
+09:17:00 → BTCUSDT-PERP briefly touches 95,500 again
+           ✗ Check: 95,500 in triggered_levels_today["BTCUSDT-PERP"]? YES
            ✗ Cooldown active (09:16:00 to 09:19:00)
+           ✗ Alert SUPPRESSED for BTCUSDT-PERP
+
+09:17:30 → VN30F1M briefly touches 1,774.2 again
+           ✗ Check: 1,774.2 in triggered_levels_today["VN30F1M"]? YES
+           ✗ Cooldown active (09:15:00 to 09:18:00)
            ✗ Alert SUPPRESSED for VN30F1M
 
-09:17:30 → VN30 briefly touches 1,768.49 again
-           ✗ Check: 1,768.49 in triggered_levels_today["VN30"]? YES
-           ✗ Cooldown active (09:15:00 to 09:18:00)
-           ✗ Alert SUPPRESSED for VN30
-
 RESULT: Each symbol has independent cooldown!
-        VN30 expires at 09:18:00
-        VN30F1M expires at 09:19:00
+        VN30F1M expires at 09:18:00
+        BTCUSDT-PERP expires at 09:19:00
         No interference between symbols
 ```
 
 ---
 
-## 🛡️ Reliability & Quality Assurance
+## 🛡️ Built for Production
 
-### Production-Grade Features
+### What You Can Rely On
 
 #### 1. **Error Handling**
 - Missing data: Service continues, logs warning
@@ -299,19 +328,19 @@ RESULT: Each symbol has independent cooldown!
 
 ## 📈 Performance Characteristics
 
-| Metric | Value | Implication |
-|--------|-------|------------|
-| **Alert Latency** | < 1ms per tick | Real-time, sub-millisecond response |
-| **Memory per Symbol** | ~1KB per tracked level | Supports 10,000+ symbols efficiently |
-| **Daily Throughput** | 100K+ price ticks | Handles Vietnam market volume + international |
-| **Uptime** | 99.9%+ | Production-grade reliability |
-| **Configuration Updates** | Hot-reload capable | No service restarts needed |
+| Metric | Description |
+|--------|-------------|
+| **Alert Latency** | Real-time response driven by data provider tick rate |
+| **Memory per Symbol** | Lightweight in-memory state (cooldown dict + approach state) |
+| **Configuration Updates** | Config file changes take effect on next service restart |
+
+> **Note:** Specific latency benchmarks (< 1ms, 100K ticks/day, 99.9% uptime) have not been measured against the current codebase and are not guaranteed.
 
 ---
 
-## 🚀 Deployment & Support
+## 🚀 Deployment Options
 
-### Deployment Options
+### Where Does It Run?
 
 **Option 1: Cloud (AWS/Azure/GCP)**
 - Auto-scaling based on symbol count
@@ -330,23 +359,22 @@ RESULT: Each symbol has independent cooldown!
 
 ---
 
-## 💡 Getting Started
+## 💡 Getting Started in 3 Steps
 
 ### Step 1: Configuration
-Define your monitoring levels (VN30, futures, custom stocks):
+Define your monitoring levels (VN30F1M futures, BTCUSDT-PERP crypto):
 ```yaml
 PRICE_ALERTS:
-  VN30:
-    reference_price: 1766.68
-    fixed_levels: [1730.64, 1739.5, 1768.49, 1799.35, 1850.00]
-    absolute_interval: 9.0
   VN30F1M:
     reference_price: 1765.2
-    interval_levels_enabled: true
+    absolute_interval: 9.0
+  BTCUSDT-PERP:
+    reference_price: 95000
+    absolute_interval: 500.0
 ```
 
 ### Step 2: Integration
-Connect your notification channels (Email, Slack, SMS):
+Connect your notification channels (Email ✅, Slack ✅, Ntfy ✅ — all validated):
 ```
 → Real-time alerts to your preferred channel
 → Alert enrichment with price and symbol context
@@ -354,10 +382,14 @@ Connect your notification channels (Email, Slack, SMS):
 ```
 
 ### Step 3: Optimization
-Adjust cooldown and repetition settings based on your trading style:
+Adjust cooldown settings based on your trading style:
 ```
-LEVEL_ALERT_COOLDOWN_MINUTES = 3-10 (by strategy)
-ALLOW_REPEATED_LEVEL_ALERTS = true/false (by preference)
+# PRICE_MOVEMENT approach (price level crossings):
+LEVEL_ALERT_COOLDOWN_MINUTES = 3        # minutes before same level can fire again
+ALLOW_REPEATED_LEVEL_ALERTS = false     # true = fire on every crossing regardless of cooldown
+
+# TRADE approaches (VRA, STRONG_CANDLE, ICHIMOKU, etc.):
+# cooldown_window configured per-approach in executor_config.yaml (minutes only — no once-per-day mode)
 ```
 
 ---
@@ -375,12 +407,15 @@ For operational procedures, see:
 
 ---
 
-## ✅ Next Steps
+## ✅ Ready to Move Forward?
 
-**Ready to deploy?** Contact the development team with:
-- Number of symbols to monitor
+**Contact the team with:**
+- Which symbols to monitor (VN30F1M, BTCUSDT-PERP, or custom)
 - Preferred notification channels
-- Trading strategies and cooldown preferences
-- Deployment environment preference
+- Trading style (conservative cooldown vs. aggressive re-entry)
+- Deployment environment preference (cloud, on-premises, hybrid)
 
-**Questions?** Review the technical documentation or contact support.
+**Want to explore the technical details?** See:
+- 👉 [TECHNICAL_REFERENCE/DEEP_DIVE_FINDINGS.md](../TECHNICAL_REFERENCE/DEEP_DIVE_FINDINGS.md) - Complete technical architecture
+- 👉 [TECHNICAL_REFERENCE/VISUAL_GUIDE.md](../TECHNICAL_REFERENCE/VISUAL_GUIDE.md) - Architecture diagrams
+- 👉 [IMPLEMENTATION_GUIDES/OPERATIONS_DEPLOYMENT_GUIDE.md](../IMPLEMENTATION_GUIDES/OPERATIONS_DEPLOYMENT_GUIDE.md) - Deployment procedures

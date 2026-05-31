@@ -1,47 +1,53 @@
-# Architecture Guide for Trading Clients
+# Trading Alert System — Trader's Guide
 
-**Date:** April 8, 2026  
-**Target Audience:** End users, traders, business stakeholders, potential clients  
-**Purpose:** Understand the system from a trading and business perspective  
-**Reading Time:** 15-20 minutes
+> Set up your alert strategy, validate it with backtesting, and go live with confidence.
+
+**For:** Traders · End users · Anyone configuring their alert strategy
+**Date:** May 29, 2026
+**Read Time:** 15-20 minutes
+
+> 💡 **Quick Start:** Ready to set up? Jump to [Getting Started: Step-by-Step](#getting-started-step-by-step)
 
 ---
 
-## What This System Does
+## What This System Does For You
 
-This is a **real-time trading alert system** that automatically detects trading opportunities and notifies you through your preferred channel (Email, SMS, Telegram).
+Two modes — one for live trading, one for strategy validation:
 
-The system works in two ways:
-
-### 🟢 LIVE Mode: Real-Time Monitoring (Production)
+### 🟢 LIVE Mode — Real-Time Alerts (Production)
 Monitor multiple stock symbols in real-time using live market data. When price movements match your configured alert criteria, you receive instant notifications.
 
-### 🔵 REPLAY Mode: Historical Testing (Backtesting)
+### 🔵 REPLAY Mode — Historical Backtesting (Strategy Validation)
 Test your alert strategies against historical market data to see how they would have performed. This helps you validate and optimize your approach before running it live.
 
 ---
 
-## Key Capabilities at a Glance
+## Everything You Get
 
 ✅ **Real-Time Price Monitoring**
 - Monitor multiple symbols simultaneously
 - Detect price movements 24/7
 - Instant notifications when alerts trigger
 
-✅ **6+ Different Alert Approaches**
+✅ **8 Alert Approaches: TRADE (5 active) + ANNOUNCE (3)**
+
+**TRADE Approaches** (precise entry signals, executor pattern):
 - Strong Candle Detection
 - Consistent Momentum
-- Volume Spike Confirmation
 - VRA (Volume Reversal Analysis)
 - Ichimoku Patterns
 - Reversal Anchor Signal Candle
-- And more...
+
+**ANNOUNCE Approaches** (broad market movement alerts):
+- Large Candle
+- Large Volume Candle
+- Price Movement
 
 ✅ **Multi-Channel Notifications**
-- Email alerts
-- SMS text messages
-- Web notifications
-- Mix and match as desired
+- Email ✅ (validated)
+- Slack ✅ (validated)
+- Ntfy ✅ (validated)
+- SMS ⚠️ (not yet validated)
 
 ✅ **Backtesting & Analysis**
 - Test strategies on historical data
@@ -63,15 +69,15 @@ Test your alert strategies against historical market data to see how they would 
 
 ---
 
-## How It Works: The Complete Flow
+## How It Works: End-to-End Flow
 
 ### Step 1: You Configure Your Strategy
 You define:
-- Which symbols to monitor (VN30, VN30F1M, BTC, ETH, etc.)
+- Which symbols to monitor (VN30F1M, BTCUSDT-PERP, etc.)
 - Which alert approaches match your trading style
 - Your profit targets (e.g., +2% gain)
 - Your stop losses (e.g., -1% loss)
-- How you want to be notified (email, SMS, etc.)
+- How you want to be notified (Email, Slack, Ntfy)
 
 **Example:**
 ```
@@ -79,7 +85,7 @@ Monitor: VN30F1M
 Alert Types: Consistent Momentum + Strong Candle
 Profit Target: +1.5%
 Stop Loss: -0.8%
-Notifications: Email + SMS
+Notifications: Email + Slack
 ```
 
 ### Step 2: System Monitors in Real-Time
@@ -92,16 +98,27 @@ While your strategy runs:
 ### Step 3: You Receive Alerts
 When an alert is triggered:
 - Email notification (with details)
-- SMS notification (instant)
-- Web notification (if subscribed)
+- Slack notification (instant)
+- Ntfy web notification (if subscribed)
 - Alert summary including price, time, approach used
+- Each notification includes environment context (LIVE/REPLAY) and deployment mode footer
 
-### Step 4: You Execute Your Trade
-Based on the alert, you can:
-- Enter a long position
-- Enter a short position
-- Set stop loss at your defined level
-- Set profit target at your configured level
+### Step 4: Trade Execution
+
+This step differs by symbol:
+
+**VN30F1M — Manual execution**
+- You receive the alert and execute the trade yourself
+- Vietstock is a data provider only — it does not support order placement via API
+- The system's job ends at notification delivery
+
+**BTCUSDT-PERP — Automated execution (optional)**
+- When a TRADE alert is confirmed, the system can automatically place a **DCA bracket order** on Binance Futures:
+  - 7-rung LIMIT entry ladder (dollar-cost averaging into the position)
+  - Take-profit order (Binance algo conditional)
+  - Stop-loss order (Binance algo conditional)
+- The bracket self-manages: TP/SL recalculate automatically as more ladder entries fill
+- Controlled by `TRADING_EXECUTION_EXPIRED_MINUTES` — stale alerts are skipped
 
 ### Step 5: System Tracks Performance
 The system records:
@@ -120,10 +137,14 @@ Using the performance data:
 
 ---
 
-## Understanding Alert Approaches
+## The 8 Alert Approaches Explained
 
-Each approach looks for different signals:
+The system has **8 alert approaches** split into two categories.
 
+### 🟦 TRADE Approaches (5 active)
+Precise entry signals — uses an executor pattern where each approach is independently evaluated. Alerts from these approaches are designed for actionable trade entries.
+
+> **Note:** `VOLUME_SPIKE_CONFIRMATION` and `CONSISTENT_VOLUME_ANCHOR` exist in the codebase but are currently **archived** (not wired into execution) and are not counted here.
 
 ### 🔸 Strong Candle Detection
 - Looks for dominant candles (large bodies, small wicks)
@@ -135,20 +156,10 @@ Each approach looks for different signals:
 - Measures consistency of the trend
 - Best for: Momentum plays
 
-### 🔸 Volume Spike Confirmation
-- Confirms price movements with unusual volume
-- High volume = stronger signal
-- Best for: Breakout trades
-
 ### 🔸 Volume Reversal Analysis (VRA)
 - Detects trend reversals with volume confirmation
 - When price goes one way but volume goes opposite
 - Best for: Counter-trend entries
-
-### 🔸 Consistent Volume Anchor
-- Uses volume as anchor for price analysis
-- Identifies support/resistance from volume
-- Best for: Level-based trading
 
 ### 🔸 Ichimoku Patterns
 - Japanese charting technique
@@ -165,7 +176,27 @@ Each approach looks for different signals:
 
 ---
 
-## The Performance Metrics (Backtesting) Feature
+### 🟧 ANNOUNCE Approaches (3)
+Broad market movement alerts — uses `AnnouncementAlerterBase`. These are informational signals about notable candle or price activity, not necessarily direct trade entries.
+
+### 🔹 Large Candle
+- Detects unusually large candlestick bodies
+- Indicates exceptional price movement in a single bar
+- Best for: Awareness of volatility spikes
+
+### 🔹 Large Volume Candle
+- Detects candles with both large body **and** exceptional volume
+- Confirms that institutional or large-player activity is driving the move
+- Best for: Spotting high-conviction market moves
+
+### 🔹 Price Movement
+- Detects significant percentage price movement over a period
+- Threshold-based: alerts when price moves beyond configured levels
+- Best for: Trend initiation awareness and momentum context
+
+---
+
+## Backtesting — Validate Before Going Live
 
 ### What It Does
 
@@ -197,34 +228,26 @@ Tests how your alert strategy would have performed on historical data.
 ### Example Report Output
 
 ```
-BACKTESTING RESULTS: VN30F1M (April 1-8, 2026)
+BACKTESTING RESULTS: VN30F1M (REPLAY mode)
 
 Approach: Strong Candle Detection
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Profit Target: 2.0 points (fixed)
+Total alerts triggered: [N]
+Alerts with follow-through: [X]
+Alerts stopped out: [Y]
 
-Stop Loss Analysis:
-- 2.5 points: 16 profitable, 8 stopped out → Win Rate: 67%
-- 3.0 points: 18 profitable, 6 stopped out → Win Rate: 75%
-- 3.5 points: 19 profitable, 5 stopped out → Win Rate: 79%
-- 5.0 points: 21 profitable, 3 stopped out → Win Rate: 88%
-- 9.0 points: 23 profitable, 1 stopped out → Win Rate: 96%
-
-Best Performance: Stop Loss 3.0-3.5 points (optimal risk/reward)
+Best performing time windows: [reported per run]
 
 Approach: Consistent Momentum
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Profit Target: 2.0 points (fixed)
+Total alerts triggered: [N]
+Alerts with follow-through: [X]
+Alerts stopped out: [Y]
 
-Stop Loss Analysis:
-- 2.5 points: 12 profitable, 10 stopped out → Win Rate: 55%
-- 3.0 points: 14 profitable, 8 stopped out → Win Rate: 64%
-- 3.5 points: 15 profitable, 7 stopped out → Win Rate: 68%
-- 5.0 points: 18 profitable, 4 stopped out → Win Rate: 82%
-- 9.0 points: 20 profitable, 2 stopped out → Win Rate: 91%
-
-Best Performance: Stop Loss 5.0 points (more conservative approach)
+Best performing time windows: [reported per run]
 ```
+
+> **Note:** Specific win rates and trade counts depend entirely on the historical data period and configuration used in each REPLAY run. The system does not produce pre-set performance guarantees.
 
 ### Advanced Features (Optional)
 
@@ -256,18 +279,17 @@ The system can fetch market data from:
 
 You can mix and match data sources:
 ```
-Monitor VN30 → via Vietstock
-Monitor BTC → via Binance
-Monitor ETH → via Binance
+Monitor VN30F1M → via Vietstock
+Monitor BTCUSDT-PERP → via Binance API
 ```
 
 ---
 
-## Configuration Examples
+## Configuration Examples — 4 Trader Profiles
 
 ### Example 1: Conservative Trader
 ```
-Symbols: VN30 (Vietnam's main index)
+Symbols: VN30F1M (Vietnam futures)
 Approach: Strong Candle + Consistent Momentum
 Profit Target: 2.0 points (automatic, fixed)
 Stop Loss: 3.0-3.5 points (testing multiple levels)
@@ -279,32 +301,32 @@ Backtesting: Aim for 75%+ win rate
 ### Example 2: Active Day Trader
 ```
 Symbols: VN30F1M (Vietnam futures, 1-minute data)
-Approach: Volume Spike + Strong Candle
+Approach: Reversal Anchor Signal Candle + Strong Candle
 Profit Target: 2.0 points (automatic, fixed)
 Stop Loss: 2.5-4.0 points (tighter stops for quick scalps)
-Alerts: SMS + Email (real-time)
+Alerts: Email + Slack (real-time)
 Time Frame: Full trading day
 Backtesting: Aim for 60%+ win rate
 ```
 
 ### Example 3: Crypto Trader
 ```
-Symbols: BTC, ETH (Bitcoin, Ethereum)
-Approach: Ichimoku + Volume Reversal
+Symbols: BTCUSDT-PERP (Bitcoin perpetual futures)
+Approach: Ichimoku + VRA
 Profit Target: 2.0 points (automatic, fixed)
 Stop Loss: 4.0-6.0 points (volatile asset, wider stops)
-Alerts: Email + Web notifications
+Alerts: Email + Slack
 Time Frame: 24/7
 Backtesting: Test multiple stop-loss levels
 ```
 
 ### Example 4: Multi-Strategy Portfolio
 ```
-Symbols: VN30, BTC, ETH
+Symbols: VN30F1M, BTCUSDT-PERP
 Approach: Multiple (rotate by asset)
 Profit Target: 2.0 points (consistent across all)
 Stop Loss: 3.0-5.0 points (tests 9 different levels)
-Alerts: Mix of Email and SMS
+Alerts: Email + Slack + Ntfy
 Backtesting: Compare performance across all 9 scenarios
 ```
 
@@ -312,25 +334,25 @@ Backtesting: Compare performance across all 9 scenarios
 
 ## Getting Started: Step-by-Step
 
-### Technical Reference: Setup (15 minutes)
+### Phase 1: Setup (15 minutes)
 1. Choose which symbols to monitor
 2. Select your alert approaches
 3. Set profit targets
 4. Set stop losses
 5. Configure notifications
 
-### Implementation Guides: Backtest Your Strategy (30 minutes)
+### Phase 2: Backtest Your Strategy (30 minutes)
 1. Choose a date range (30-60 days recommended)
 2. Run backtesting on historical data
 3. Review the performance report
 4. Check win rate and profit factor
 5. Adjust if needed
 
-### Phase 3: Paper Trade (1-2 weeks)
-1. Run in LIVE mode on a paper trading account (no real money)
-2. See how alerts perform in real time
-3. Adjust based on real-time observations
-4. Build confidence in your strategy
+### Phase 3: Validate with REPLAY Mode (1-2 weeks)
+1. Run in REPLAY mode against recent historical data
+2. See how alerts would have performed in real time
+3. Adjust thresholds based on observations
+4. Build confidence in your strategy before going live
 
 ### Phase 4: Go Live (Start small)
 1. Start with minimum position sizes
@@ -364,7 +386,7 @@ Percentage gain per month.
 
 ---
 
-## Important Disclaimers & Warnings
+## ⚠️ Important Disclaimers
 
 ⚠️ **Past Performance ≠ Future Results**
 - Backtesting shows what *would* have happened
