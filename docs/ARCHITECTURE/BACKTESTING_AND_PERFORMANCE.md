@@ -59,7 +59,6 @@ This tool automates multi-scenario trade simulation, report consolidation, suppo
 ### Mermaid Flowchart: Backtesting & Performance Pipeline
 
 ```mermaid
-%%{init: { 'themeVariables': { 'nodeBorder': '#6c63ff', 'mainBkg': '#f3f0ff', 'fontFamily': 'Inter, Arial', 'fontSize': '16px', 'edgeLabelBackground':'#f8f6ff', 'clusterBkg': '#f8f6ff', 'clusterBorder': '#9467bd', 'primaryColor': '#6c63ff', 'secondaryColor': '#9467bd', 'tertiaryColor': '#f8f6ff', 'textColor': '#22223b' } } }%%
 flowchart TD
   A(["centralized_report_generator.py<br/>(Orchestrator)"]) -->|"For each scenario/date"| B(["individual_trade_simulator.py<br/>(Daily Simulation)"])
   B -->|"Daily report"| C(["consolidate_reports.py<br/>(Consolidation)"])
