@@ -402,7 +402,7 @@ python your_app.py
 - **DESIGN_OVERVIEW.md** - High-level architecture overview
 - **CREDENTIAL_RESOLUTION_LAYERS.md** - How credentials are resolved
 - **CLOUD_PLATFORM_INTEGRATION.md** - Cloud-specific setup
-- **Implementation Guide** - See `docs/IMPLEMENTATION/` for operational details
+- **Implementation Guide** - See `docs/REFERENCES/IMPLEMENTATION/` for operational details
 
 ---
 
