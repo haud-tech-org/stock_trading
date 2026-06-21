@@ -130,6 +130,26 @@
               "close_delay_minutes": 8
             }
           }
+        },
+        "DOJI_ANCHOR_SIGNAL_CANDLE": {
+          "enabled": true,
+          "resolution": 5,
+          "description": "Doji-first anchor-backward reversal approach",
+          "approach_type": "trade",
+          "approach_config": {
+            "LOOKBACK_WINDOW": 6,
+            "COOLDOWN_WINDOW": 5,
+            "MAX_DOJI_BODY_RATIO": 0.25,
+            "MIN_DOJI_RANGE": 0.0,
+            "ANCHOR_SEARCH_LIMIT": 5,
+            "TREND_WINDOW": 4,
+            "MOMENTUM_MIN_PRICE_MOVE": 550.0,
+            "TREND_CANDLE_RANGE_MULTIPLIER": 1.5,
+            "TREND_CANDLE_MIN_BODY": 200.0,
+            "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 110.0,
+            "ALERT_CANDLE_MAX_VOLUME_RATIO": 1.0,
+            "MIN_ALERT_BODY_SIZE": 110.0
+          }
         }
       }
     },
@@ -266,6 +286,26 @@
             "SKIP_CHIKOU_CONFIRMATION": false,
             "SKIP_CLOUD_VALIDATION": false,
             "MAGNITUDE_THRESHOLD": 8.5
+          }
+        },
+        "DOJI_ANCHOR_SIGNAL_CANDLE": {
+          "enabled": true,
+          "resolution": 5,
+          "description": "Doji-first anchor-backward reversal approach",
+          "approach_type": "trade",
+          "approach_config": {
+            "LOOKBACK_WINDOW": 6,
+            "COOLDOWN_WINDOW": 5,
+            "MAX_DOJI_BODY_RATIO": 0.25,
+            "MIN_DOJI_RANGE": 0.0,
+            "ANCHOR_SEARCH_LIMIT": 5,
+            "TREND_WINDOW": 4,
+            "MOMENTUM_MIN_PRICE_MOVE": 5.5,
+            "TREND_CANDLE_RANGE_MULTIPLIER": 1.5,
+            "TREND_CANDLE_MIN_BODY": 2.5,
+            "ALERT_CANDLE_CLOSE_TO_EXTREME_THRESHOLD": 1.5,
+            "ALERT_CANDLE_MAX_VOLUME_RATIO": 1.0,
+            "MIN_ALERT_BODY_SIZE": 1.2
           }
         }
       }

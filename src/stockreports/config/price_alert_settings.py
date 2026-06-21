@@ -28,7 +28,7 @@ PRICE_ALERTS = {
         "reference_price": 70800.0,
         "fixed_levels": [],
         "absolute_interval": 500.0,
-    },
+    }
 }
 
 # This flag determines whether to use the performance-based suggested price (if available)
@@ -42,7 +42,8 @@ PERFORMANCE_BY_APPROACH = {
     'VRA': {'avg_worst_loss_price': 0.8},
     'CONSISTENT_VOLUME_ANCHOR': {'avg_worst_loss_price': 0.9},
     'ICHIMOKU': {'avg_worst_loss_price': 1.7},
-    'REVERSAL_ANCHOR_SIGNAL_CANDLE': {'avg_worst_loss_price': 150}
+    'REVERSAL_ANCHOR_SIGNAL_CANDLE': {'avg_worst_loss_price': 150},
+    'DOJI_ANCHOR_SIGNAL_CANDLE': {'avg_worst_loss_price': 3.5}
 }
 
 # Approach-specific profit threshold configuration for alert notifications.
@@ -55,7 +56,8 @@ PROFIT_THRESHOLD_BY_APPROACH = {
     'VRA': 4.5,
     'CONSISTENT_VOLUME_ANCHOR': 2.75,
     'ICHIMOKU': 3.0,
-    'REVERSAL_ANCHOR_SIGNAL_CANDLE': 350
+    'REVERSAL_ANCHOR_SIGNAL_CANDLE': 350,
+    'DOJI_ANCHOR_SIGNAL_CANDLE': 3.5
 }
 
 # A fixed offset added to all suggested price calculations to provide an extra buffer.
