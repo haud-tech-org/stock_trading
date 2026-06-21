@@ -110,7 +110,58 @@ def calculate_body_ratio(candle):
 
 **Do NOT generate code that violates any of these standards.**
 
-### 3. LAYER_4_APPROACH_EXECUTION Architecture ⭐ MANDATORY
+### 3. LOGGING_LEVEL_RULES_STRICT.md ⭐ MANDATORY
+📖 Location: `/docs/references/STANDARDIZATIONS_CODING/LOGGING_LEVEL_RULES_STRICT.md`
+
+**Critical Logging Standards**:
+- ✅ Validation failures: Always DEBUG level (not ERROR)
+- ✅ Exceptions: Always ERROR level
+- ✅ Pre-checks: DEBUG level if passing, ERROR level if exception
+- ✅ Logging must precede every early return or continue statement
+- ✅ Validation step names clearly logged
+- ✅ No silent failures - all exits must be logged
+
+**Pattern**:
+```python
+# ✅ CORRECT - Log validation failures at DEBUG
+if not self._step_validate_momentum(...):
+    self.logger.debug(f"Step {self.current_step}: Momentum validation failed for {symbol}")
+    continue
+
+# ✅ CORRECT - Log exceptions at ERROR
+except Exception as e:
+    self.logger.error(f"Step {self.current_step}: Exception in momentum validation: {str(e)}")
+    continue
+
+# ❌ WRONG - Silent failures without logging
+if not self._step_validate_momentum(...):
+    continue
+
+# ❌ WRONG - Using ERROR for normal validation failures
+if not self._step_validate_momentum(...):
+    self.logger.error("Validation failed")  # Should be DEBUG
+    continue
+```
+
+**Do NOT generate logging code that violates these standards. ALL generated code MUST comply with STRICT logging rules.**
+
+### 4. APPROACH_GENERATION_REFINE_SUMMARY.md - Implementation Reference
+📖 Location: `/docs/references/TEMPLATES/APPROACH_GENERATION_TEMPLATE/APPROACH_GENERATION_REFINE_SUMMARY.md`
+
+**Purpose**: Reference template for code quality and refinement patterns
+
+**Key Sections**:
+- Code quality standards and examples
+- Common anti-patterns to avoid
+- Refinement checklist for generated code
+- Integration patterns with base classes
+- Testing strategies for executors
+
+**Use this document to**: Verify generated code quality before deployment
+
+---
+
+### 5. LAYER_4_APPROACH_EXECUTION Architecture ⭐ MANDATORY
 📖 Locations:
 - TECHNICAL_REFERENCE: `/docs/ARCHITECTURE/TECHNICAL_REFERENCE/LAYER_4_APPROACH_EXECUTION/`
 - IMPLEMENTATION_GUIDES: `/docs/ARCHITECTURE/IMPLEMENTATION_GUIDES/LAYER_4_APPROACH_EXECUTION/`
@@ -605,7 +656,7 @@ def _step_validate_condition_1(self) -> Optional[ReturnType]:
                 step=self.current_step,
                 validation=self.validation_step,
                 message=f"Validation failed: {reason}",
-                log_level=LogLevel.DEBUG,
+                log_level=LogLevel.DEBUG,  # ← RULE 1: ALWAYS DEBUG for validation failures
                 execution_symbol=self.symbol,
                 approach=self.APPROACH_NAME
             )
@@ -623,8 +674,18 @@ def _step_validate_condition_1(self) -> Optional[ReturnType]:
         return result
         
     except Exception as e:
-        log(..., message=f"Exception: {str(e)}", log_level=LogLevel.DEBUG)
+        log(..., message=f"Exception: {str(e)}", log_level=LogLevel.ERROR)  # ← RULE 2: ALWAYS ERROR for exceptions
         return None
+```
+
+**CRITICAL LOGGING RULES** (Must be strictly enforced):
+- **RULE 1 (Validation Failures)**: LogLevel.DEBUG
+  - When condition fails: `if not is_valid: log_level=LogLevel.DEBUG`
+  - Expected behavior, filtered in production for cleaner logs
+- **RULE 2 (Exceptions)**: LogLevel.ERROR
+  - When exception caught: `except Exception: log_level=LogLevel.ERROR`
+  - Unexpected behavior, must surface to alerting/monitoring
+- **VIOLATION**: Using ERROR for validation failures or DEBUG for exceptions will be caught in code review
 ```
 
 ### 2. Main Loop Pattern
@@ -1587,33 +1648,57 @@ src/stockreports/alert/approach/[YOUR_APPROACH_NAME]/
 
 The patterns and requirements documented in PART 2-4 are derived from real-world implementation experience. For deeper understanding of WHY these patterns exist and how they evolved, see `docs/REFERENCES/CASE_STUDIES/TECHNICAL_CASE_STUDIES.md`.
 
-#### 🔗 Reference Implementation: STRONG_CANDLE Approach
+#### 🔗 Reference Implementations: STRONG_CANDLE & DOJI_ANCHOR_SIGNAL_CANDLE
 
-**Working Example Location**: `src/stockreports/alert/approach/STRONG_CANDLE/`
+**Primary Example - STRONG_CANDLE**  
+**Location**: `src/stockreports/alert/approach/STRONG_CANDLE/`
 
-**What to Study**:
-- `settings.py` - Configuration pattern with Pydantic BaseSettings
+**Secondary Example - DOJI_ANCHOR_SIGNAL_CANDLE (Latest Implementation)**  
+**Location**: `src/stockreports/alert/approach/DOJI_ANCHOR_SIGNAL_CANDLE/`
+
+**What to Study in STRONG_CANDLE**:
+- `settings.py` - Configuration pattern with BaseSettings
 - `analyzer.py` - Pure static methods for calculations and data extraction
 - `validator.py` - Pure static validation logic with no side effects
 - `executor.py` - Template Method pattern implementation with _find_alerts() hook
 - `__init__.py` - Proper module exports with relative imports
 
-**Why Reference This**:
-- ✅ Implements ALL patterns documented in this prompt
-- ✅ Uses enums for all categorical values (CandleColor, Comparison, CandleColumn)
-- ✅ Has complete type hints including complex types (Optional, List, Dict)
-- ✅ Contains comprehensive Google-style docstrings with all 7 sections
-- ✅ Demonstrates proper Executor and base class usage
-- ✅ Shows correct import structure and __init__.py template
-- ✅ Exemplifies logging, context management, and error handling
-- ✅ Production-tested and currently active in trading system
+**What to Study in DOJI_ANCHOR_SIGNAL_CANDLE (For Complex Logic)**:
+- `analyzer.py` - Advanced multi-step discovery process (discover_anchor_with_trend)
+  - Shows Step 1-5 process with utility function integration
+  - Demonstrates doji extreme validation (Step 2.5)
+  - Shows trend determination and anchor finding logic
+- `validator.py` - Window-based validation patterns
+  - Momentum validation scoped to anchor-to-doji window
+  - Reversal confirmation with threshold logic
+  - Pre-validation checks (volume, body) before direction check
+- `executor.py` - Pre-step pattern with data enrichment
+  - `_step_prepare_candles()` that returns multiple discovery values
+  - Alert creation with complete pre-step context
+  - Real-world 5-step validation pipeline
+
+**Why Reference Both**:
+- ✅ STRONG_CANDLE: Clean, straightforward pattern (good for learning base structure)
+- ✅ DOJI_ANCHOR_SIGNAL_CANDLE: Complex, real-world pattern (good for learning advanced logic)
+- ✅ Both implement ALL documented patterns in this prompt
+- ✅ Both use enums, type hints, docstrings, static methods
+- ✅ DOJI_ANCHOR shows window scoping, multi-return pre-steps, enriched alerts
+- ✅ Both production-tested and currently active in trading system
+
+**Implementation Plan Documentation**:
+📖 `docs/temp/DOJI_ANCHOR_SIGNAL_CANDLE_IMPLEMENTATION_PLAN.md`
+- Complete code plan mirroring actual implementation
+- Configuration parameters with semantic meanings
+- Validation step sequence and decision logic
+- All method signatures and return types documented
 
 **When Generating New Approaches**:
-1. Review STRONG_CANDLE structure first (5 minutes)
-2. Use it as reference while AI generates code (side-by-side comparison)
-3. Verify generated code matches STRONG_CANDLE patterns
-4. Copy import structure and __init__.py from STRONG_CANDLE exactly
-5. Cross-check type hints and docstrings against STRONG_CANDLE examples
+1. Review STRONG_CANDLE structure first (basic patterns) - 5 minutes
+2. Review DOJI_ANCHOR structure for complex patterns - 5 minutes
+3. Reference DOJI_ANCHOR_SIGNAL_CANDLE_IMPLEMENTATION_PLAN.md for pattern examples - 3 minutes
+4. Use appropriate reference as template while generating code (side-by-side comparison)
+5. Verify generated code matches reference patterns
+6. Cross-check type hints, docstrings, and method signatures against examples
 
 ---
 

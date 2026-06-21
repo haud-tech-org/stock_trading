@@ -345,6 +345,31 @@
               }
             }
           }
+        },
+        "DOJI_ANCHOR_SIGNAL_CANDLE": {
+          "reminder_delays": { "order_delay_minutes": 4, "close_delay_minutes": 8 },
+          "channels": {
+            "EMAIL": {
+              "enabled": true,
+              "signals": {
+                "BUY": { "enabled": true },
+                "SELL": { "enabled": true },
+                "CLOSE_POSITION": { "enabled": true },
+                "ORDER_REMINDER": { "enabled": true }
+              }
+            },
+            "NTFY": { "enabled": false, "signals": {} },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": { "enabled": true },
+                "SELL": { "enabled": true },
+                "CLOSE_POSITION": { "enabled": true },
+                "ORDER_REMINDER": { "enabled": true }
+              }
+            },
+            "CONSOLE": { "enabled": false, "signals": { "BUY": { "enabled": true } } }
+          }
         }
       }
     },
@@ -811,6 +836,31 @@
                 }
               }
             }
+          }
+        },
+        "DOJI_ANCHOR_SIGNAL_CANDLE": {
+          "reminder_delays": { "order_delay_minutes": 4, "close_delay_minutes": 8 },
+          "channels": {
+            "EMAIL": {
+              "enabled": true,
+              "signals": {
+                "BUY": { "enabled": true },
+                "SELL": { "enabled": true },
+                "CLOSE_POSITION": { "enabled": true },
+                "ORDER_REMINDER": { "enabled": true }
+              }
+            },
+            "NTFY": { "enabled": false, "signals": {} },
+            "SLACK": {
+              "enabled": true,
+              "signals": {
+                "BUY": { "enabled": true },
+                "SELL": { "enabled": true },
+                "CLOSE_POSITION": { "enabled": true },
+                "ORDER_REMINDER": { "enabled": true }
+              }
+            },
+            "CONSOLE": { "enabled": false, "signals": { "BUY": { "enabled": true } } }
           }
         }
       }
