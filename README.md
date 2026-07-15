@@ -38,6 +38,52 @@ The system is organized as a coordinated workflow rather than a single script:
 
 For the authoritative system flow, start with [docs/ARCHITECTURE/SYSTEM_ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE/SYSTEM_ARCHITECTURE_OVERVIEW.md).
 
+## Architecture Component Diagram
+
+```mermaid
+flowchart TD
+	A[SymbolAlertManager] --> B[SymbolAlerter]
+	B --> C[ConfigurationOrchestrator]
+	B --> D[DataServiceOrchestrator]
+	D --> D1[Providers: Vietstock, Binance, Binance CCXT]
+	C --> E[ANNOUNCE Approaches]
+	C --> F[TRADE Approaches]
+	E --> G[Notification Service]
+	F --> G
+	F --> H[Trade Execution Service]
+	E --> I[Report Utils]
+	F --> I
+	I --> J[reports or reports_replay]
+	B --> K[Web Health and Runtime Layer]
+```
+
+## End-To-End Sequence Diagram
+
+```mermaid
+sequenceDiagram
+	participant M as SymbolAlertManager
+	participant S as SymbolAlerter
+	participant C as ConfigurationOrchestrator
+	participant D as DataServiceOrchestrator
+	participant A as ANNOUNCE and TRADE Approaches
+	participant N as Notification Service
+	participant T as Trade Execution Service
+	participant R as Report Utils
+
+	M->>S: Start per-symbol monitoring
+	S->>C: Resolve enabled approaches and resolutions
+	S->>D: Fetch latest OHLCV data
+	D-->>S: Return normalized market data
+	S->>A: Execute approaches
+	A-->>S: Return confirmed alerts
+	S->>N: Dispatch notifications
+	alt Trade execution enabled and applicable
+		S->>T: Submit trade signal
+		T-->>S: Execution result
+	end
+	S->>R: Persist alerts and summaries
+```
+
 ## Primary Capabilities
 
 ### Business View
