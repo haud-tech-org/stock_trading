@@ -4,6 +4,7 @@ This repository contains a real-time trading alert and execution platform for mo
 
 At a high level, the system orchestrates market data collection, per-symbol monitoring, multi-resolution signal evaluation, notification delivery, reporting, and optional live trade execution. The detailed design lives in [docs/ARCHITECTURE/README.md](docs/ARCHITECTURE/README.md); this README is the business-and-developer entry point.
 
+
 ## What The System Does
 
 The platform is designed to:
@@ -24,6 +25,7 @@ The architecture documentation describes the operating model as:
 
 In the current codebase, these behaviors are configured through [src/stockreports/config/settings.py](src/stockreports/config/settings.py), with replay-style output separation additionally controlled by `DEBUG_REPLAY_START_TIME`.
 
+
 ## End-To-End Orchestration
 
 The system is organized as a coordinated workflow rather than a single script:
@@ -37,6 +39,7 @@ The system is organized as a coordinated workflow rather than a single script:
 7. Optional downstream workflows perform replay analysis, reporting, and live trade execution.
 
 For the authoritative system flow, start with [docs/ARCHITECTURE/SYSTEM_ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE/SYSTEM_ARCHITECTURE_OVERVIEW.md).
+
 
 ## Architecture Component Diagram
 
@@ -56,6 +59,7 @@ flowchart TD
 	I --> J[reports or reports_replay]
 	B --> K[Web Health and Runtime Layer]
 ```
+
 
 ## End-To-End Sequence Diagram
 
@@ -84,6 +88,7 @@ sequenceDiagram
 	S->>R: Persist alerts and summaries
 ```
 
+
 ## Primary Capabilities
 
 ### Business View
@@ -102,6 +107,7 @@ sequenceDiagram
 - Multiple data providers with orchestration and caching layers.
 - Deployment-aware credentials and environment detection model.
 
+
 ## Repository At A Glance
 
 - [src/stockreports](src/stockreports) contains the application code for alerting, data services, notification delivery, configuration, reporting, and trade execution.
@@ -110,6 +116,7 @@ sequenceDiagram
 - [reports](reports) is the default alert and report output tree.
 - [reports_replay](reports_replay) is used when replay-style output separation is enabled through `DEBUG_REPLAY_START_TIME`.
 - [deployment](deployment) and root deployment manifests contain operational launch and infrastructure assets.
+
 
 ## Setup And Configuration
 
@@ -204,6 +211,7 @@ python -m src.stockreports.cli verify-config
 python -m src.stockreports.cli test-credentials
 ```
 
+
 ## Running The Project
 
 ### Local Service Runtime
@@ -252,6 +260,7 @@ For containerized local runs, Docker Compose reads `.env` through [docker-compos
 - Replay-separated outputs are written under [reports_replay](reports_replay) when `DEBUG_REPLAY_START_TIME` is set.
 - Logs are written under [logs](logs).
 
+
 ## Documentation Map
 
 ### Start Here
@@ -281,6 +290,7 @@ For containerized local runs, Docker Compose reads `.env` through [docker-compos
 - [docs/ARCHITECTURE/IMPLEMENTATION_GUIDES/LAYER_9_OPERATIONAL_SUPPORT/TROUBLESHOOTING_GUIDE.md](docs/ARCHITECTURE/IMPLEMENTATION_GUIDES/LAYER_9_OPERATIONAL_SUPPORT/TROUBLESHOOTING_GUIDE.md): troubleshooting guide.
 - [docs/ARCHITECTURE/TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/README.md](docs/ARCHITECTURE/TECHNICAL_REFERENCE/LAYER_10_TRADE_EXECUTION/README.md): trade execution service architecture.
 
+
 ## Working With This Repository
 
 If you are new to the project, the most reliable reading order is:
@@ -290,6 +300,15 @@ If you are new to the project, the most reliable reading order is:
 3. [docs/ARCHITECTURE/TECHNICAL_REFERENCE/README.md](docs/ARCHITECTURE/TECHNICAL_REFERENCE/README.md) if you need architecture depth.
 4. [docs/ARCHITECTURE/IMPLEMENTATION_GUIDES/README.md](docs/ARCHITECTURE/IMPLEMENTATION_GUIDES/README.md) if you are modifying or extending the system.
 
+
 ## Current Scope
 
 Based on the current architecture documentation, this repository is not a generic market-data utility package. It is a trading alert orchestration system with notification, replay, reporting, environment-aware configuration, and optional live execution capabilities.
+
+
+## Copyright and License
+
+Copyright (c) 2026 Haudtech.  
+All rights reserved.
+
+This repository is proprietary. No permission is granted to use, copy, modify, or distribute any part of this code without prior written permission.
